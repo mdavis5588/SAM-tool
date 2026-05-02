@@ -1,255 +1,185 @@
-# Oracle SAM v2 — Power BI Multi-Client Setup Guide
+# Oracle SAM — Power BI Setup Guide
 
-## Connection strategy
+## 1. PostgreSQL connection (DirectQuery recommended)
 
-Because data is separated by PostgreSQL schema (one per client), there are
-two reporting models to choose from:
+Use the **PostgreSQL connector** built into Power BI Desktop.
 
-| Model | Who uses it | How |
-|-------|------------|-----|
-| Per-client report | Each client sees only their data | Connect to their schema directly |
-| Admin roll-up report | SAM team, full cross-client view | Connect to `shared` + `sam_admin` schemas |
+| Setting | Value |
+|---------|-------|
+| Server | `<your-pg-host>:5432` |
+| Database | `oracle_sam` |
+| Data Connectivity mode | **DirectQuery** (keeps data fresh) |
+| Username | `sam_reader` (read-only role — see SQL below) |
 
-Both use the same PostgreSQL database (`oracle_sam`). Access is controlled by
-which PostgreSQL role the Power BI connection uses.
-
----
-
-## Model A — Per-client report
-
-### Connection setup
-
-```
-Server:   <pg-host>:5432
-Database: oracle_sam
-Schema:   client_acme   (or client_globex, etc.)
-Role:     sam_reader_acme  (see role creation below)
-Mode:     DirectQuery
-```
-
-Create a client-scoped reader role:
+Create the read-only role in PostgreSQL first:
 
 ```sql
--- Per-client reader (cannot see other schemas)
-CREATE ROLE sam_reader_acme WITH LOGIN PASSWORD 'changeme';
-GRANT USAGE ON SCHEMA client_acme, shared TO sam_reader_acme;
-GRANT SELECT ON ALL TABLES IN SCHEMA client_acme TO sam_reader_acme;
-GRANT SELECT ON ALL TABLES IN SCHEMA shared TO sam_reader_acme;
-REVOKE USAGE ON SCHEMA sam_admin FROM sam_reader_acme;
+CREATE ROLE sam_reader WITH LOGIN PASSWORD 'changeme';
+GRANT USAGE ON SCHEMA sam TO sam_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA sam TO sam_reader;
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA sam TO sam_reader;
+ALTER DEFAULT PRIVILEGES IN SCHEMA sam GRANT SELECT ON TABLES TO sam_reader;
 ```
 
-### Tables to import (client_acme schema)
+## 2. Tables and views to import
 
-| Object | Type |
-|--------|------|
-| `oracle_servers` | Table |
-| `oracle_processors` | Table |
-| `oracle_instances` | Table |
-| `oracle_options` | Table |
-| `wls_domains` | Table |
-| `wls_managed_servers` | Table |
-| `wls_installed_products` | Table |
-| `license_position` | View — calculated compliance |
+Import these objects from the `sam` schema:
 
-### Tables to import (shared schema)
+| Object | Type | Purpose |
+|--------|------|---------|
+| `oracle_servers` | Table | Master server list |
+| `oracle_processors` | Table | CPU snapshot history |
+| `oracle_instances` | Table | Database instance list |
+| `oracle_options` | Table | Installed options / packs |
+| `license_entitlements` | Table | What you own |
+| `core_factor_table` | Table | Oracle Core Factor reference |
+| `license_position` | View | Main compliance view |
+| `server_summary` | View | Pre-aggregated server card data |
+| `discovery_runs` | Table | Audit trail |
 
-| Object | Type |
-|--------|------|
-| `entitlements_by_client` | View — filtered to this client's CSIs |
-| `core_factor_table` | Table — reference |
-| `entitlement_utilisation` | View — expiry tracking |
+## 3. Power BI Data Model — relationships
 
-### Relationships in Power BI
+After import set these relationships (all Many-to-One):
 
 ```
-oracle_processors.server_id     → oracle_servers.server_id
-oracle_instances.server_id      → oracle_servers.server_id
-oracle_options.instance_id      → oracle_instances.instance_id
-wls_domains.server_id           → oracle_servers.server_id
-wls_managed_servers.domain_id   → wls_domains.domain_id
-wls_managed_servers.server_id   → oracle_servers.server_id
-wls_installed_products.domain_id → wls_domains.domain_id
+oracle_processors.server_id  →  oracle_servers.server_id
+oracle_instances.server_id   →  oracle_servers.server_id
+oracle_options.instance_id   →  oracle_instances.instance_id
 ```
 
----
+`license_position` and `server_summary` are flat views — no joins needed.
 
-## Model B — Admin roll-up report
+## 4. DAX Measures
 
-### Connection setup
+Paste these into a dedicated **_Measures** table.
 
-```
-Server:   <pg-host>:5432
-Database: oracle_sam
-Role:     sam_reader  (has SELECT on all schemas)
-Mode:     DirectQuery
-```
-
-### Additional tables (sam_admin schema)
-
-| Object | Type |
-|--------|------|
-| `clients` | Table — client registry |
-| `discovery_runs` | Table — audit log across all clients |
-
-### Additional shared views
-
-| Object | Purpose |
-|--------|---------|
-| `cross_client_summary` | One row per server across all clients |
-| `entitlement_utilisation` | All CSIs, allocation vs available |
-
-### Slicer: client_code
-
-Add `sam_admin.clients[client_code]` as a slicer. Because `cross_client_summary`
-already contains `client_code`, all visuals filter correctly.
-
----
-
-## DAX Measures
-
-Paste into a dedicated `_Measures` table. These work for both model A and B.
-
-### Oracle Database
+### Licence position
 
 ```dax
-DB Licences Required =
+Total Licences Required =
 SUMX(
-    FILTER(license_position, license_position[product_family] = "oracle_database"),
+    license_position,
     license_position[licences_required]
 )
 
-DB Licences Owned =
+Total Licences Owned =
 SUMX(
-    FILTER(entitlements_by_client, entitlements_by_client[product_family] = "oracle_database"),
-    entitlements_by_client[client_quantity]
+    license_entitlements,
+    IF(license_entitlements[status] = "active", license_entitlements[quantity], 0)
 )
 
-DB Surplus / Deficit = [DB Licences Owned] - [DB Licences Required]
+Licence Surplus / Deficit =
+[Total Licences Owned] - [Total Licences Required]
 
-DB Compliance =
-IF([DB Surplus / Deficit] >= 0, "Compliant", "Under-licensed")
+Compliance Status =
+IF(
+    [Licence Surplus / Deficit] >= 0,
+    "Compliant",
+    "Under-licensed"
+)
 
-DB % Utilisation =
-DIVIDE([DB Licences Required], [DB Licences Owned], 0)
+% Utilisation =
+DIVIDE([Total Licences Required], [Total Licences Owned], 0)
 ```
 
-### WebLogic
+### Server metrics
 
 ```dax
-WLS Licences Required =
-SUMX(
-    FILTER(license_position, license_position[product_family] = "oracle_weblogic"),
-    license_position[licences_required]
-)
-
-WLS Licences Owned =
-SUMX(
-    FILTER(entitlements_by_client, entitlements_by_client[product_family] = "oracle_weblogic"),
-    entitlements_by_client[client_quantity]
-)
-
-WLS Surplus / Deficit = [WLS Licences Owned] - [WLS Licences Required]
-
-WLS Domain Count =
-DISTINCTCOUNT(wls_domains[domain_id])
-
-WLS Managed Server Count =
-DISTINCTCOUNT(wls_managed_servers[managed_server_id])
-```
-
-### Entitlement health
-
-```dax
-CSIs Expiring in 90 Days =
-CALCULATE(
-    COUNTROWS(entitlement_utilisation),
-    entitlement_utilisation[support_status] = "expiring_soon"
-)
-
-ULAs Expiring in 180 Days =
-CALCULATE(
-    COUNTROWS(entitlement_utilisation),
-    entitlement_utilisation[ula_status] = "ula_expiring"
-)
-
-Total Active CSIs =
-CALCULATE(
-    COUNTROWS(shared_license_entitlements),
-    shared_license_entitlements[status] = "active"
-)
-```
-
-### Discovery health
-
-```dax
-Days Since Discovery =
-DATEDIFF(MAX(oracle_servers[last_seen]), TODAY(), DAY)
-
-Stale Servers =
+Active Server Count =
 CALCULATE(
     COUNTROWS(oracle_servers),
-    DATEDIFF(oracle_servers[last_seen], TODAY(), DAY) > 30,
     oracle_servers[is_active] = TRUE()
 )
-```
 
----
+EE Server Count =
+CALCULATE(
+    DISTINCTCOUNT(oracle_instances[server_id]),
+    SEARCH("Enterprise", oracle_instances[edition], 1, 0) > 0
+)
 
-## Recommended report pages
+SE2 Server Count =
+CALCULATE(
+    DISTINCTCOUNT(oracle_instances[server_id]),
+    SEARCH("Standard Edition 2", oracle_instances[edition], 1, 0) > 0
+)
 
-### Page 1 — Licence position summary
-- KPI cards: DB required/owned/surplus, WLS required/owned/surplus
-- Stacked bar: Required vs owned by product family
-- Donut: Servers by edition (EE vs SE2 vs WLS)
-- Slicer: environment, client (admin report only)
+VMware Server Count =
+CALCULATE(
+    COUNTROWS(oracle_servers),
+    oracle_processors[is_vmware] = TRUE()
+)
 
-### Page 2 — Oracle Database detail
-- Matrix: server, environment, edition, sockets, cores, core_factor, licences_required
-- Bar chart: top 10 servers by DB licence requirement
-- Map: if datacenter column populated — heat map by location
-
-### Page 3 — WebLogic detail
-- Matrix: server, domain, wls_edition, managed_server_count, licences_required
-- Bar chart: installed products (SOA, OSB, Coherence, etc.) counts
-- Table: wls_managed_servers with cluster grouping
-
-### Page 4 — Entitlement register
-- Table: all active CSIs with product, quantity, support_expiry, ula_expiry
-- Timeline: upcoming support renewals (next 12 months)
-- Conditional formatting: red = expired, amber = expiring in 90 days
-
-### Page 5 — Discovery health
-- Line chart: successful vs failed discovery runs over time
-- Table: last 20 discovery_runs
-- Card: stale server count
-- Card: days since last full discovery
-
-### Page 6 — Client comparison (admin report only)
-- Matrix: client_code × product_family with licences_required and surplus/deficit
-- Bar chart: server count by client and environment
-- Treemap: total cores discovered by client
-
----
-
-## Row-level security for multi-tenant report
-
-If you want a single Power BI report shared across all clients where each
-client only sees their own data:
-
-```dax
--- RLS rule on oracle_servers (and all tables joined to it)
--- Assumes Azure AD user email maps to client_code in a mapping table
-
-[hostname] IN
-CALCULATETABLE(
-    VALUES(oracle_servers[hostname]),
-    RELATED(client_lookup[client_code]) = LOOKUPVALUE(
-        client_lookup[client_code],
-        client_lookup[user_email], USERPRINCIPALNAME()
-    )
+Avg Cores per Server =
+AVERAGEX(
+    SUMMARIZE(oracle_processors, oracle_processors[server_id], "cores", MAX(oracle_processors[total_physical_cores])),
+    [cores]
 )
 ```
 
-Simpler approach: publish separate reports per client, each connecting with
-their own `sam_reader_<client>` credential. Less RLS complexity, cleaner
-Power BI workspace management.
+### Discovery freshness
+
+```dax
+Days Since Last Discovery =
+DATEDIFF(
+    MAX(oracle_servers[last_seen]),
+    TODAY(),
+    DAY
+)
+
+Stale Servers (>30 days) =
+CALCULATE(
+    COUNTROWS(oracle_servers),
+    DATEDIFF(oracle_servers[last_seen], TODAY(), DAY) > 30
+)
+```
+
+## 5. Recommended report pages
+
+### Page 1 — Executive licence position
+- **KPI cards**: Total Required, Total Owned, Surplus/Deficit, Compliance Status
+- **Bar chart**: Licences required by environment (Production / Non-Prod / Dev)
+- **Donut chart**: Split by edition (EE vs SE2)
+- **Gauge**: % utilisation of licence pool
+
+### Page 2 — Server inventory
+- **Matrix / table**: `server_summary` with columns:
+  hostname, environment, edition, sockets, cores, core_factor, licences_required, virt_type
+- **Slicer**: environment, edition, virt_type, is_active
+- **Map visual** (if you add datacenter location columns later)
+
+### Page 3 — Compliance gap detail
+- **Table**: `license_position` — one row per server/edition combination
+- **Conditional formatting**: Red if `licences_required > 0` and no matching entitlement
+- **Bar chart**: Top 10 servers by licence requirement
+
+### Page 4 — Entitlement register
+- **Table**: `license_entitlements` — all columns
+- **Timeline**: support_expiry / ula_expiry coming up in next 12 months
+- **Card**: Total owned by metric type (Processor / NUP / ULA)
+
+### Page 5 — Discovery health
+- **Line chart**: hosts_succeeded / hosts_failed per run over time
+- **Table**: discovery_runs last 30 runs
+- **Card**: Days since last successful full discovery
+- **Stale server list**: servers not seen in > 30 days
+
+## 6. Row-level security (optional)
+
+If different teams should only see their environments:
+
+```dax
+-- RLS rule on oracle_servers table
+[environment] = LOOKUPVALUE(
+    user_environments[environment],
+    user_environments[email], USERPRINCIPALNAME()
+)
+```
+
+Create a `user_environments` table mapping Azure AD emails to allowed environments.
+
+## 7. Scheduled refresh
+
+For DirectQuery no scheduled refresh is needed — every visual queries the database live.
+If you switch to Import mode, set a refresh schedule in the Power BI Service:
+- Recommended: every 6–12 hours (matching your Ansible cron schedule)
+- Use an on-premises data gateway if your PostgreSQL server is not internet-accessible
