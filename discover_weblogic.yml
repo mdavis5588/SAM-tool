@@ -1,0 +1,311 @@
+---
+# =============================================================================
+# Oracle SAM - WebLogic Discovery Playbook
+# Discovers WebLogic Server installations and collects all data needed for
+# licence calculations:
+#   - CPU topology (sockets, cores, model) — same as DB playbook
+#   - WebLogic domain name, home, version, edition
+#   - Managed servers and clusters within each domain
+#   - Installed Oracle middleware products (SOA, OSB, Coherence, OAM, etc.)
+#
+# Requires: WLST (WebLogic Scripting Tool) available on target hosts
+#           OR registry/inventory file parsing if WLS is not running.
+# Results are written into the client's PostgreSQL schema.
+# =============================================================================
+
+- name: Oracle WebLogic SAM discovery
+  hosts: weblogic_servers
+  gather_facts: true
+  become: false
+  serial: 10
+
+  vars:
+    sam_run_id: "{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}-{{ inventory_hostname | hash('md5') | truncate(6, true, '') }}"
+    sam_client_schema: "{{ sam_client_schema | mandatory('sam_client_schema must be set, e.g. client_acme') }}"
+    wls_search_paths:
+      - /u01/app/oracle/middleware
+      - /oracle/middleware
+      - /opt/oracle/middleware
+      - /home/oracle/Oracle/Middleware
+    wls_inventory_files:
+      - /etc/oraInst.loc
+      - /var/opt/oracle/oraInst.loc
+      - /home/oracle/oraInventory/ContentsXML/inventory.xml
+    wlst_script: /tmp/sam_wls_discovery.py
+
+  tasks:
+
+    # ------------------------------------------------------------------
+    # 1. CPU TOPOLOGY (shared with Oracle DB playbook)
+    # ------------------------------------------------------------------
+    - name: Run lscpu for CPU topology
+      ansible.builtin.command: lscpu --json
+      register: lscpu_output
+      changed_when: false
+      ignore_errors: true
+
+    - name: Parse CPU topology
+      ansible.builtin.set_fact:
+        cpu_topology: "{{ lscpu_output.stdout | from_json }}"
+      when: lscpu_output.rc == 0
+
+    - name: Extract CPU fields
+      ansible.builtin.set_fact:
+        sam_cpu_sockets:          "{{ (cpu_topology.lscpu | selectattr('field','equalto','Socket(s):') | map(attribute='data') | first | int) if cpu_topology is defined else ansible_processor_count }}"
+        sam_cpu_cores_per_socket: "{{ (cpu_topology.lscpu | selectattr('field','equalto','Core(s) per socket:') | map(attribute='data') | first | int) if cpu_topology is defined else 1 }}"
+        sam_cpu_threads_per_core: "{{ (cpu_topology.lscpu | selectattr('field','equalto','Thread(s) per core:') | map(attribute='data') | first | int) if cpu_topology is defined else 1 }}"
+        sam_cpu_model:            "{{ ansible_processor[2] | default('Unknown') }}"
+        sam_cpu_architecture:     "{{ ansible_architecture }}"
+        sam_virt_type:            "{{ ansible_virtualization_type | default('physical') }}"
+
+    - name: Check for VMware
+      ansible.builtin.command: which vmware-toolsd
+      register: vmware_check
+      changed_when: false
+      ignore_errors: true
+
+    - name: Set VMware flag
+      ansible.builtin.set_fact:
+        sam_is_vmware: "{{ vmware_check.rc == 0 or sam_virt_type in ['VMware','vmware'] }}"
+
+    # ------------------------------------------------------------------
+    # 2. LOCATE ORACLE INVENTORY
+    # Parses /etc/oraInst.loc to find the central Oracle inventory,
+    # then reads inventory.xml for all installed Oracle homes.
+    # ------------------------------------------------------------------
+    - name: Find oraInst.loc
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: "{{ wls_inventory_files }}"
+      register: orainst_stat
+
+    - name: Read oraInst.loc for inventory location
+      ansible.builtin.slurp:
+        src: "{{ item.stat.path }}"
+      loop: "{{ orainst_stat.results | selectattr('stat.exists') | list }}"
+      register: orainst_content
+      when: item.stat.exists
+
+    - name: Parse inventory location
+      ansible.builtin.set_fact:
+        oracle_inventory_path: >-
+          {{
+            (orainst_content.results
+              | selectattr('content', 'defined')
+              | map(attribute='content')
+              | map('b64decode')
+              | join('\n')
+            ) | regex_findall('inventory_loc=(.+)')
+              | first | default('/home/oracle/oraInventory')
+              | trim
+          }}
+
+    - name: Read Oracle inventory XML
+      ansible.builtin.slurp:
+        src: "{{ oracle_inventory_path }}/ContentsXML/inventory.xml"
+      register: inventory_xml
+      ignore_errors: true
+
+    - name: Parse WebLogic homes from inventory
+      ansible.builtin.set_fact:
+        wls_oracle_homes: >-
+          {{
+            (inventory_xml.content | default('') | b64decode)
+            | regex_findall('LOC="([^"]*(?:[Mm]iddleware|[Ww]eblogic|[Ff]mw)[^"]*)"')
+          }}
+
+    # ------------------------------------------------------------------
+    # 3. DISCOVER WLS DOMAINS
+    # Walk each Oracle Home for domain directories, then use WLST
+    # (offline mode, no server running required) to extract domain config.
+    # ------------------------------------------------------------------
+    - name: Find domain directories under discovered Oracle homes
+      ansible.builtin.find:
+        paths: "{{ item }}/user_projects/domains"
+        file_type: directory
+        depth: 1
+      loop: "{{ wls_oracle_homes | default([]) }}"
+      register: domain_dirs
+      ignore_errors: true
+
+    - name: Flatten domain directories list
+      ansible.builtin.set_fact:
+        all_domain_paths: >-
+          {{
+            domain_dirs.results
+            | selectattr('files', 'defined')
+            | map(attribute='files')
+            | flatten
+            | map(attribute='path')
+            | list
+          }}
+
+    # ------------------------------------------------------------------
+    # 4. WLST OFFLINE DISCOVERY
+    # Deploy a WLST script to each host and execute it for each domain.
+    # The script reads config.xml and outputs JSON.
+    # ------------------------------------------------------------------
+    - name: Deploy WLST discovery script
+      ansible.builtin.copy:
+        dest: "{{ wlst_script }}"
+        mode: '0700'
+        content: |
+          # WLST offline discovery script
+          # Usage: wlst.sh /tmp/sam_wls_discovery.py <domain_home>
+          import sys, os, json
+
+          domain_home = sys.argv[1] if len(sys.argv) > 1 else '.'
+
+          try:
+            readDomain(domain_home)
+          except Exception as e:
+            print(json.dumps({'error': str(e), 'domain_home': domain_home}))
+            exit(0)
+
+          result = {
+            'domain_name':        cmo.getName(),
+            'domain_home':        domain_home,
+            'wls_version':        None,
+            'wls_edition':        None,
+            'admin_server_host':  None,
+            'admin_server_port':  None,
+            'managed_servers':    [],
+            'clusters':           [],
+            'installed_products': []
+          }
+
+          # Get admin server info
+          try:
+            cd('/Servers/AdminServer')
+            result['admin_server_host'] = cmo.getListenAddress() or ''
+            result['admin_server_port'] = cmo.getListenPort()
+          except: pass
+
+          # Enumerate managed servers
+          try:
+            ls('/Servers')
+            servers = ls('/Servers', returnType='a')
+            for srv in servers:
+              try:
+                cd('/Servers/' + srv)
+                ms = {
+                  'name':        srv,
+                  'listen_port': cmo.getListenPort(),
+                  'ssl_port':    None,
+                  'machine':     cmo.getMachine().getName() if cmo.getMachine() else None,
+                  'cluster':     cmo.getCluster().getName() if cmo.getCluster() else None,
+                  'state':       'UNKNOWN'
+                }
+                try:
+                  cd('/Servers/' + srv + '/SSL/' + srv)
+                  ms['ssl_port'] = cmo.getListenPort()
+                except: pass
+                result['managed_servers'].append(ms)
+              except: pass
+          except: pass
+
+          # Get WLS version from registry
+          try:
+            registry_path = os.path.join(domain_home, '..', '..', 'registry.xml')
+            if os.path.exists(registry_path):
+              import xml.etree.ElementTree as ET
+              tree = ET.parse(registry_path)
+              for comp in tree.findall('.//component'):
+                name = comp.get('name','')
+                ver  = comp.get('version','')
+                if 'WebLogic' in name:
+                  result['wls_version'] = ver
+                  result['wls_edition'] = name
+                else:
+                  result['installed_products'].append({'name': name, 'version': ver, 'home': ''})
+          except: pass
+
+          closeDomain()
+          print(json.dumps(result))
+
+    - name: Run WLST discovery for each domain
+      ansible.builtin.shell: |
+        # Find wlst.sh in the oracle home
+        WLST=$(find {{ item | dirname | dirname | dirname }} -name 'wlst.sh' 2>/dev/null | head -1)
+        if [ -z "$WLST" ]; then
+          echo '{"error": "wlst.sh not found", "domain_home": "{{ item }}"}'
+          exit 0
+        fi
+        "$WLST" {{ wlst_script }} "{{ item }}" 2>/dev/null
+      loop: "{{ all_domain_paths | default([]) }}"
+      loop_control:
+        label: "{{ item | basename }}"
+      register: wlst_results
+      become: true
+      become_user: oracle
+      ignore_errors: true
+      changed_when: false
+
+    - name: Parse WLST results
+      ansible.builtin.set_fact:
+        sam_domains: >-
+          {{
+            wlst_results.results
+            | selectattr('rc', 'equalto', 0)
+            | map(attribute='stdout')
+            | map('trim')
+            | select
+            | map('from_json')
+            | rejectattr('error', 'defined')
+            | list
+          }}
+
+    # ------------------------------------------------------------------
+    # 5. ASSEMBLE PAYLOAD AND WRITE TO POSTGRESQL
+    # ------------------------------------------------------------------
+    - name: Assemble WLS discovery payload
+      ansible.builtin.set_fact:
+        sam_wls_payload:
+          run_id:             "{{ sam_run_id }}"
+          hostname:           "{{ inventory_hostname }}"
+          fqdn:               "{{ ansible_fqdn }}"
+          ip_address:         "{{ ansible_default_ipv4.address | default('') }}"
+          os_family:          "{{ ansible_os_family }}"
+          os_distribution:    "{{ ansible_distribution }}"
+          os_version:         "{{ ansible_distribution_version }}"
+          environment:        "{{ sam_environment | default('unknown') }}"
+          criticality:        "{{ sam_criticality | default('unknown') }}"
+          datacenter:         "{{ sam_datacenter | default('') }}"
+          cpu_sockets:        "{{ sam_cpu_sockets | int }}"
+          cpu_cores_per_socket: "{{ sam_cpu_cores_per_socket | int }}"
+          cpu_threads_per_core: "{{ sam_cpu_threads_per_core | int }}"
+          cpu_model:          "{{ sam_cpu_model }}"
+          cpu_architecture:   "{{ sam_cpu_architecture }}"
+          virt_type:          "{{ sam_virt_type }}"
+          is_vmware:          "{{ sam_is_vmware | bool }}"
+          total_ram_mb:       "{{ ansible_memtotal_mb | default(0) }}"
+          discovered_at:      "{{ ansible_date_time.iso8601 }}"
+          domains:            "{{ sam_domains | default([]) }}"
+
+    - name: Load WLS payload into PostgreSQL
+      community.postgresql.postgresql_query:
+        db:             "{{ sam_db_name }}"
+        login_host:     "{{ sam_db_host }}"
+        login_port:     "{{ sam_db_port }}"
+        login_user:     "{{ sam_db_user }}"
+        login_password: "{{ sam_db_password }}"
+        query: "SELECT {{ sam_client_schema }}.upsert_wls_discovery(%(payload)s::jsonb)"
+        named_args:
+          payload: "{{ sam_wls_payload | to_json }}"
+      delegate_to: localhost
+      ignore_errors: true
+
+    - name: Cleanup WLST script
+      ansible.builtin.file:
+        path: "{{ wlst_script }}"
+        state: absent
+
+    - name: Print WLS discovery summary
+      ansible.builtin.debug:
+        msg: >
+          {{ inventory_hostname }} —
+          Sockets: {{ sam_cpu_sockets }},
+          Cores: {{ sam_cpu_sockets | int * sam_cpu_cores_per_socket | int }},
+          CPU: {{ sam_cpu_model }},
+          WLS domains found: {{ sam_domains | default([]) | length }},
+          Managed servers: {{ sam_domains | default([]) | map(attribute='managed_servers') | map('length') | sum }}
