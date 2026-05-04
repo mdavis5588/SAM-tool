@@ -103,19 +103,23 @@ RETURNS VOID LANGUAGE plpgsql AS $$
 BEGIN
 
   -- ENUM types (schema-qualified, created if absent)
-  EXECUTE format($sql$
-    DO $$ BEGIN
-      CREATE TYPE %I.environment_type AS ENUM
-        ('production','non_production','development','test','dr','unknown');
-    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-  $sql$, p_schema);
+  BEGIN
+    EXECUTE format(
+      'CREATE TYPE %I.environment_type AS ENUM
+       (''production'',''non_production'',''development'',''test'',''dr'',''unknown'')',
+      p_schema
+    );
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END;
 
-  EXECUTE format($sql$
-    DO $$ BEGIN
-      CREATE TYPE %I.virt_type AS ENUM
-        ('physical','vmware','hyperv','kvm','xen','lpar','zone','container','unknown');
-    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-  $sql$, p_schema);
+  BEGIN
+    EXECUTE format(
+      'CREATE TYPE %I.virt_type AS ENUM
+       (''physical'',''vmware'',''hyperv'',''kvm'',''xen'',''lpar'',''zone'',''container'',''unknown'')',
+      p_schema
+    );
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END;
 
   -- oracle_servers
   EXECUTE format($sql$
