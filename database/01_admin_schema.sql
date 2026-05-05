@@ -30,12 +30,12 @@ CREATE TABLE IF NOT EXISTS sam_admin.clients (
 -- Central audit log across all clients and all product types.
 -- ---------------------------------------------------------------------------
 CREATE TYPE sam_admin.product_type AS ENUM
-  ('oracle_database', 'oracle_weblogic', 'oracle_java', 'mssql', 'vmware');
+  ('oracle_database', 'oracle_weblogic');
 
 CREATE TABLE IF NOT EXISTS sam_admin.discovery_runs (
   run_id          TEXT PRIMARY KEY,
   client_id       INTEGER NOT NULL REFERENCES sam_admin.clients (client_id),
-  product         sam_admin.product_type NOT NULL DEFAULT 'oracle_database',
+  product         sam_admin.product_type NOT NULL,
   started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   completed_at    TIMESTAMPTZ,
   hosts_targeted  INTEGER,
