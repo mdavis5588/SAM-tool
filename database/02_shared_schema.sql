@@ -166,68 +166,93 @@ INSERT INTO shared.wls_license_rules (edition_pattern, metric, uses_core_factor,
 -- ---------------------------------------------------------------------------
 -- CROSS-CLIENT ADMIN SUMMARY VIEW
 -- Only accessible to sam_admin role. Not exposed to client Power BI users.
--- Unions all client schemas dynamically — rebuilt by function below.
+-- Placeholder created here so the object always exists.
+-- Rebuilt by refresh_cross_client_summary() after clients are provisioned.
 -- ---------------------------------------------------------------------------
 
--- Function to refresh the cross-client materialized view
+CREATE OR REPLACE VIEW shared.cross_client_summary AS
+SELECT
+  NULL::TEXT     AS client_code,
+  NULL::INTEGER  AS client_id,
+  NULL::TEXT     AS hostname,
+  NULL::TEXT     AS environment,
+  NULL::TIMESTAMPTZ AS last_seen,
+  NULL::INTEGER  AS cpu_sockets,
+  NULL::INTEGER  AS total_physical_cores,
+  NULL::TEXT     AS cpu_model,
+  NULL::TEXT     AS virt_type,
+  NULL::BIGINT   AS oracle_instance_count,
+  NULL::BIGINT   AS wls_domain_count
+WHERE FALSE;  -- returns no rows until refresh_cross_client_summary() is called
+
+-- Function to rebuild the cross-client summary view dynamically.
+-- Call after provisioning a new client or when schemas change.
 CREATE OR REPLACE FUNCTION shared.refresh_cross_client_summary()
 RETURNS VOID LANGUAGE plpgsql AS $$
 DECLARE
-  v_client  RECORD;
-  v_sql     TEXT := '';
-  v_union   TEXT := '';
+  v_client   RECORD;
+  v_parts    TEXT[] := '{}';
+  v_sql      TEXT;
+  v_fragment TEXT;
 BEGIN
   FOR v_client IN
-    SELECT client_id, client_code, schema_name FROM sam_admin.clients WHERE is_active = TRUE
+    SELECT client_id, client_code, schema_name
+    FROM   sam_admin.clients
+    WHERE  is_active = TRUE
   LOOP
-    v_union := v_union || format($u$
-      UNION ALL
-      SELECT
-        %L::TEXT                   AS client_code,
-        %s::INTEGER                AS client_id,
-        s.hostname,
-        s.environment::TEXT,
-        s.last_seen,
-        p.cpu_sockets,
-        p.total_physical_cores,
-        p.cpu_model,
-        p.virt_type::TEXT,
-        COUNT(DISTINCT i.instance_id) AS oracle_instance_count,
-        COUNT(DISTINCT d.domain_id)   AS wls_domain_count
-      FROM   %I.oracle_servers s
-      LEFT   JOIN LATERAL (
-        SELECT * FROM %I.oracle_processors op
-        WHERE  op.server_id = s.server_id
-        ORDER  BY op.recorded_at DESC LIMIT 1
-      ) p ON TRUE
-      LEFT   JOIN %I.oracle_instances i ON i.server_id = s.server_id AND i.is_active
-      LEFT   JOIN %I.wls_domains      d ON d.server_id = s.server_id AND d.is_active
-      WHERE  s.is_active
-      GROUP  BY s.server_id, s.hostname, s.environment, s.last_seen,
-                p.cpu_sockets, p.total_physical_cores, p.cpu_model, p.virt_type
-    $u$,
-    v_client.client_code,
-    v_client.client_id,
-    v_client.schema_name,
-    v_client.schema_name,
-    v_client.schema_name,
-    v_client.schema_name
+    v_fragment := format(
+      $u$
+        SELECT
+          %L::TEXT        AS client_code,
+          %s::INTEGER     AS client_id,
+          s.hostname,
+          s.environment::TEXT,
+          s.last_seen,
+          p.cpu_sockets,
+          p.total_physical_cores,
+          p.cpu_model,
+          p.virt_type::TEXT,
+          COUNT(DISTINCT i.instance_id) AS oracle_instance_count,
+          COUNT(DISTINCT d.domain_id)   AS wls_domain_count
+        FROM   %I.oracle_servers s
+        LEFT   JOIN LATERAL (
+          SELECT * FROM %I.oracle_processors op
+          WHERE  op.server_id = s.server_id
+          ORDER  BY op.recorded_at DESC LIMIT 1
+        ) p ON TRUE
+        LEFT   JOIN %I.oracle_instances i ON i.server_id = s.server_id AND i.is_active
+        LEFT   JOIN %I.wls_domains      d ON d.server_id = s.server_id AND d.is_active
+        WHERE  s.is_active
+        GROUP  BY s.server_id, s.hostname, s.environment, s.last_seen,
+                  p.cpu_sockets, p.total_physical_cores, p.cpu_model, p.virt_type
+      $u$,
+      v_client.client_code,
+      v_client.client_id,
+      v_client.schema_name,
+      v_client.schema_name,
+      v_client.schema_name,
+      v_client.schema_name
     );
+
+    v_parts := array_append(v_parts, v_fragment);
   END LOOP;
 
-  IF v_union = '' THEN RETURN; END IF;
+  IF array_length(v_parts, 1) IS NULL THEN
+    -- No clients yet — leave the placeholder view in place
+    RETURN;
+  END IF;
 
-  -- Remove leading UNION ALL
-  v_sql := 'CREATE OR REPLACE VIEW shared.cross_client_summary AS ' ||
-           substr(v_union, 12);  -- trim first 'UNION ALL\n      '
+  -- Join fragments with UNION ALL (no leading UNION ALL problem)
+  v_sql := 'CREATE OR REPLACE VIEW shared.cross_client_summary AS '
+           || array_to_string(v_parts, ' UNION ALL ');
 
   EXECUTE v_sql;
 END;
 $$;
 
 COMMENT ON FUNCTION shared.refresh_cross_client_summary() IS
-  'Rebuilds the cross_client_summary view to include all active client schemas. '
-  'Call after adding a new client or when schemas change.';
+  'Rebuilds the cross_client_summary view to union all active client schemas. '
+  'Call after provisioning a new client or making schema changes.';
 
 -- ---------------------------------------------------------------------------
 -- ENTITLEMENT UTILISATION VIEW
