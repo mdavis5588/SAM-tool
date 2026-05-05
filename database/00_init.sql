@@ -57,31 +57,87 @@ END $$;
 -- 6. Build the cross-client summary view
 SELECT shared.refresh_cross_client_summary();
 
--- 7. Seed entitlements (examples — replace with real CSI data)
-INSERT INTO shared.license_entitlements
-  (csi_number, product_name, product_family, license_metric, quantity, purchase_date, support_expiry)
-VALUES
-  ('11111111', 'Oracle Database Enterprise Edition', 'oracle_database', 'processor', 100, '2023-01-01', '2026-01-01'),
-  ('22222222', 'Oracle WebLogic Server Enterprise Edition', 'oracle_weblogic', 'processor', 50, '2023-06-01', '2026-06-01'),
-  ('33333333', 'Oracle Database Standard Edition 2', 'oracle_database', 'processor', 20, '2022-01-01', '2025-01-01');
+-- 7. Seed entitlements using add_entitlement() — client codes only, no integer IDs.
 
--- 8. Assign entitlements to clients
--- CSI 11111111 (ODB EE) — split: 60 for Acme, 40 for Globex
-INSERT INTO shared.entitlement_client_map (entitlement_id, client_id, allocated_quantity, allocation_notes)
-SELECT 1, c.client_id, 60, 'Acme allocation of shared EE licence pool'
-FROM   sam_admin.clients c WHERE c.client_code = 'acme';
+-- Shareable group EE pool — can be split across clients, no single owner
+SELECT shared.add_entitlement(
+  p_csi            => '11111111',
+  p_product_name   => 'Oracle Database Enterprise Edition',
+  p_product_family => 'oracle_database',
+  p_metric         => 'processor',
+  p_quantity       => 100,
+  p_purchase_date  => '2023-01-01',
+  p_support_expiry => '2026-01-01',
+  p_policy         => 'shareable',
+  p_notes          => 'Group EE pool — split across clients as needed'
+);
 
-INSERT INTO shared.entitlement_client_map (entitlement_id, client_id, allocated_quantity, allocation_notes)
-SELECT 1, c.client_id, 40, 'Globex allocation of shared EE licence pool'
-FROM   sam_admin.clients c WHERE c.client_code = 'globex';
+-- Shareable WLS pool
+SELECT shared.add_entitlement(
+  p_csi            => '22222222',
+  p_product_name   => 'Oracle WebLogic Server Enterprise Edition',
+  p_product_family => 'oracle_weblogic',
+  p_metric         => 'processor',
+  p_quantity       => 50,
+  p_purchase_date  => '2023-06-01',
+  p_support_expiry => '2026-06-01',
+  p_policy         => 'shareable'
+);
 
--- CSI 22222222 (WLS) — Acme only (full entitlement)
-INSERT INTO shared.entitlement_client_map (entitlement_id, client_id)
-SELECT 2, c.client_id FROM sam_admin.clients c WHERE c.client_code = 'acme';
+-- Client-locked SE2 — purchased under Globex's entity, locked to them.
+-- p_locked_to sets sharing_policy = 'client_locked' and auto-assigns to globex.
+SELECT shared.add_entitlement(
+  p_csi            => '33333333',
+  p_product_name   => 'Oracle Database Standard Edition 2',
+  p_product_family => 'oracle_database',
+  p_metric         => 'processor',
+  p_quantity       => 20,
+  p_purchase_date  => '2022-01-01',
+  p_support_expiry => '2025-01-01',
+  p_locked_to      => 'globex',
+  p_notes          => 'Purchased under Globex legal entity — cannot be shared'
+);
 
--- CSI 33333333 (SE2) — Globex only (full entitlement)
-INSERT INTO shared.entitlement_client_map (entitlement_id, client_id)
-SELECT 3, c.client_id FROM sam_admin.clients c WHERE c.client_code = 'globex';
+-- Unassigned — recently purchased, policy not yet decided.
+-- Omit p_locked_to and p_policy to leave as 'unassigned' (default).
+SELECT shared.add_entitlement(
+  p_csi            => '44444444',
+  p_product_name   => 'Oracle Database Enterprise Edition',
+  p_product_family => 'oracle_database',
+  p_metric         => 'processor',
+  p_quantity       => 25,
+  p_purchase_date  => '2024-03-01',
+  p_support_expiry => '2027-03-01',
+  p_notes          => 'Recently purchased — awaiting policy decision'
+);
+
+-- 8. Assign the shareable entitlements to clients.
+--    CSI 11111111 (EE pool) — split 60 for Acme, 40 for Globex
+SELECT shared.assign_entitlement_to_client(1, 'acme',   'shareable', 60, 'Acme EE allocation');
+SELECT shared.assign_entitlement_to_client(1, 'globex', 'shareable', 40, 'Globex EE allocation');
+
+--    CSI 22222222 (WLS pool) — full pool to Acme for now
+SELECT shared.assign_entitlement_to_client(2, 'acme', 'shareable', NULL, 'Acme WLS — full pool');
+
+--    CSI 33333333 was already auto-assigned to globex by add_entitlement().
+
+--    CSI 44444444 is intentionally left unassigned — it will appear in
+--    shared.unassigned_licences with allocation_status = 'NEEDS POLICY'.
+
+-- ---- Examples showing the guard rails ----
+-- These are commented out. Uncomment to test the error messages.
+
+-- Trying to lock a CSI to the wrong client (33333333 is locked to globex):
+--   SELECT shared.assign_entitlement_to_client(3, 'acme', 'client_locked');
+--   ERROR: Entitlement 3 is client_locked to client_id N. It cannot be assigned to client_id M.
+
+-- Trying to assign an unassigned-policy CSI directly:
+--   INSERT INTO shared.entitlement_client_map (entitlement_id, client_id) VALUES (4, 1);
+--   ERROR: Entitlement 4 has sharing_policy = unassigned. Set policy before assigning.
+
+-- Using set_entitlement_owner to declare ownership without assigning:
+--   SELECT shared.set_entitlement_owner(4, 'acme');            -- sets owner, keeps policy
+--   SELECT shared.set_entitlement_owner(4, 'acme', lock => TRUE); -- sets owner AND locks it
 
 -- Verify setup
 SELECT

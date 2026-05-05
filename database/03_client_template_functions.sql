@@ -184,6 +184,220 @@ END;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- INSTALL LICENSE OPTIONS VIEW
+-- Creates the licence_metric_comparison view in each client schema.
+-- Shows, for every server and product, what the licence requirement would be
+-- under EACH Oracle metric side-by-side:
+--   - Processor Perpetual  (physical cores × core factor)
+--   - Named User Plus      (physical cores × core factor × 25 minimum NUP per core)
+--   - SE2 Processor        (sockets, capped at 2)
+-- This is purely informational — it does not affect the compliance calculation
+-- in license_position. Use it for "what if" analysis and audit prep.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION sam_admin.install_license_options_view(p_schema TEXT)
+RETURNS VOID LANGUAGE plpgsql AS $$
+BEGIN
+  EXECUTE format($view$
+    CREATE OR REPLACE VIEW %I.license_metric_comparison AS
+
+    -- Oracle rules for Named User Plus minimums:
+    --   Enterprise Edition : 25 NUP per processor licence (i.e. per core × core_factor)
+    --   Standard Edition 2 : 10 NUP per processor licence (per occupied socket, max 2)
+    -- Source: Oracle Technology Global Price List
+
+    WITH latest_proc AS (
+      SELECT DISTINCT ON (server_id)
+        server_id, cpu_model, cpu_sockets, cores_per_socket,
+        total_physical_cores, virt_type, is_vmware
+      FROM %I.oracle_processors
+      ORDER BY server_id, recorded_at DESC
+    ),
+
+    cf AS (
+      SELECT
+        lp.server_id,
+        lp.cpu_model,
+        lp.cpu_sockets,
+        lp.cores_per_socket,
+        lp.total_physical_cores,
+        lp.virt_type,
+        lp.is_vmware,
+        COALESCE(
+          (SELECT c.core_factor
+           FROM   shared.core_factor_table c
+           WHERE  lp.cpu_model ILIKE c.processor_pattern
+             AND  c.processor_pattern <> 'Unknown'
+             AND  c.is_current = TRUE
+           ORDER  BY c.effective_date DESC LIMIT 1),
+          (SELECT c.core_factor FROM shared.core_factor_table c
+           WHERE  c.processor_pattern = 'Unknown' LIMIT 1),
+          0.5
+        ) AS core_factor
+      FROM latest_proc lp
+    ),
+
+    -- ---- Oracle Database rows ----
+    db_rows AS (
+      SELECT
+        s.server_id,
+        s.hostname,
+        s.environment::TEXT,
+        s.datacenter,
+        'oracle_database'::TEXT                         AS product_family,
+        i.edition                                       AS product_detail,
+        i.db_version                                    AS product_version,
+        cf.cpu_model,
+        cf.cpu_sockets,
+        cf.cores_per_socket,
+        cf.total_physical_cores,
+        cf.core_factor,
+        cf.virt_type::TEXT,
+        cf.is_vmware,
+
+        -- Processor Perpetual (EE)
+        ROUND(cf.total_physical_cores * cf.core_factor, 2)
+                                                        AS proc_perpetual_ee,
+
+        -- Processor Perpetual (SE2) — sockets capped at 2
+        LEAST(cf.cpu_sockets, 2)::NUMERIC               AS proc_perpetual_se2,
+
+        -- Named User Plus — EE minimum: 25 NUP per processor licence
+        -- NUP licences must be >= (proc_perpetual_ee × 25)
+        ROUND(cf.total_physical_cores * cf.core_factor * 25, 0)
+                                                        AS nup_minimum_ee,
+
+        -- Named User Plus — SE2 minimum: 10 NUP per processor licence
+        LEAST(cf.cpu_sockets, 2) * 10                  AS nup_minimum_se2,
+
+        -- Which metric this instance is currently licensed under
+        CASE
+          WHEN i.edition ILIKE '%%Enterprise%%'        THEN 'processor_ee'
+          WHEN i.edition ILIKE '%%Standard Edition 2%%' THEN 'processor_se2'
+          WHEN i.edition ILIKE '%%Standard%%'          THEN 'processor_se'
+          ELSE 'processor_ee'
+        END                                             AS current_metric,
+
+        -- Licences required under the CURRENT metric (matches license_position)
+        CASE
+          WHEN i.edition ILIKE '%%Enterprise%%' THEN
+            ROUND(cf.total_physical_cores * cf.core_factor, 2)
+          WHEN i.edition ILIKE '%%Standard Edition 2%%' THEN
+            LEAST(cf.cpu_sockets, 2)::NUMERIC
+          WHEN i.edition ILIKE '%%Standard%%' THEN
+            cf.cpu_sockets::NUMERIC
+          ELSE ROUND(cf.total_physical_cores * cf.core_factor, 2)
+        END                                             AS current_metric_licences,
+
+        -- Cheapest processor option (informational)
+        CASE
+          WHEN ROUND(cf.total_physical_cores * cf.core_factor, 2)
+               <= LEAST(cf.cpu_sockets, 2)
+          THEN 'EE Processor (' || ROUND(cf.total_physical_cores * cf.core_factor,2) || ' licences)'
+          ELSE 'SE2 Processor (' || LEAST(cf.cpu_sockets,2) || ' licences)'
+        END                                             AS lowest_processor_option
+
+      FROM   %I.oracle_servers     s
+      JOIN   %I.oracle_instances   i  ON i.server_id = s.server_id AND i.is_active
+      JOIN   cf                       ON cf.server_id = s.server_id
+      WHERE  s.is_active = TRUE
+    ),
+
+    -- ---- WebLogic rows ----
+    wls_rows AS (
+      SELECT
+        s.server_id,
+        s.hostname,
+        s.environment::TEXT,
+        s.datacenter,
+        'oracle_weblogic'::TEXT                         AS product_family,
+        d.wls_edition                                   AS product_detail,
+        d.wls_version                                   AS product_version,
+        cf.cpu_model,
+        cf.cpu_sockets,
+        cf.cores_per_socket,
+        cf.total_physical_cores,
+        cf.core_factor,
+        cf.virt_type::TEXT,
+        cf.is_vmware,
+
+        -- WLS is always processor-licensed; NUP is not available for WLS
+        ROUND(cf.total_physical_cores * cf.core_factor, 2)
+                                                        AS proc_perpetual_ee,
+        NULL::NUMERIC                                   AS proc_perpetual_se2,
+
+        -- WLS has no NUP metric — show NULL
+        NULL::NUMERIC                                   AS nup_minimum_ee,
+        NULL::NUMERIC                                   AS nup_minimum_se2,
+
+        'processor'::TEXT                               AS current_metric,
+        ROUND(cf.total_physical_cores * cf.core_factor, 2)
+                                                        AS current_metric_licences,
+        'Processor (' || ROUND(cf.total_physical_cores * cf.core_factor, 2) || ' licences)'
+                                                        AS lowest_processor_option
+
+      FROM   %I.oracle_servers  s
+      JOIN   %I.wls_domains     d   ON d.server_id = s.server_id AND d.is_active
+      JOIN   cf                     ON cf.server_id = s.server_id
+      WHERE  s.is_active = TRUE
+    )
+
+    SELECT
+      server_id,
+      hostname,
+      environment,
+      datacenter,
+      product_family,
+      product_detail,
+      product_version,
+      cpu_model,
+      cpu_sockets,
+      cores_per_socket,
+      total_physical_cores,
+      core_factor,
+      virt_type,
+      is_vmware,
+
+      -- ---- Processor Perpetual ----
+      proc_perpetual_ee                                 AS processor_licences_ee,
+      proc_perpetual_se2                                AS processor_licences_se2,
+
+      -- ---- Named User Plus minimums ----
+      -- These are the MINIMUM NUP licences Oracle requires per server.
+      -- Your actual NUP count must be >= this if any user can access the DB.
+      nup_minimum_ee                                    AS nup_minimum_ee,
+      nup_minimum_se2                                   AS nup_minimum_se2,
+
+      -- ---- Current metric and requirement ----
+      current_metric,
+      current_metric_licences,
+
+      -- ---- NUP vs Processor break-even (EE only) ----
+      -- If actual_user_count < nup_break_even_ee, NUP may be cheaper.
+      -- If actual_user_count >= nup_break_even_ee, Processor is cheaper.
+      -- (Assumes list price ratio: 1 EE Processor = ~25× NUP)
+      nup_minimum_ee                                    AS nup_break_even_user_count,
+
+      lowest_processor_option
+
+    FROM (
+      SELECT * FROM db_rows
+      UNION ALL
+      SELECT * FROM wls_rows
+    ) combined
+    ORDER BY product_family, environment, hostname, product_detail;
+
+  $view$,
+  p_schema,   -- view schema
+  p_schema,   -- oracle_processors
+  p_schema,   -- oracle_servers (db_rows)
+  p_schema,   -- oracle_instances
+  p_schema,   -- oracle_servers (wls_rows)
+  p_schema    -- wls_domains
+  );
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- INSTALL UPSERT FUNCTIONS
 -- Creates the data-load functions that Ansible calls, inside each client schema.
 -- ---------------------------------------------------------------------------
@@ -417,6 +631,7 @@ BEGIN
   LOOP
     BEGIN
       PERFORM sam_admin.install_license_position_view(v_client.schema_name);
+      PERFORM sam_admin.install_license_options_view(v_client.schema_name);
       PERFORM sam_admin.install_upsert_functions(v_client.schema_name);
       client_code := v_client.client_code;
       result      := 'ok';
