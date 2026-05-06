@@ -254,6 +254,42 @@ BEGIN
     )
   $sql$, p_schema, p_schema);
 
+  -- discovery_changelog
+  -- Populated automatically by triggers on oracle_options, oracle_instances,
+  -- oracle_processors, wls_domains, and wls_installed_products.
+  -- Records every new item and every licence-relevant change detected
+  -- between discovery runs, with the previous and new values side by side.
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.discovery_changelog (
+      change_id         SERIAL PRIMARY KEY,
+      detected_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      discovery_run_id  TEXT,               -- run that first detected this change
+      server_id         INTEGER
+                          REFERENCES %I.oracle_servers (server_id) ON DELETE SET NULL,
+      hostname          TEXT,               -- denormalised for readability after server delete
+      change_category   TEXT NOT NULL,      -- 'oracle_option', 'oracle_instance',
+                                            -- 'processor', 'wls_domain', 'wls_product'
+      change_type       TEXT NOT NULL,      -- 'NEW', 'CHANGED', 'REMOVED'
+      severity          TEXT NOT NULL       -- 'HIGH', 'MEDIUM', 'INFO'
+                          DEFAULT 'MEDIUM', -- HIGH = licence-impacting
+      object_name       TEXT NOT NULL,      -- e.g. option name, instance SID, domain name
+      field_changed     TEXT,               -- which column changed (for CHANGED rows)
+      old_value         TEXT,               -- previous value
+      new_value         TEXT,               -- new value
+      licence_impact    TEXT,               -- human-readable licence implication
+      acknowledged      BOOLEAN NOT NULL DEFAULT FALSE,
+      acknowledged_by   TEXT,
+      acknowledged_at   TIMESTAMPTZ,
+      notes             TEXT
+    )
+  $sql$, p_schema, p_schema);
+
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_chg_server   ON %I.discovery_changelog (server_id)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_chg_run      ON %I.discovery_changelog (discovery_run_id)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_chg_ack      ON %I.discovery_changelog (acknowledged)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_chg_sev      ON %I.discovery_changelog (severity)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_chg_detected ON %I.discovery_changelog (detected_at DESC)', p_schema, p_schema);
+
   -- server_csi_map
   -- Explicit assignment of one or more CSI contracts to a server.
   -- A server can be covered by multiple CSIs (e.g. EE base from one CSI,
@@ -303,6 +339,7 @@ BEGIN
   PERFORM sam_admin.install_license_position_view(p_schema);
   PERFORM sam_admin.install_license_options_view(p_schema);
   PERFORM sam_admin.install_server_coverage_view(p_schema);
+  PERFORM sam_admin.install_changelog_objects(p_schema);
   PERFORM sam_admin.install_upsert_functions(p_schema);
 
 END;
@@ -329,6 +366,14 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION sam_admin.install_server_coverage_view(p_schema TEXT)
+RETURNS VOID LANGUAGE plpgsql AS $$
+BEGIN
+  -- Implemented in 03_client_template_functions.sql
+  NULL;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION sam_admin.install_changelog_objects(p_schema TEXT)
 RETURNS VOID LANGUAGE plpgsql AS $$
 BEGIN
   -- Implemented in 03_client_template_functions.sql
