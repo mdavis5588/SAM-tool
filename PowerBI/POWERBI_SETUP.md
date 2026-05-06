@@ -47,6 +47,8 @@ REVOKE USAGE ON SCHEMA sam_admin FROM sam_reader_acme;
 | `license_position` | View | Compliance — required vs owned |
 | `license_metric_comparison` | View | Processor vs NUP what-if |
 | `server_csi_coverage` | View | Per-server CSI assignment and coverage gaps |
+| `changelog_summary` | View | Licence-relevant changes detected between runs |
+| `discovery_changelog` | Table | Full change history with acknowledgement state |
 
 ### Objects to import — shared schema
 
@@ -480,7 +482,108 @@ Source: `csi_contract_summary`
 - **KPI**: CSIs Expiring in 90 Days · ULAs Expiring in 180 Days
 - **Slicer**: owning_client · product_families
 
-### Page 9 — Server CSI coverage (audit prep)
+### Discovery changelog (`changelog_summary` / `discovery_changelog`)
+
+```dax
+-- Unacknowledged changes total
+Unacknowledged Changes =
+CALCULATE(
+    COUNTROWS(changelog_summary),
+    changelog_summary[acknowledged] = FALSE()
+)
+
+-- HIGH severity unacknowledged — the most important KPI
+High Severity Unacknowledged =
+CALCULATE(
+    COUNTROWS(changelog_summary),
+    changelog_summary[acknowledged] = FALSE(),
+    changelog_summary[severity] = "HIGH"
+)
+
+-- Overdue HIGH changes (unacknowledged for more than 48 hours)
+Overdue Changes =
+CALCULATE(
+    COUNTROWS(changelog_summary),
+    changelog_summary[overdue] = TRUE()
+)
+
+-- New options detected this week
+New Options This Week =
+CALCULATE(
+    COUNTROWS(changelog_summary),
+    changelog_summary[change_category] = "oracle_option",
+    changelog_summary[change_type] = "NEW",
+    changelog_summary[detected_at] >= TODAY() - 7
+)
+
+-- New instances detected this week
+New Instances This Week =
+CALCULATE(
+    COUNTROWS(changelog_summary),
+    changelog_summary[change_category] = "oracle_instance",
+    changelog_summary[change_type] = "NEW",
+    changelog_summary[detected_at] >= TODAY() - 7
+)
+
+-- Core count increases (always HIGH)
+Core Count Increases =
+CALCULATE(
+    COUNTROWS(changelog_summary),
+    changelog_summary[change_category] = "processor",
+    changelog_summary[field_changed] = "total_physical_cores"
+)
+
+-- Changes by category (for donut chart)
+Changes by Category =
+COUNTROWS(DISTINCT(changelog_summary[change_category]))
+```
+
+### Page 10 — Discovery changelog (change detection)
+Source: `changelog_summary` + `discovery_changelog`
+
+- **Alert banner** (top of page): `High Severity Unacknowledged` in red — links to the HIGH filter below. Should be zero between discovery cycles.
+- **KPI row**: Unacknowledged Changes · High Severity Unacknowledged · Overdue Changes · New Options This Week · Core Count Increases
+- **Main table** (unacknowledged changes, sorted HIGH first):
+
+  | Column | Notes |
+  |--------|-------|
+  | `severity` | Badge: 🔴 HIGH · 🟠 MEDIUM · 🔵 INFO |
+  | `detected_at` | |
+  | `hostname` | |
+  | `change_category` | oracle_option / oracle_instance / processor / wls_domain / wls_product |
+  | `change_type` | NEW / CHANGED / REMOVED |
+  | `object_name` | e.g. `PROD01 → Oracle Diagnostic Pack` |
+  | `field_changed` | Which field changed (for CHANGED rows) |
+  | `old_value` | |
+  | `new_value` | |
+  | `licence_impact` | Plain-English description of the licence implication |
+  | `overdue` | Flag if HIGH and >48h unacknowledged |
+  | `discovery_run_id` | Which Ansible run detected this |
+
+  Conditional formatting:
+  - Row background red: severity = HIGH and acknowledged = FALSE
+  - Row background amber: severity = MEDIUM and acknowledged = FALSE
+  - Row background green: acknowledged = TRUE
+
+- **Acknowledged history table** (secondary, collapsed by default): same columns, filtered to acknowledged = TRUE, last 90 days
+- **Bar chart**: change count per discovery run — shows when activity spikes
+- **Donut chart**: unacknowledged changes by change_category
+- **Slicer**: severity · change_category · hostname · acknowledged · date range
+
+> **Workflow**: When a HIGH change appears, the SAM analyst should review
+> the `licence_impact` text, update `server_csi_map` or the entitlement
+> register as needed, then mark the change acknowledged. Use this SQL:
+>
+> ```sql
+> UPDATE client_acme.discovery_changelog
+> SET    acknowledged    = TRUE,
+>        acknowledged_by = 'your.name',
+>        acknowledged_at = NOW(),
+>        notes           = 'Diagnostic Pack confirmed in use — added to CSI 11111111 line 2'
+> WHERE  change_id = <id>;
+> ```
+
+### Page 11 — Server CSI coverage (audit prep)
 Source: `server_csi_coverage`
 
 - **KPI row**: Servers with No CSI Assigned (red if > 0) · Servers Under-Assigned · Servers Fully Covered · CSI Coverage % · Total Coverage Gap
@@ -518,12 +621,12 @@ Source: `server_csi_coverage`
 > `coverage_status = NO CSI ASSIGNED` is a server you cannot demonstrate
 > licence coverage for. Aim for all rows to show `COVERED`.
 
-### Page 10 — Discovery health
+### Page 12 — Discovery health
 - **Line chart**: hosts_succeeded vs hosts_failed per discovery run over time
 - **Table**: last 20 discovery_runs — run_id, product, started_at, hosts_targeted, hosts_succeeded, hosts_failed
 - **KPI cards**: Stale Servers · Days Since Discovery
 
-### Page 11 — Client comparison (admin report only)
+### Page 13 — Client comparison (admin report only)
 Source: `cross_client_summary` + `csi_contract_summary`
 
 - **Matrix**: client_code × product_family — licences_required and surplus/deficit
