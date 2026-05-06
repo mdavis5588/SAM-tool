@@ -319,7 +319,7 @@ WITH line_totals AS (
 client_agg AS (
   SELECT
     csi_id,
-    COUNT(client_id)                                AS assigned_client_count,
+    COUNT(m.client_id)                                AS assigned_client_count,
     STRING_AGG(c.client_code, ', '
                ORDER BY c.client_code)              AS assigned_clients
   FROM   shared.csi_client_map m
