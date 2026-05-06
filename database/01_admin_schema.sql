@@ -254,20 +254,55 @@ BEGIN
     )
   $sql$, p_schema, p_schema);
 
+  -- server_csi_map
+  -- Explicit assignment of one or more CSI contracts to a server.
+  -- A server can be covered by multiple CSIs (e.g. EE base from one CSI,
+  -- Diagnostic Pack from a second CSI purchased separately).
+  -- product_family scopes the assignment: one CSI covers the DB licence,
+  -- another covers WLS on the same physical host.
+  -- licences_consumed records how many licence units from the CSI this
+  -- server uses — if NULL the position view calculates it automatically.
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.server_csi_map (
+      map_id              SERIAL PRIMARY KEY,
+      server_id           INTEGER NOT NULL
+                            REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+      csi_id              INTEGER NOT NULL
+                            REFERENCES shared.csi_contracts (csi_id),
+      line_id             INTEGER
+                            REFERENCES shared.license_entitlement_lines (line_id),
+                            -- NULL = assignment covers all lines on the CSI.
+                            -- Set to a specific line_id to assign at product level
+                            -- (e.g. this server uses the Diagnostic Pack line only).
+      product_family      TEXT NOT NULL,
+                            -- 'oracle_database' or 'oracle_weblogic' — which
+                            -- product on this server does this CSI assignment cover.
+      licences_consumed   NUMERIC(10,2),
+                            -- How many licence units this server draws from the CSI.
+                            -- NULL = calculated automatically from processor topology.
+      effective_date      DATE NOT NULL DEFAULT CURRENT_DATE,
+      notes               TEXT,
+      assigned_by         TEXT,          -- username or system that created the mapping
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (server_id, csi_id, line_id, product_family)
+    )
+  $sql$, p_schema, p_schema);
+
   -- Create indexes
   EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_proc_server   ON %I.oracle_processors (server_id)', p_schema, p_schema);
   EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_inst_server   ON %I.oracle_instances  (server_id)', p_schema, p_schema);
   EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_opt_inst      ON %I.oracle_options    (instance_id)', p_schema, p_schema);
   EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_wls_server    ON %I.wls_domains       (server_id)', p_schema, p_schema);
   EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_wls_ms_domain ON %I.wls_managed_servers (domain_id)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_scm_server    ON %I.server_csi_map    (server_id)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_scm_csi       ON %I.server_csi_map    (csi_id)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_scm_family    ON %I.server_csi_map    (product_family)', p_schema, p_schema);
 
-  -- Install the per-client license_position view
+  -- Install views and functions
   PERFORM sam_admin.install_license_position_view(p_schema);
-
-  -- Install the per-client license_metric_comparison view
   PERFORM sam_admin.install_license_options_view(p_schema);
-
-  -- Install the upsert functions
+  PERFORM sam_admin.install_server_coverage_view(p_schema);
   PERFORM sam_admin.install_upsert_functions(p_schema);
 
 END;
@@ -286,6 +321,14 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION sam_admin.install_license_options_view(p_schema TEXT)
+RETURNS VOID LANGUAGE plpgsql AS $$
+BEGIN
+  -- Implemented in 03_client_template_functions.sql
+  NULL;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION sam_admin.install_server_coverage_view(p_schema TEXT)
 RETURNS VOID LANGUAGE plpgsql AS $$
 BEGIN
   -- Implemented in 03_client_template_functions.sql
