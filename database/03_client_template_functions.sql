@@ -837,10 +837,455 @@ END;
 $$;
 
 -- ---------------------------------------------------------------------------
--- MIGRATE ALL CLIENTS
--- Re-installs views and functions across all client schemas.
--- Run after any schema change.
+-- INSTALL CHANGELOG OBJECTS
+-- Creates the trigger functions and triggers that detect licence-relevant
+-- changes between discovery runs and write them to discovery_changelog.
+--
+-- Monitored events and their severity:
+--
+--  HIGH (licence-impacting — requires immediate review):
+--    - New oracle_option appearing on an instance (Diagnostic Pack, Tuning Pack,
+--      Partitioning, Advanced Security, etc.)
+--    - Oracle instance edition change (SE2 → EE is a major cost increase)
+--    - Processor core count or socket count increase
+--    - New WLS installed product (SOA Suite, Coherence, OAM etc.)
+--    - New WLS domain on a server not previously running WLS
+--
+--  MEDIUM (notable — review recommended):
+--    - New Oracle instance (SID) appearing on a known server
+--    - Oracle version upgrade
+--    - New server discovered for the first time
+--    - WLS version upgrade
+--
+--  INFO (informational):
+--    - Oracle option status change (e.g. VALID → OPTION OFF)
+--    - Processor model change (unlikely but tracked for core factor changes)
 -- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION sam_admin.install_changelog_objects(p_schema TEXT)
+RETURNS VOID LANGUAGE plpgsql AS $$
+BEGIN
+
+  -- -------------------------------------------------------------------------
+  -- TRIGGER FUNCTION: log_option_change
+  -- Fires on INSERT/UPDATE to oracle_options.
+  -- New options are HIGH severity — they indicate a licensed feature was
+  -- enabled since the last discovery run.
+  -- -------------------------------------------------------------------------
+  EXECUTE format($fn$
+    CREATE OR REPLACE FUNCTION %I.log_option_change()
+    RETURNS TRIGGER LANGUAGE plpgsql AS $body$
+    DECLARE
+      v_hostname  TEXT;
+      v_sid       TEXT;
+      v_server_id INTEGER;
+      v_run_id    TEXT;
+      v_severity  TEXT;
+      v_impact    TEXT;
+    BEGIN
+      -- Resolve hostname and SID for the affected instance
+      SELECT s.hostname, i.oracle_sid, s.server_id
+      INTO   v_hostname, v_sid, v_server_id
+      FROM   %I.oracle_instances i
+      JOIN   %I.oracle_servers   s ON s.server_id = i.server_id
+      WHERE  i.instance_id = NEW.instance_id;
+
+      v_run_id := NEW.discovery_run_id;
+
+      -- Classify severity by option name
+      v_severity := CASE
+        WHEN NEW.option_name ILIKE ANY (ARRAY[
+          '%%Diagnostic Pack%%', '%%Tuning Pack%%', '%%Partitioning%%',
+          '%%Advanced Security%%', '%%Label Security%%', '%%Database Vault%%',
+          '%%Active Data Guard%%', '%%GoldenGate%%', '%%RAC%%',
+          '%%Real Application Clusters%%', '%%Multitenant%%',
+          '%%In-Memory%%', '%%Spatial%%', '%%Text%%'
+        ]) THEN 'HIGH'
+        ELSE 'MEDIUM'
+      END;
+
+      v_impact := CASE
+        WHEN NEW.option_name ILIKE '%%Diagnostic Pack%%'
+          THEN 'Diagnostic Pack requires a separate processor licence (Oracle Technology Price List)'
+        WHEN NEW.option_name ILIKE '%%Tuning Pack%%'
+          THEN 'Tuning Pack requires a separate processor licence and also requires Diagnostic Pack'
+        WHEN NEW.option_name ILIKE '%%Partitioning%%'
+          THEN 'Partitioning is a separately-licensed EE option'
+        WHEN NEW.option_name ILIKE '%%Advanced Security%%'
+          THEN 'Advanced Security (TDE/network encryption) requires a separate processor licence'
+        WHEN NEW.option_name ILIKE '%%Active Data Guard%%'
+          THEN 'Active Data Guard requires a separate processor licence per standby'
+        WHEN NEW.option_name ILIKE '%%Multitenant%%'
+          THEN 'Multitenant (>1 PDB) requires a separate processor licence in 12c+'
+        WHEN NEW.option_name ILIKE '%%RAC%%' OR NEW.option_name ILIKE '%%Real Application Clusters%%'
+          THEN 'RAC requires processor licences on ALL nodes in the cluster'
+        ELSE 'Review Oracle Technology Price List for this option'
+      END;
+
+      IF TG_OP = 'INSERT' THEN
+        INSERT INTO %I.discovery_changelog
+          (discovery_run_id, server_id, hostname, change_category, change_type,
+           severity, object_name, field_changed, old_value, new_value, licence_impact)
+        VALUES (
+          v_run_id, v_server_id, v_hostname,
+          'oracle_option', 'NEW',
+          v_severity,
+          v_sid || ' → ' || NEW.option_name,
+          NULL, NULL, NEW.status,
+          v_impact
+        );
+
+      ELSIF TG_OP = 'UPDATE' AND OLD.status <> NEW.status THEN
+        INSERT INTO %I.discovery_changelog
+          (discovery_run_id, server_id, hostname, change_category, change_type,
+           severity, object_name, field_changed, old_value, new_value, licence_impact)
+        VALUES (
+          v_run_id, v_server_id, v_hostname,
+          'oracle_option', 'CHANGED',
+          'INFO',
+          v_sid || ' → ' || NEW.option_name,
+          'status', OLD.status, NEW.status,
+          'Option status changed — verify whether usage has started or stopped'
+        );
+      END IF;
+
+      RETURN NEW;
+    END;
+    $body$
+  $fn$, p_schema, p_schema, p_schema, p_schema, p_schema);
+
+  -- Create trigger on oracle_options
+  EXECUTE format($sql$
+    DROP TRIGGER IF EXISTS trg_log_option_change ON %I.oracle_options;
+    CREATE TRIGGER trg_log_option_change
+      AFTER INSERT OR UPDATE ON %I.oracle_options
+      FOR EACH ROW EXECUTE FUNCTION %I.log_option_change()
+  $sql$, p_schema, p_schema, p_schema);
+
+  -- -------------------------------------------------------------------------
+  -- TRIGGER FUNCTION: log_instance_change
+  -- Fires on INSERT/UPDATE to oracle_instances.
+  -- New instances are MEDIUM; edition changes are HIGH.
+  -- -------------------------------------------------------------------------
+  EXECUTE format($fn$
+    CREATE OR REPLACE FUNCTION %I.log_instance_change()
+    RETURNS TRIGGER LANGUAGE plpgsql AS $body$
+    DECLARE
+      v_hostname TEXT;
+    BEGIN
+      SELECT hostname INTO v_hostname
+      FROM   %I.oracle_servers WHERE server_id = NEW.server_id;
+
+      IF TG_OP = 'INSERT' THEN
+        INSERT INTO %I.discovery_changelog
+          (discovery_run_id, server_id, hostname, change_category, change_type,
+           severity, object_name, new_value, licence_impact)
+        VALUES (
+          NEW.discovery_run_id, NEW.server_id, v_hostname,
+          'oracle_instance', 'NEW',
+          'MEDIUM',
+          NEW.oracle_sid,
+          NEW.edition || ' ' || COALESCE(NEW.db_version, ''),
+          'New Oracle instance detected — verify licence coverage for this SID'
+        );
+
+      ELSIF TG_OP = 'UPDATE' THEN
+        -- Edition change — HIGH severity, major cost implication
+        IF OLD.edition IS DISTINCT FROM NEW.edition THEN
+          INSERT INTO %I.discovery_changelog
+            (discovery_run_id, server_id, hostname, change_category, change_type,
+             severity, object_name, field_changed, old_value, new_value, licence_impact)
+          VALUES (
+            NEW.discovery_run_id, NEW.server_id, v_hostname,
+            'oracle_instance', 'CHANGED',
+            'HIGH',
+            NEW.oracle_sid, 'edition', OLD.edition, NEW.edition,
+            'Edition change may significantly alter licence requirements — recalculate immediately'
+          );
+        END IF;
+
+        -- Version upgrade — MEDIUM, may change available options
+        IF OLD.db_version IS DISTINCT FROM NEW.db_version THEN
+          INSERT INTO %I.discovery_changelog
+            (discovery_run_id, server_id, hostname, change_category, change_type,
+             severity, object_name, field_changed, old_value, new_value, licence_impact)
+          VALUES (
+            NEW.discovery_run_id, NEW.server_id, v_hostname,
+            'oracle_instance', 'CHANGED',
+            'MEDIUM',
+            NEW.oracle_sid, 'db_version', OLD.db_version, NEW.db_version,
+            'Version upgrade — re-run options discovery to detect any newly-available licensed features'
+          );
+        END IF;
+      END IF;
+
+      RETURN NEW;
+    END;
+    $body$
+  $fn$, p_schema, p_schema, p_schema, p_schema, p_schema);
+
+  EXECUTE format($sql$
+    DROP TRIGGER IF EXISTS trg_log_instance_change ON %I.oracle_instances;
+    CREATE TRIGGER trg_log_instance_change
+      AFTER INSERT OR UPDATE ON %I.oracle_instances
+      FOR EACH ROW EXECUTE FUNCTION %I.log_instance_change()
+  $sql$, p_schema, p_schema, p_schema);
+
+  -- -------------------------------------------------------------------------
+  -- TRIGGER FUNCTION: log_processor_change
+  -- Fires on INSERT to oracle_processors (each discovery inserts a new row).
+  -- Compares against the previous snapshot for the same server.
+  -- Core count increases are HIGH — they change the licence calculation.
+  -- -------------------------------------------------------------------------
+  EXECUTE format($fn$
+    CREATE OR REPLACE FUNCTION %I.log_processor_change()
+    RETURNS TRIGGER LANGUAGE plpgsql AS $body$
+    DECLARE
+      v_hostname TEXT;
+      v_prev     RECORD;
+    BEGIN
+      SELECT hostname INTO v_hostname
+      FROM   %I.oracle_servers WHERE server_id = NEW.server_id;
+
+      -- Get the most recent PREVIOUS snapshot (exclude the row just inserted)
+      SELECT * INTO v_prev
+      FROM   %I.oracle_processors
+      WHERE  server_id = NEW.server_id
+        AND  proc_id <> NEW.proc_id
+      ORDER  BY recorded_at DESC
+      LIMIT  1;
+
+      IF NOT FOUND THEN
+        -- First ever discovery for this server
+        INSERT INTO %I.discovery_changelog
+          (discovery_run_id, server_id, hostname, change_category, change_type,
+           severity, object_name, new_value, licence_impact)
+        VALUES (
+          NEW.discovery_run_id, NEW.server_id, v_hostname,
+          'processor', 'NEW',
+          'MEDIUM',
+          v_hostname,
+          NEW.cpu_sockets || ' sockets, ' || NEW.total_physical_cores || ' cores (' || NEW.cpu_model || ')',
+          'New server in scope — assign to a CSI contract and verify licence coverage'
+        );
+        RETURN NEW;
+      END IF;
+
+      -- Socket count increase — HIGH
+      IF NEW.cpu_sockets > v_prev.cpu_sockets THEN
+        INSERT INTO %I.discovery_changelog
+          (discovery_run_id, server_id, hostname, change_category, change_type,
+           severity, object_name, field_changed, old_value, new_value, licence_impact)
+        VALUES (
+          NEW.discovery_run_id, NEW.server_id, v_hostname,
+          'processor', 'CHANGED', 'HIGH', v_hostname,
+          'cpu_sockets',
+          v_prev.cpu_sockets::TEXT, NEW.cpu_sockets::TEXT,
+          'Socket count increased — recalculate processor licence requirement immediately'
+        );
+      END IF;
+
+      -- Core count increase — HIGH
+      IF NEW.total_physical_cores > v_prev.total_physical_cores THEN
+        INSERT INTO %I.discovery_changelog
+          (discovery_run_id, server_id, hostname, change_category, change_type,
+           severity, object_name, field_changed, old_value, new_value, licence_impact)
+        VALUES (
+          NEW.discovery_run_id, NEW.server_id, v_hostname,
+          'processor', 'CHANGED', 'HIGH', v_hostname,
+          'total_physical_cores',
+          v_prev.total_physical_cores::TEXT, NEW.total_physical_cores::TEXT,
+          'Core count increased — processor licence requirement has increased. Update server_csi_map.'
+        );
+      END IF;
+
+      -- CPU model change — MEDIUM (may change core factor)
+      IF NEW.cpu_model IS DISTINCT FROM v_prev.cpu_model THEN
+        INSERT INTO %I.discovery_changelog
+          (discovery_run_id, server_id, hostname, change_category, change_type,
+           severity, object_name, field_changed, old_value, new_value, licence_impact)
+        VALUES (
+          NEW.discovery_run_id, NEW.server_id, v_hostname,
+          'processor', 'CHANGED', 'MEDIUM', v_hostname,
+          'cpu_model',
+          v_prev.cpu_model, NEW.cpu_model,
+          'CPU model changed — verify core factor in shared.core_factor_table is still correct'
+        );
+      END IF;
+
+      RETURN NEW;
+    END;
+    $body$
+  $fn$, p_schema, p_schema, p_schema, p_schema, p_schema, p_schema, p_schema, p_schema);
+
+  EXECUTE format($sql$
+    DROP TRIGGER IF EXISTS trg_log_processor_change ON %I.oracle_processors;
+    CREATE TRIGGER trg_log_processor_change
+      AFTER INSERT ON %I.oracle_processors
+      FOR EACH ROW EXECUTE FUNCTION %I.log_processor_change()
+  $sql$, p_schema, p_schema, p_schema);
+
+  -- -------------------------------------------------------------------------
+  -- TRIGGER FUNCTION: log_wls_product_change
+  -- Fires on INSERT to wls_installed_products.
+  -- New middleware products (SOA, Coherence, OAM) are HIGH — each needs
+  -- its own processor licence.
+  -- -------------------------------------------------------------------------
+  EXECUTE format($fn$
+    CREATE OR REPLACE FUNCTION %I.log_wls_product_change()
+    RETURNS TRIGGER LANGUAGE plpgsql AS $body$
+    DECLARE
+      v_hostname  TEXT;
+      v_server_id INTEGER;
+      v_domain    TEXT;
+      v_severity  TEXT;
+      v_impact    TEXT;
+    BEGIN
+      SELECT s.hostname, s.server_id, d.domain_name
+      INTO   v_hostname, v_server_id, v_domain
+      FROM   %I.wls_domains  d
+      JOIN   %I.oracle_servers s ON s.server_id = d.server_id
+      WHERE  d.domain_id = NEW.domain_id;
+
+      v_severity := CASE
+        WHEN NEW.product_name ILIKE ANY (ARRAY[
+          '%%SOA Suite%%', '%%Service Bus%%', '%%Coherence%%',
+          '%%Access Manager%%', '%%Identity Governance%%',
+          '%%WebCenter%%', '%%BPM%%', '%%OSB%%'
+        ]) THEN 'HIGH'
+        ELSE 'MEDIUM'
+      END;
+
+      v_impact := CASE
+        WHEN NEW.product_name ILIKE '%%SOA Suite%%'
+          THEN 'Oracle SOA Suite requires a separate processor licence'
+        WHEN NEW.product_name ILIKE '%%Service Bus%%' OR NEW.product_name ILIKE '%%OSB%%'
+          THEN 'Oracle Service Bus requires a separate processor licence'
+        WHEN NEW.product_name ILIKE '%%Coherence%%'
+          THEN 'Oracle Coherence requires a separate processor licence when used independently of WLS Suite'
+        WHEN NEW.product_name ILIKE '%%Access Manager%%'
+          THEN 'Oracle Access Manager requires a separate processor licence'
+        WHEN NEW.product_name ILIKE '%%Identity Governance%%'
+          THEN 'Oracle Identity Governance requires a separate processor licence'
+        ELSE 'New middleware product detected — review Oracle Technology Price List for licence requirements'
+      END;
+
+      INSERT INTO %I.discovery_changelog
+        (discovery_run_id, server_id, hostname, change_category, change_type,
+         severity, object_name, new_value, licence_impact)
+      VALUES (
+        NEW.discovery_run_id, v_server_id, v_hostname,
+        'wls_product', 'NEW',
+        v_severity,
+        v_domain || ' → ' || NEW.product_name,
+        COALESCE(NEW.product_version, 'unknown version'),
+        v_impact
+      );
+
+      RETURN NEW;
+    END;
+    $body$
+  $fn$, p_schema, p_schema, p_schema, p_schema);
+
+  EXECUTE format($sql$
+    DROP TRIGGER IF EXISTS trg_log_wls_product_change ON %I.wls_installed_products;
+    CREATE TRIGGER trg_log_wls_product_change
+      AFTER INSERT ON %I.wls_installed_products
+      FOR EACH ROW EXECUTE FUNCTION %I.log_wls_product_change()
+  $sql$, p_schema, p_schema, p_schema);
+
+  -- -------------------------------------------------------------------------
+  -- TRIGGER FUNCTION: log_wls_domain_change
+  -- New WLS domain on a server = MEDIUM (or HIGH if it's a new server).
+  -- Edition change on an existing domain = HIGH.
+  -- -------------------------------------------------------------------------
+  EXECUTE format($fn$
+    CREATE OR REPLACE FUNCTION %I.log_wls_domain_change()
+    RETURNS TRIGGER LANGUAGE plpgsql AS $body$
+    DECLARE
+      v_hostname TEXT;
+    BEGIN
+      SELECT hostname INTO v_hostname
+      FROM   %I.oracle_servers WHERE server_id = NEW.server_id;
+
+      IF TG_OP = 'INSERT' THEN
+        INSERT INTO %I.discovery_changelog
+          (discovery_run_id, server_id, hostname, change_category, change_type,
+           severity, object_name, new_value, licence_impact)
+        VALUES (
+          NEW.discovery_run_id, NEW.server_id, v_hostname,
+          'wls_domain', 'NEW',
+          'MEDIUM',
+          NEW.domain_name,
+          COALESCE(NEW.wls_edition, 'unknown edition') || ' ' || COALESCE(NEW.wls_version, ''),
+          'New WLS domain detected — verify processor licence coverage and check for installed products'
+        );
+
+      ELSIF TG_OP = 'UPDATE' AND OLD.wls_edition IS DISTINCT FROM NEW.wls_edition THEN
+        INSERT INTO %I.discovery_changelog
+          (discovery_run_id, server_id, hostname, change_category, change_type,
+           severity, object_name, field_changed, old_value, new_value, licence_impact)
+        VALUES (
+          NEW.discovery_run_id, NEW.server_id, v_hostname,
+          'wls_domain', 'CHANGED',
+          'HIGH',
+          NEW.domain_name, 'wls_edition', OLD.wls_edition, NEW.wls_edition,
+          'WLS edition change — recalculate licence requirement and update CSI assignment'
+        );
+      END IF;
+
+      RETURN NEW;
+    END;
+    $body$
+  $fn$, p_schema, p_schema, p_schema);
+
+  EXECUTE format($sql$
+    DROP TRIGGER IF EXISTS trg_log_wls_domain_change ON %I.wls_domains;
+    CREATE TRIGGER trg_log_wls_domain_change
+      AFTER INSERT OR UPDATE ON %I.wls_domains
+      FOR EACH ROW EXECUTE FUNCTION %I.log_wls_domain_change()
+  $sql$, p_schema, p_schema, p_schema);
+
+  -- -------------------------------------------------------------------------
+  -- CHANGELOG SUMMARY VIEW
+  -- Unacknowledged changes grouped for the Power BI dashboard banner.
+  -- -------------------------------------------------------------------------
+  EXECUTE format($view$
+    CREATE OR REPLACE VIEW %I.changelog_summary AS
+    SELECT
+      change_id,
+      detected_at,
+      discovery_run_id,
+      server_id,
+      hostname,
+      change_category,
+      change_type,
+      severity,
+      object_name,
+      field_changed,
+      old_value,
+      new_value,
+      licence_impact,
+      acknowledged,
+      acknowledged_by,
+      acknowledged_at,
+      notes,
+      -- Age of the change
+      EXTRACT(EPOCH FROM (NOW() - detected_at)) / 3600  AS hours_since_detected,
+      -- Flag if unacknowledged HIGH changes are more than 48 hours old
+      CASE
+        WHEN NOT acknowledged
+          AND severity = 'HIGH'
+          AND detected_at < NOW() - INTERVAL '48 hours'
+        THEN TRUE ELSE FALSE
+      END                                               AS overdue
+    FROM %I.discovery_changelog
+    ORDER BY
+      CASE severity WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END,
+      detected_at DESC
+  $view$, p_schema, p_schema);
+
+END;
+$$;
 CREATE OR REPLACE FUNCTION sam_admin.migrate_all_clients()
 RETURNS TABLE (client_code TEXT, result TEXT) LANGUAGE plpgsql AS $$
 DECLARE
@@ -853,6 +1298,7 @@ BEGIN
       PERFORM sam_admin.install_license_position_view(v_client.schema_name);
       PERFORM sam_admin.install_license_options_view(v_client.schema_name);
       PERFORM sam_admin.install_server_coverage_view(v_client.schema_name);
+      PERFORM sam_admin.install_changelog_objects(v_client.schema_name);
       PERFORM sam_admin.install_upsert_functions(v_client.schema_name);
       client_code := v_client.client_code;
       result      := 'ok';
