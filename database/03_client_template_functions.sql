@@ -940,12 +940,12 @@ BEGIN
   $fn$, p_schema, p_schema, p_schema, p_schema, p_schema);
 
   -- Create trigger on oracle_options
-  EXECUTE format($sql$
-    DROP TRIGGER IF EXISTS trg_log_option_change ON %I.oracle_options;
-    CREATE TRIGGER trg_log_option_change
+  EXECUTE format('DROP TRIGGER IF EXISTS trg_log_option_change ON %I.oracle_options',
+    p_schema);
+  EXECUTE format('CREATE TRIGGER trg_log_option_change
       AFTER INSERT OR UPDATE ON %I.oracle_options
-      FOR EACH ROW EXECUTE FUNCTION %I.log_option_change()
-  $sql$, p_schema, p_schema, p_schema);
+      FOR EACH ROW EXECUTE FUNCTION %I.log_option_change()',
+    p_schema, p_schema);
 
   -- -------------------------------------------------------------------------
   -- TRIGGER FUNCTION: log_instance_change
@@ -1009,12 +1009,12 @@ BEGIN
     $body$
   $fn$, p_schema, p_schema, p_schema, p_schema, p_schema);
 
-  EXECUTE format($sql$
-    DROP TRIGGER IF EXISTS trg_log_instance_change ON %I.oracle_instances;
-    CREATE TRIGGER trg_log_instance_change
+  EXECUTE format('DROP TRIGGER IF EXISTS trg_log_instance_change ON %I.oracle_instances',
+    p_schema);
+  EXECUTE format('CREATE TRIGGER trg_log_instance_change
       AFTER INSERT OR UPDATE ON %I.oracle_instances
-      FOR EACH ROW EXECUTE FUNCTION %I.log_instance_change()
-  $sql$, p_schema, p_schema, p_schema);
+      FOR EACH ROW EXECUTE FUNCTION %I.log_instance_change()',
+    p_schema, p_schema);
 
   -- -------------------------------------------------------------------------
   -- TRIGGER FUNCTION: log_processor_change
@@ -1103,12 +1103,12 @@ BEGIN
     $body$
   $fn$, p_schema, p_schema, p_schema, p_schema, p_schema, p_schema, p_schema, p_schema);
 
-  EXECUTE format($sql$
-    DROP TRIGGER IF EXISTS trg_log_processor_change ON %I.oracle_processors;
-    CREATE TRIGGER trg_log_processor_change
+  EXECUTE format('DROP TRIGGER IF EXISTS trg_log_processor_change ON %I.oracle_processors',
+    p_schema);
+  EXECUTE format('CREATE TRIGGER trg_log_processor_change
       AFTER INSERT ON %I.oracle_processors
-      FOR EACH ROW EXECUTE FUNCTION %I.log_processor_change()
-  $sql$, p_schema, p_schema, p_schema);
+      FOR EACH ROW EXECUTE FUNCTION %I.log_processor_change()',
+    p_schema, p_schema);
 
   -- -------------------------------------------------------------------------
   -- TRIGGER FUNCTION: log_wls_product_change
@@ -1172,12 +1172,12 @@ BEGIN
     $body$
   $fn$, p_schema, p_schema, p_schema, p_schema);
 
-  EXECUTE format($sql$
-    DROP TRIGGER IF EXISTS trg_log_wls_product_change ON %I.wls_installed_products;
-    CREATE TRIGGER trg_log_wls_product_change
+  EXECUTE format('DROP TRIGGER IF EXISTS trg_log_wls_product_change ON %I.wls_installed_products',
+    p_schema);
+  EXECUTE format('CREATE TRIGGER trg_log_wls_product_change
       AFTER INSERT ON %I.wls_installed_products
-      FOR EACH ROW EXECUTE FUNCTION %I.log_wls_product_change()
-  $sql$, p_schema, p_schema, p_schema);
+      FOR EACH ROW EXECUTE FUNCTION %I.log_wls_product_change()',
+    p_schema, p_schema);
 
   -- -------------------------------------------------------------------------
   -- TRIGGER FUNCTION: log_wls_domain_change
@@ -1224,12 +1224,12 @@ BEGIN
     $body$
   $fn$, p_schema, p_schema, p_schema);
 
-  EXECUTE format($sql$
-    DROP TRIGGER IF EXISTS trg_log_wls_domain_change ON %I.wls_domains;
-    CREATE TRIGGER trg_log_wls_domain_change
+  EXECUTE format('DROP TRIGGER IF EXISTS trg_log_wls_domain_change ON %I.wls_domains',
+    p_schema);
+  EXECUTE format('CREATE TRIGGER trg_log_wls_domain_change
       AFTER INSERT OR UPDATE ON %I.wls_domains
-      FOR EACH ROW EXECUTE FUNCTION %I.log_wls_domain_change()
-  $sql$, p_schema, p_schema, p_schema);
+      FOR EACH ROW EXECUTE FUNCTION %I.log_wls_domain_change()',
+    p_schema, p_schema);
 
   -- -------------------------------------------------------------------------
   -- CHANGELOG SUMMARY VIEW
