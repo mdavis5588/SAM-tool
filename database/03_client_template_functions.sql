@@ -440,7 +440,7 @@ BEGIN
         p_payload->>'os_family',
         p_payload->>'os_distribution',
         p_payload->>'os_version',
-        (p_payload->>'environment')::%%I.environment_type,
+        (p_payload->>'environment')::environment_type,
         p_payload->>'criticality',
         (p_payload->>'total_ram_mb')::INTEGER,
         p_payload->>'datacenter',
@@ -472,7 +472,7 @@ BEGIN
         (p_payload->>'cpu_sockets')::INTEGER,
         (p_payload->>'cpu_cores_per_socket')::INTEGER,
         (p_payload->>'cpu_threads_per_core')::INTEGER,
-        (COALESCE(p_payload->>'virt_type','unknown'))::%%I.virt_type,
+        (COALESCE(p_payload->>'virt_type','unknown'))::virt_type,
         (p_payload->>'is_vmware')::BOOLEAN,
         (p_payload->>'vcpu_count')::INTEGER,
         p_payload->>'run_id'
@@ -504,7 +504,7 @@ BEGIN
     END;
     $body$;
   $fn$,
-  p_schema, p_schema, p_schema, p_schema, p_schema, p_schema, p_schema);
+  p_schema, p_schema, p_schema, p_schema, p_schema);
 
   -- upsert_wls_discovery: called by the WebLogic Ansible playbook
   EXECUTE format($fn$
@@ -526,7 +526,7 @@ BEGIN
         p_payload->>'hostname', p_payload->>'fqdn',
         (p_payload->>'ip_address')::INET,
         p_payload->>'os_family', p_payload->>'os_distribution', p_payload->>'os_version',
-        (p_payload->>'environment')::%%I.environment_type,
+        (p_payload->>'environment')::environment_type,
         p_payload->>'criticality',
         (p_payload->>'total_ram_mb')::INTEGER,
         p_payload->>'datacenter',
@@ -549,7 +549,7 @@ BEGIN
           (p_payload->>'cpu_sockets')::INTEGER,
           (p_payload->>'cpu_cores_per_socket')::INTEGER,
           (p_payload->>'cpu_threads_per_core')::INTEGER,
-          (COALESCE(p_payload->>'virt_type','unknown'))::%%I.virt_type,
+          (COALESCE(p_payload->>'virt_type','unknown'))::virt_type,
           (p_payload->>'is_vmware')::BOOLEAN,
           (p_payload->>'vcpu_count')::INTEGER,
           p_payload->>'run_id'
@@ -620,13 +620,8 @@ BEGIN
     END;
     $body$;
   $fn$,
-  p_schema,
-  p_schema, p_schema,
-  p_schema,
-  p_schema, p_schema,
-  p_schema,
-  p_schema,
-  p_schema);
+  p_schema, p_schema, p_schema,
+  p_schema, p_schema, p_schema);
 
 END;
 $$;
