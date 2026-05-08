@@ -12,9 +12,9 @@
 -- ---------------------------------------------------------------------------
 -- 1. DATABASE ROLES
 -- ---------------------------------------------------------------------------
-CREATE ROLE sam_loader     WITH LOGIN PASSWORD 'admin';   -- Ansible writes
-CREATE ROLE sam_reader     WITH LOGIN PASSWORD 'admin';   -- Power BI reads
-CREATE ROLE sam_admin_role WITH LOGIN PASSWORD 'admin';    -- Full admin
+CREATE ROLE sam_loader     WITH LOGIN PASSWORD 'changeme_loader';   -- Ansible writes
+CREATE ROLE sam_reader     WITH LOGIN PASSWORD 'changeme_reader';   -- Power BI reads
+CREATE ROLE sam_admin_role WITH LOGIN PASSWORD 'changeme_admin';    -- Full admin
 
 -- Loader: read shared/admin, write to client schemas (granted per schema below)
 GRANT USAGE  ON SCHEMA shared, sam_admin TO sam_loader;
@@ -96,18 +96,22 @@ BEGIN
 
   -- Line 1: Base database licence
   PERFORM shared.add_csi_line(
-    v_csi, 'Oracle Database Enterprise Edition',
-    'oracle_database', 'processor',
+    p_csi_id         => v_csi,
+    p_product_name   => 'Oracle Database Enterprise Edition',
+    p_product_family => 'oracle_database',
+    p_metric         => 'processor',
     p_quantity       => 100,
-    p_unit_price     => 47500.00,       -- per processor licence
-    p_annual_support => 1045000.00,     -- 22% of 100 × $47,500 = $1,045,000
+    p_unit_price     => 47500.00,
+    p_annual_support => 1045000.00,
     p_notes          => 'Base EE licence'
   );
 
   -- Line 2: Diagnostic Pack (required for AWR, ADDM, ASH)
   PERFORM shared.add_csi_line(
-    v_csi, 'Oracle Diagnostic Pack',
-    'oracle_database', 'processor',
+    p_csi_id         => v_csi,
+    p_product_name   => 'Oracle Diagnostic Pack',
+    p_product_family => 'oracle_database',
+    p_metric         => 'processor',
     p_quantity       => 100,
     p_unit_price     => 7500.00,
     p_annual_support => 165000.00,
@@ -116,8 +120,10 @@ BEGIN
 
   -- Line 3: Tuning Pack (requires Diagnostic Pack)
   PERFORM shared.add_csi_line(
-    v_csi, 'Oracle Tuning Pack',
-    'oracle_database', 'processor',
+    p_csi_id         => v_csi,
+    p_product_name   => 'Oracle Tuning Pack',
+    p_product_family => 'oracle_database',
+    p_metric         => 'processor',
     p_quantity       => 100,
     p_unit_price     => 5000.00,
     p_annual_support => 110000.00
@@ -125,8 +131,10 @@ BEGIN
 
   -- Line 4: Partitioning
   PERFORM shared.add_csi_line(
-    v_csi, 'Oracle Partitioning',
-    'oracle_database', 'processor',
+    p_csi_id         => v_csi,
+    p_product_name   => 'Oracle Partitioning',
+    p_product_family => 'oracle_database',
+    p_metric         => 'processor',
     p_quantity       => 100,
     p_unit_price     => 11500.00,
     p_annual_support => 253000.00
@@ -157,8 +165,10 @@ BEGIN
 
   -- Line 1: WebLogic Server EE
   PERFORM shared.add_csi_line(
-    v_csi, 'Oracle WebLogic Server Enterprise Edition',
-    'oracle_weblogic', 'processor',
+    p_csi_id         => v_csi,
+    p_product_name   => 'Oracle WebLogic Server Enterprise Edition',
+    p_product_family => 'oracle_weblogic',
+    p_metric         => 'processor',
     p_quantity       => 50,
     p_unit_price     => 45000.00,
     p_annual_support => 495000.00
@@ -166,8 +176,10 @@ BEGIN
 
   -- Line 2: Oracle Coherence (often bundled in WLS Suite)
   PERFORM shared.add_csi_line(
-    v_csi, 'Oracle Coherence',
-    'oracle_coherence', 'processor',
+    p_csi_id         => v_csi,
+    p_product_name   => 'Oracle Coherence',
+    p_product_family => 'oracle_coherence',
+    p_metric         => 'processor',
     p_quantity       => 50,
     p_unit_price     => 23000.00,
     p_annual_support => 253000.00
@@ -198,8 +210,10 @@ BEGIN
 
   -- Line 1: SE2 base licence
   PERFORM shared.add_csi_line(
-    v_csi, 'Oracle Database Standard Edition 2',
-    'oracle_database', 'processor',
+    p_csi_id         => v_csi,
+    p_product_name   => 'Oracle Database Standard Edition 2',
+    p_product_family => 'oracle_database',
+    p_metric         => 'processor',
     p_quantity       => 20,
     p_unit_price     => 17500.00,
     p_annual_support => 77000.00,
@@ -226,8 +240,10 @@ BEGIN
   );
 
   PERFORM shared.add_csi_line(
-    v_csi, 'Oracle Advanced Security',
-    'oracle_database', 'processor',
+    p_csi_id         => v_csi,
+    p_product_name   => 'Oracle Advanced Security',
+    p_product_family => 'oracle_database',
+    p_metric         => 'processor',
     p_quantity       => 60,
     p_unit_price     => 15000.00,
     p_annual_support => 198000.00,
@@ -253,8 +269,10 @@ BEGIN
   );
 
   PERFORM shared.add_csi_line(
-    v_csi, 'Oracle Database Enterprise Edition',
-    'oracle_database', 'processor',
+    p_csi_id         => v_csi,
+    p_product_name   => 'Oracle Database Enterprise Edition',
+    p_product_family => 'oracle_database',
+    p_metric         => 'processor',
     p_quantity       => 25,
     p_unit_price     => 47500.00,
     p_annual_support => 261250.00,
