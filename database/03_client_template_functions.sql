@@ -635,21 +635,26 @@ $$;
 -- INSTALL SERVER COVERAGE VIEW
 -- Creates server_csi_coverage in each client schema.
 -- Shows every active server with its explicit CSI assignments per product
--- family, how many licences each CSI contributes, and — critically —
--- whether the server has any unmapped products (coverage gaps).
+-- family, how many licences each CSI contributes, and whether the server
+-- has any unmapped products (coverage gaps).
 -- This is the primary audit-prep view.
+--
+-- Uses variable concatenation instead of format() to avoid dollar-quote
+-- conflicts with string literals inside CASE expressions.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION sam_admin.install_server_coverage_view(p_schema TEXT)
 RETURNS VOID LANGUAGE plpgsql AS $$
+DECLARE
+  v_sql TEXT;
 BEGIN
-  EXECUTE format($view$
-    CREATE OR REPLACE VIEW %I.server_csi_coverage AS
+  v_sql :=
+    'CREATE OR REPLACE VIEW ' || quote_ident(p_schema) || '.server_csi_coverage AS
 
     WITH latest_proc AS (
       SELECT DISTINCT ON (server_id)
         server_id, cpu_model, cpu_sockets, cores_per_socket,
         total_physical_cores, virt_type, is_vmware
-      FROM %I.oracle_processors
+      FROM ' || quote_ident(p_schema) || '.oracle_processors
       ORDER BY server_id, recorded_at DESC
     ),
 
@@ -664,37 +669,35 @@ BEGIN
         COALESCE(
           (SELECT cf.core_factor FROM shared.core_factor_table cf
            WHERE  lp.cpu_model ILIKE cf.processor_pattern
-             AND  cf.processor_pattern <> 'Unknown' AND cf.is_current = TRUE
+             AND  cf.processor_pattern <> ''Unknown'' AND cf.is_current = TRUE
            ORDER  BY cf.effective_date DESC LIMIT 1),
           (SELECT cf.core_factor FROM shared.core_factor_table cf
-           WHERE  cf.processor_pattern = 'Unknown' LIMIT 1),
+           WHERE  cf.processor_pattern = ''Unknown'' LIMIT 1),
           0.5
         ) AS core_factor
       FROM latest_proc lp
     ),
 
-    -- All products running on each server
     server_products AS (
-      -- Oracle DB instances
       SELECT s.server_id, s.hostname, s.environment::TEXT, s.datacenter,
-             'oracle_database'::TEXT AS product_family,
+             ''oracle_database''::TEXT AS product_family,
              i.edition               AS product_detail
-      FROM   %I.oracle_servers   s
-      JOIN   %I.oracle_instances i ON i.server_id = s.server_id AND i.is_active
+      FROM   ' || quote_ident(p_schema) || '.oracle_servers   s
+      JOIN   ' || quote_ident(p_schema) || '.oracle_instances i
+             ON i.server_id = s.server_id AND i.is_active
       WHERE  s.is_active = TRUE
 
       UNION ALL
 
-      -- WebLogic domains
       SELECT s.server_id, s.hostname, s.environment::TEXT, s.datacenter,
-             'oracle_weblogic'::TEXT AS product_family,
+             ''oracle_weblogic''::TEXT AS product_family,
              d.wls_edition           AS product_detail
-      FROM   %I.oracle_servers s
-      JOIN   %I.wls_domains    d ON d.server_id = s.server_id AND d.is_active
+      FROM   ' || quote_ident(p_schema) || '.oracle_servers s
+      JOIN   ' || quote_ident(p_schema) || '.wls_domains    d
+             ON d.server_id = s.server_id AND d.is_active
       WHERE  s.is_active = TRUE
     ),
 
-    -- Explicit CSI assignments per server+product
     assignments AS (
       SELECT
         scm.server_id,
@@ -707,17 +710,14 @@ BEGIN
         cs.csi_number,
         cs.contract_name,
         cs.sharing_policy::TEXT,
-        -- Licences this server draws from this CSI:
-        -- Use explicit licences_consumed if set, otherwise calculate from topology
         COALESCE(
           scm.licences_consumed,
-          -- Calculate based on product family and edition
           (SELECT CASE
-             WHEN sp2.product_detail ILIKE '%%Enterprise%%'
+             WHEN sp2.product_detail ILIKE ''%Enterprise%''
                THEN ROUND(cf2.total_physical_cores * cf2.core_factor, 2)
-             WHEN sp2.product_detail ILIKE '%%Standard Edition 2%%'
+             WHEN sp2.product_detail ILIKE ''%Standard Edition 2%''
                THEN LEAST(cf2.cpu_sockets, 2)::NUMERIC
-             WHEN sp2.product_detail ILIKE '%%Standard%%'
+             WHEN sp2.product_detail ILIKE ''%Standard%''
                THEN cf2.cpu_sockets::NUMERIC
              ELSE ROUND(cf2.total_physical_cores * cf2.core_factor, 2)
            END
@@ -731,10 +731,9 @@ BEGIN
         l.unit_price,
         l.total_price                                AS line_total_price,
         l.annual_support_cost                        AS line_annual_support
-      FROM   %I.server_csi_map              scm
-      JOIN   shared.csi_contracts            cs ON cs.csi_id  = scm.csi_id
-      LEFT   JOIN shared.license_entitlement_lines l
-                                                 ON l.line_id = scm.line_id
+      FROM   ' || quote_ident(p_schema) || '.server_csi_map scm
+      JOIN   shared.csi_contracts                     cs ON cs.csi_id  = scm.csi_id
+      LEFT   JOIN shared.license_entitlement_lines    l  ON l.line_id  = scm.line_id
     )
 
     SELECT
@@ -750,22 +749,19 @@ BEGIN
       cf.virt_type::TEXT                             AS virt_type,
       cf.is_vmware,
 
-      -- Calculated licence requirement for this server/product
       CASE
-        WHEN sp.product_detail ILIKE '%%Enterprise%%'
+        WHEN sp.product_detail ILIKE ''%Enterprise%''
           THEN ROUND(cf.total_physical_cores * cf.core_factor, 2)
-        WHEN sp.product_detail ILIKE '%%Standard Edition 2%%'
+        WHEN sp.product_detail ILIKE ''%Standard Edition 2%''
           THEN LEAST(cf.cpu_sockets, 2)::NUMERIC
-        WHEN sp.product_detail ILIKE '%%Standard%%'
+        WHEN sp.product_detail ILIKE ''%Standard%''
           THEN cf.cpu_sockets::NUMERIC
         ELSE ROUND(cf.total_physical_cores * cf.core_factor, 2)
       END                                            AS licences_required,
 
-      -- CSI assignment details — one row per server+product,
-      -- with CSI list aggregated
       COUNT(a.csi_id)                                AS assigned_csi_count,
       STRING_AGG(
-        a.csi_number || ' — ' || a.contract_name,
+        a.csi_number || '' — '' || a.contract_name,
         E''\n'' ORDER BY a.csi_number
       )                                              AS assigned_csis,
       STRING_AGG(
@@ -780,32 +776,30 @@ BEGIN
       SUM(a.line_total_price)                        AS assigned_licence_cost,
       SUM(a.line_annual_support)                     AS assigned_support_cost,
 
-      -- Coverage status — key field for audit prep
       CASE
         WHEN COUNT(a.csi_id) = 0
           THEN ''NO CSI ASSIGNED''
         WHEN SUM(a.licences_from_this_csi) IS NULL
           THEN ''ASSIGNED — QUANTITY UNCONFIRMED''
-        WHEN SUM(a.licences_from_this_csi)
-             >= CASE
-                  WHEN sp.product_detail ILIKE ''%%Enterprise%%''
-                    THEN ROUND(cf.total_physical_cores * cf.core_factor, 2)
-                  WHEN sp.product_detail ILIKE ''%%Standard Edition 2%%''
-                    THEN LEAST(cf.cpu_sockets, 2)::NUMERIC
-                  ELSE cf.cpu_sockets::NUMERIC
-                END
+        WHEN SUM(a.licences_from_this_csi) >=
+          CASE
+            WHEN sp.product_detail ILIKE ''%Enterprise%''
+              THEN ROUND(cf.total_physical_cores * cf.core_factor, 2)
+            WHEN sp.product_detail ILIKE ''%Standard Edition 2%''
+              THEN LEAST(cf.cpu_sockets, 2)::NUMERIC
+            ELSE cf.cpu_sockets::NUMERIC
+          END
           THEN ''COVERED''
         ELSE ''UNDER-ASSIGNED''
       END                                            AS coverage_status,
 
-      -- How many more licences are needed from a CSI to fully cover this server
       GREATEST(
         CASE
-          WHEN sp.product_detail ILIKE '%%Enterprise%%'
+          WHEN sp.product_detail ILIKE ''%Enterprise%''
             THEN ROUND(cf.total_physical_cores * cf.core_factor, 2)
-          WHEN sp.product_detail ILIKE '%%Standard Edition 2%%'
+          WHEN sp.product_detail ILIKE ''%Standard Edition 2%''
             THEN LEAST(cf.cpu_sockets, 2)::NUMERIC
-          WHEN sp.product_detail ILIKE '%%Standard%%'
+          WHEN sp.product_detail ILIKE ''%Standard%''
             THEN cf.cpu_sockets::NUMERIC
           ELSE ROUND(cf.total_physical_cores * cf.core_factor, 2)
         END - COALESCE(SUM(a.licences_from_this_csi), 0),
@@ -814,7 +808,7 @@ BEGIN
 
     FROM   server_products sp
     JOIN   core_factor     cf ON cf.server_id = sp.server_id
-    LEFT   JOIN assignments a  ON a.server_id = sp.server_id
+    LEFT   JOIN assignments a  ON a.server_id     = sp.server_id
                               AND a.product_family = sp.product_family
     GROUP  BY sp.server_id, sp.hostname, sp.environment, sp.datacenter,
               sp.product_family, sp.product_detail,
@@ -822,17 +816,9 @@ BEGIN
               cf.virt_type, cf.is_vmware
     ORDER  BY
       CASE WHEN COUNT(a.csi_id) = 0 THEN 1 ELSE 2 END,
-      sp.environment, sp.hostname, sp.product_family;
+      sp.environment, sp.hostname, sp.product_family';
 
-  $view$,
-  p_schema,   -- view schema
-  p_schema,   -- oracle_processors
-  p_schema,   -- oracle_servers (db products)
-  p_schema,   -- oracle_instances
-  p_schema,   -- oracle_servers (wls products)
-  p_schema,   -- wls_domains
-  p_schema    -- server_csi_map
-  );
+  EXECUTE v_sql;
 END;
 $$;
 
