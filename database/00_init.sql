@@ -12,9 +12,9 @@
 -- ---------------------------------------------------------------------------
 -- 1. DATABASE ROLES
 -- ---------------------------------------------------------------------------
-CREATE ROLE sam_loader     WITH LOGIN PASSWORD 'admin';   -- Ansible writes
-CREATE ROLE sam_reader     WITH LOGIN PASSWORD 'admin';   -- Power BI reads
-CREATE ROLE sam_admin_role WITH LOGIN PASSWORD 'admin';    -- Full admin
+CREATE ROLE sam_loader     WITH LOGIN PASSWORD 'changeme_loader';   -- Ansible writes
+CREATE ROLE sam_reader     WITH LOGIN PASSWORD 'changeme_reader';   -- Power BI reads
+CREATE ROLE sam_admin_role WITH LOGIN PASSWORD 'changeme_admin';    -- Full admin
 
 -- Loader: read shared/admin, write to client schemas (granted per schema below)
 GRANT USAGE  ON SCHEMA shared, sam_admin TO sam_loader;

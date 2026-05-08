@@ -936,7 +936,7 @@ BEGIN
 
       RETURN NEW;
     END;
-    $body$
+    $body$;
   $fn$, p_schema, p_schema, p_schema, p_schema, p_schema);
 
   -- Create trigger on oracle_options
@@ -1006,7 +1006,7 @@ BEGIN
 
       RETURN NEW;
     END;
-    $body$
+    $body$;
   $fn$, p_schema, p_schema, p_schema, p_schema, p_schema);
 
   EXECUTE format('DROP TRIGGER IF EXISTS trg_log_instance_change ON %I.oracle_instances',
@@ -1100,7 +1100,7 @@ BEGIN
 
       RETURN NEW;
     END;
-    $body$
+    $body$;
   $fn$, p_schema, p_schema, p_schema, p_schema, p_schema, p_schema, p_schema, p_schema);
 
   EXECUTE format('DROP TRIGGER IF EXISTS trg_log_processor_change ON %I.oracle_processors',
@@ -1169,7 +1169,7 @@ BEGIN
 
       RETURN NEW;
     END;
-    $body$
+    $body$;
   $fn$, p_schema, p_schema, p_schema, p_schema);
 
   EXECUTE format('DROP TRIGGER IF EXISTS trg_log_wls_product_change ON %I.wls_installed_products',
@@ -1221,7 +1221,7 @@ BEGIN
 
       RETURN NEW;
     END;
-    $body$
+    $body$;
   $fn$, p_schema, p_schema, p_schema);
 
   EXECUTE format('DROP TRIGGER IF EXISTS trg_log_wls_domain_change ON %I.wls_domains',
