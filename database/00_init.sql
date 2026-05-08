@@ -12,7 +12,7 @@
 -- ---------------------------------------------------------------------------
 -- 1. DATABASE ROLES
 -- ---------------------------------------------------------------------------
-CREATE ROLE sam_loader     WITH LOGIN PASSWORD 'loader';   -- Ansible writes
+CREATE ROLE sam_loader     WITH LOGIN PASSWORD 'admin';   -- Ansible writes
 CREATE ROLE sam_reader     WITH LOGIN PASSWORD 'admin';   -- Power BI reads
 CREATE ROLE sam_admin_role WITH LOGIN PASSWORD 'admin';    -- Full admin
 
