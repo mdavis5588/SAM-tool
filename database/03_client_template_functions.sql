@@ -1101,7 +1101,7 @@ BEGIN
       RETURN NEW;
     END;
     $body$;
-  $fn$, p_schema, p_schema, p_schema, p_schema, p_schema, p_schema, p_schema, p_schema);
+  $fn$, p_schema, p_schema, p_schema, p_schema, p_schema, p_schema, p_schema);
 
   EXECUTE format('DROP TRIGGER IF EXISTS trg_log_processor_change ON %I.oracle_processors',
     p_schema);
@@ -1222,7 +1222,7 @@ BEGIN
       RETURN NEW;
     END;
     $body$;
-  $fn$, p_schema, p_schema, p_schema);
+  $fn$, p_schema, p_schema, p_schema, p_schema);
 
   EXECUTE format('DROP TRIGGER IF EXISTS trg_log_wls_domain_change ON %I.wls_domains',
     p_schema);
