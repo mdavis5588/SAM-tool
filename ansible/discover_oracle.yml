@@ -230,11 +230,11 @@
     # ------------------------------------------------------------------
     - name: Load SAM payload into PostgreSQL
       community.postgresql.postgresql_query:
-        db:       "{{ sam_db_name }}"
-        login_host: "{{ sam_db_host }}"
-        login_port: "{{ sam_db_port }}"
-        login_user: "{{ sam_db_user }}"
-        login_password: "{{ sam_db_password }}"
+        db:       "{{ client_acme }}"
+        login_host: "{{ PostgreSQL1 }}"
+        login_port: "{{ 5432 }}"
+        login_user: "{{ admin_user }}"
+        login_password: "{{ admin }}"
         query: "SELECT sam.upsert_server_discovery(%(payload)s::jsonb)"
         named_args:
           payload: "{{ sam_payload | to_json }}"
