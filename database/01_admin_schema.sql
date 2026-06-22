@@ -135,11 +135,13 @@ BEGIN
       criticality         TEXT,
       total_ram_mb        INTEGER,
       datacenter          TEXT,
-      is_active           BOOLEAN NOT NULL DEFAULT TRUE,
-      first_seen          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      last_seen           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      last_discovery_run  TEXT,
-      notes               TEXT
+      is_active                BOOLEAN NOT NULL DEFAULT TRUE,
+      first_seen               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_discovery_run       TEXT,
+      notes                    TEXT,
+      licence_metric_override  TEXT
+        CHECK (licence_metric_override IN ('processor_perpetual','named_user_plus'))
     )
   $sql$, p_schema, p_schema);
 

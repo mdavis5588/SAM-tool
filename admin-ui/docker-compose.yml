@@ -1,0 +1,22 @@
+services:
+  sam-admin-ui:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      # PostgreSQL connection
+      DB_HOST:     "${DB_HOST:-localhost}"
+      DB_PORT:     "${DB_PORT:-5432}"
+      DB_NAME:     "${DB_NAME:-samdb}"
+      DB_USER:     "${DB_USER:-sam_admin}"
+      DB_PASSWORD: "${DB_PASSWORD}"
+      # Which client schema to manage
+      SAM_CLIENT_SCHEMA: "${SAM_CLIENT_SCHEMA:-client_acme}"
+      # Admin login
+      ADMIN_USER:     "${ADMIN_USER:-admin}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-changeme}"
+      # Flask secret key (set to a random string in production)
+      FLASK_SECRET:   "${FLASK_SECRET:-change-me-in-production}"
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # allows reaching DB on the host

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Alerts — Oracle SAM{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Compliance Alerts</h4>
+  <span class="badge bg-danger ms-2">{{ alerts | selectattr('severity', 'equalto', 'HIGH') | list | length }} HIGH</span>
+  <span class="badge bg-warning text-dark ms-1">{{ alerts | selectattr('severity', 'equalto', 'MEDIUM') | list | length }} MEDIUM</span>
+</div>
+
+{% if not alerts %}
+<div class="alert alert-success"><i class="bi bi-check-circle"></i> No compliance alerts — everything looks good.</div>
+{% else %}
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>Severity</th>
+            <th>Type</th>
+            <th>Client</th>
+            <th>Object</th>
+            <th>Description</th>
+            <th>Days Until</th>
+            <th>Action Needed</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in alerts %}
+          <tr class="{% if a.severity == 'HIGH' %}table-danger{% elif a.severity == 'MEDIUM' %}table-warning{% endif %}">
+            <td>
+              {% if a.severity == 'HIGH' %}
+                <span class="badge bg-danger">HIGH</span>
+              {% else %}
+                <span class="badge bg-warning text-dark">MEDIUM</span>
+              {% endif %}
+            </td>
+            <td><small>{{ a.alert_type | replace('_',' ') }}</small></td>
+            <td>{{ a.client_code or '—' }}</td>
+            <td><small>{{ a.object_name }}</small></td>
+            <td>{{ a.description }}</td>
+            <td>{% if a.days_until is not none %}{{ a.days_until }}{% else %}—{% endif %}</td>
+            <td><small>{{ a.action_needed }}</small></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

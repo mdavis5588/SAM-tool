@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}{{ contract.contract_name }} — Oracle SAM{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('contracts') }}">Contracts</a></li>
+    <li class="breadcrumb-item active">{{ contract.csi_number or contract.contract_name }}</li>
+  </ol>
+</nav>
+
+<div class="row g-4">
+  <div class="col-lg-4">
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-dark text-white">Contract Details</div>
+      <div class="card-body">
+        <table class="table table-sm table-borderless mb-0">
+          <tr><th>CSI Number</th><td><code>{{ contract.csi_number or '—' }}</code></td></tr>
+          <tr><th>Contract Name</th><td>{{ contract.contract_name }}</td></tr>
+          <tr><th>Vendor Reference</th><td>{{ contract.vendor_reference or '—' }}</td></tr>
+          <tr><th>Purchase Date</th><td>{{ contract.purchase_date or '—' }}</td></tr>
+          <tr><th>Support Start</th><td>{{ contract.support_start or '—' }}</td></tr>
+          <tr><th>Support Expiry</th><td>{{ contract.support_expiry or '—' }}</td></tr>
+          <tr><th>ULA</th><td>{% if contract.is_ula %}Yes — expires {{ contract.ula_expiry }}{% else %}No{% endif %}</td></tr>
+          <tr><th>Sharing Policy</th><td>{{ contract.sharing_policy | replace('_',' ') | title }}</td></tr>
+          <tr><th>Owning Client</th><td>{{ contract.owning_client or '—' }}</td></tr>
+          <tr><th>Status</th><td>
+            {% if contract.status == 'active' %}
+              <span class="badge bg-success">Active</span>
+            {% else %}
+              <span class="badge bg-danger">{{ contract.status | title }}</span>
+            {% endif %}
+          </td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <!-- Entitlement lines -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-header"><i class="bi bi-list-ul"></i> Entitlement Lines</div>
+      <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>#</th>
+              <th>Product</th>
+              <th>Metric</th>
+              <th>Quantity</th>
+              <th>Unit Price</th>
+              <th>Total Price</th>
+              <th>Annual Support</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for l in lines %}
+            <tr>
+              <td>{{ l.line_number }}</td>
+              <td>{{ l.product_name }}</td>
+              <td>{{ l.license_metric | replace('_',' ') | title }}</td>
+              <td>{{ l.quantity }}</td>
+              <td>{% if l.unit_price %}{{ '{:,.2f}'.format(l.unit_price) }}{% else %}—{% endif %}</td>
+              <td>{% if l.total_price %}{{ '{:,.2f}'.format(l.total_price) }}{% else %}—{% endif %}</td>
+              <td>{% if l.annual_support_cost %}{{ '{:,.2f}'.format(l.annual_support_cost) }}{% else %}—{% endif %}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-muted text-center">No lines found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Servers assigned to this CSI -->
+    <div class="card shadow-sm">
+      <div class="card-header"><i class="bi bi-server"></i> Assigned Servers</div>
+      {% if assigned_servers %}
+      <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Hostname</th>
+              <th>Environment</th>
+              <th>Product Family</th>
+              <th>Licences</th>
+              <th>Notes</th>
+              <th>From Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in assigned_servers %}
+            <tr>
+              <td>
+                <a href="{{ url_for('edit_server', server_id=s.server_id) }}">
+                  {{ s.hostname }}
+                </a>
+              </td>
+              <td>{{ s.environment | title }}</td>
+              <td>{{ s.product_family | replace('_',' ') | title }}</td>
+              <td>{{ s.licences_consumed or 'Auto' }}</td>
+              <td><small>{{ s.notes or '' }}</small></td>
+              <td>{{ s.effective_date or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="card-body text-muted">No servers assigned to this contract yet.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
