@@ -149,6 +149,88 @@ INSERT INTO shared.entitlement_client_map (entitlement_id, client_id)
 SELECT 3, client_id FROM sam_admin.clients WHERE is_active = TRUE;
 ```
 
+## Admin UI (Flask)
+
+A web interface for non-technical users to manage licence metric overrides and
+CSI contract assignments per server. Runs as a Docker container.
+
+### Prerequisites
+
+- Docker and Docker Compose installed on the host
+- PostgreSQL reachable from the Docker host
+
+### 1. Configure environment variables
+
+```bash
+cd admin-ui
+cp .env.example .env
+```
+
+Edit `.env` and set the following:
+
+| Variable | Description |
+|---|---|
+| `DB_HOST` | PostgreSQL hostname or IP |
+| `DB_PORT` | PostgreSQL port (default `5432`) |
+| `DB_NAME` | Database name (e.g. `samdb`) |
+| `DB_USER` | Database user (e.g. `sam_admin`) |
+| `DB_PASSWORD` | Database password |
+| `SAM_CLIENT_SCHEMA` | Client schema to manage (e.g. `client_acme`) |
+| `ADMIN_USER` | Login username for the web UI |
+| `ADMIN_PASSWORD` | Login password for the web UI |
+| `FLASK_SECRET` | Random string used to sign session cookies — change this |
+
+### 2. Build and start
+
+```bash
+cd admin-ui
+docker compose up -d
+```
+
+The UI will be available at **http://your-server:5000**.
+
+To stop it:
+
+```bash
+docker compose down
+```
+
+### 3. What you can do in the UI
+
+- **Servers** — see every discovered server with its calculated licence requirement
+  (processor count and type), CSI assignment status, and compliance badge
+- **Edit a server** — switch between Processor Perpetual (default) and Named User Plus;
+  assign or remove CSI contracts with optional licence quantity override
+- **Contracts** — browse all CSI contracts, view entitlement lines and which servers
+  are consuming them
+- **Alerts** — live compliance alerts: expiring contracts, ULA deadlines,
+  unacknowledged HIGH severity changes, and unassigned licences
+
+### 4. Running without Docker (development)
+
+```bash
+cd admin-ui
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+
+export DB_HOST=localhost DB_NAME=samdb DB_USER=sam_admin DB_PASSWORD=yourpassword
+export SAM_CLIENT_SCHEMA=client_acme ADMIN_USER=admin ADMIN_PASSWORD=changeme
+export FLASK_SECRET=dev-only-secret
+
+python app.py
+```
+
+### 5. Running on a different port
+
+Edit `docker-compose.yml` and change the left side of the port mapping:
+
+```yaml
+ports:
+  - "8080:5000"   # now accessible on port 8080
+```
+
+Then restart: `docker compose up -d`
+
 ## Files
 
 ```
