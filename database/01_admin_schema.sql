@@ -325,6 +325,127 @@ BEGIN
     )
   $sql$, p_schema, p_schema);
 
+  -- oracle_rac_nodes: Real Application Clusters node topology per DB instance
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.oracle_rac_nodes (
+      rac_node_id       SERIAL PRIMARY KEY,
+      instance_id       INTEGER NOT NULL
+                          REFERENCES %I.oracle_instances (instance_id) ON DELETE CASCADE,
+      server_id         INTEGER NOT NULL
+                          REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+      node_name         TEXT NOT NULL,
+      node_number       INTEGER,
+      instance_name     TEXT,
+      is_active         BOOLEAN NOT NULL DEFAULT TRUE,
+      last_seen         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      discovery_run_id  TEXT,
+      UNIQUE (instance_id, node_name)
+    )
+  $sql$, p_schema, p_schema, p_schema);
+
+  -- oracle_pdbs: CDB/PDB topology (Oracle 12c+)
+  -- Multitenant requires a separate licence when > 1 PDB is used per CDB.
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.oracle_pdbs (
+      pdb_id                       SERIAL PRIMARY KEY,
+      instance_id                  INTEGER NOT NULL
+                                     REFERENCES %I.oracle_instances (instance_id) ON DELETE CASCADE,
+      pdb_name                     TEXT NOT NULL,
+      pdb_con_id                   INTEGER,
+      open_mode                    TEXT,
+      restricted                   TEXT,
+      is_cdb_root                  BOOLEAN NOT NULL DEFAULT FALSE,
+      requires_multitenant_licence BOOLEAN NOT NULL DEFAULT FALSE,
+      last_seen                    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      discovery_run_id             TEXT,
+      UNIQUE (instance_id, pdb_name)
+    )
+  $sql$, p_schema, p_schema);
+
+  -- oracle_nup_users: Named User Plus user count snapshots per instance
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.oracle_nup_users (
+      nup_id            SERIAL PRIMARY KEY,
+      instance_id       INTEGER NOT NULL
+                          REFERENCES %I.oracle_instances (instance_id) ON DELETE CASCADE,
+      snapshot_date     DATE NOT NULL DEFAULT CURRENT_DATE,
+      active_user_count INTEGER NOT NULL DEFAULT 0,
+      total_user_count  INTEGER NOT NULL DEFAULT 0,
+      locked_user_count INTEGER NOT NULL DEFAULT 0,
+      sample_user_list  TEXT[],
+      discovery_run_id  TEXT,
+      recorded_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  $sql$, p_schema, p_schema);
+
+  -- java_installations: Oracle JDK / GraalVM EE discovered on each server
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.java_installations (
+      java_id            SERIAL PRIMARY KEY,
+      server_id          INTEGER NOT NULL
+                           REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+      java_home          TEXT NOT NULL,
+      java_vendor        TEXT,
+      java_version       TEXT,
+      java_major_version INTEGER,
+      java_edition       TEXT,
+      is_oracle_jdk      BOOLEAN NOT NULL DEFAULT FALSE,
+      requires_licence   BOOLEAN NOT NULL DEFAULT FALSE,
+      licence_metric     TEXT,
+      first_seen         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      discovery_run_id   TEXT,
+      UNIQUE (server_id, java_home)
+    )
+  $sql$, p_schema, p_schema);
+
+  -- mysql_installations: MySQL Enterprise / Community installs
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.mysql_installations (
+      mysql_id          SERIAL PRIMARY KEY,
+      server_id         INTEGER NOT NULL
+                          REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+      mysql_version     TEXT,
+      mysql_edition     TEXT,
+      install_path      TEXT,
+      data_dir          TEXT,
+      port              INTEGER,
+      is_enterprise     BOOLEAN NOT NULL DEFAULT FALSE,
+      requires_licence  BOOLEAN NOT NULL DEFAULT FALSE,
+      first_seen        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      discovery_run_id  TEXT,
+      UNIQUE (server_id, COALESCE(install_path, 'unknown'))
+    )
+  $sql$, p_schema, p_schema);
+
+  -- oci_instances: OCI compute instances discovered via OCI CLI
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.oci_instances (
+      oci_id              SERIAL PRIMARY KEY,
+      server_id           INTEGER
+                            REFERENCES %I.oracle_servers (server_id) ON DELETE SET NULL,
+      oci_instance_id     TEXT NOT NULL UNIQUE,
+      display_name        TEXT,
+      compartment_id      TEXT,
+      compartment_name    TEXT,
+      availability_domain TEXT,
+      region              TEXT,
+      shape               TEXT,
+      ocpu_count          NUMERIC(10,2),
+      memory_gb           NUMERIC(10,2),
+      image_os            TEXT,
+      lifecycle_state     TEXT,
+      is_byol             BOOLEAN NOT NULL DEFAULT FALSE,
+      oracle_db_edition   TEXT,
+      private_ip          TEXT,
+      public_ip           TEXT,
+      first_seen          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      discovery_run_id    TEXT
+    )
+  $sql$, p_schema, p_schema);
+
   -- Create indexes
   EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_proc_server   ON %I.oracle_processors (server_id)', p_schema, p_schema);
   EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_inst_server   ON %I.oracle_instances  (server_id)', p_schema, p_schema);
@@ -334,6 +455,12 @@ BEGIN
   EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_scm_server    ON %I.server_csi_map    (server_id)', p_schema, p_schema);
   EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_scm_csi       ON %I.server_csi_map    (csi_id)', p_schema, p_schema);
   EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_scm_family    ON %I.server_csi_map    (product_family)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_rac_inst      ON %I.oracle_rac_nodes   (instance_id)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_pdb_inst      ON %I.oracle_pdbs        (instance_id)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_nup_inst      ON %I.oracle_nup_users   (instance_id)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_java_server   ON %I.java_installations (server_id)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_mysql_server  ON %I.mysql_installations(server_id)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_oci_server    ON %I.oci_instances      (server_id)', p_schema, p_schema);
 
   -- Install views and functions
   PERFORM sam_admin.install_license_position_view(p_schema);
@@ -341,6 +468,7 @@ BEGIN
   PERFORM sam_admin.install_server_coverage_view(p_schema);
   PERFORM sam_admin.install_changelog_objects(p_schema);
   PERFORM sam_admin.install_upsert_functions(p_schema);
+  PERFORM sam_admin.install_extended_views(p_schema);
 
 END;
 $$;
@@ -382,6 +510,14 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION sam_admin.install_upsert_functions(p_schema TEXT)
+RETURNS VOID LANGUAGE plpgsql AS $$
+BEGIN
+  -- Implemented in 03_client_template_functions.sql
+  NULL;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION sam_admin.install_extended_views(p_schema TEXT)
 RETURNS VOID LANGUAGE plpgsql AS $$
 BEGIN
   -- Implemented in 03_client_template_functions.sql

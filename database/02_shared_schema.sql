@@ -247,6 +247,342 @@ INSERT INTO shared.wls_license_rules (edition_pattern, metric, uses_core_factor,
   ('%Identity Governance%',  'processor', TRUE, 'Oracle Identity Governance');
 
 -- ---------------------------------------------------------------------------
+-- JAVA SE LICENSE EDITIONS
+-- Reference table for determining whether a discovered Java installation
+-- requires an Oracle licence.  Oracle changed its Java licensing model in
+-- January 2019 (JDK 8) and again in September 2021 / January 2023.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS shared.java_license_editions (
+  edition_id        SERIAL PRIMARY KEY,
+  edition_name      TEXT NOT NULL UNIQUE,
+  requires_licence  BOOLEAN NOT NULL DEFAULT FALSE,
+  licence_metric    TEXT,
+  notes             TEXT
+);
+
+INSERT INTO shared.java_license_editions
+  (edition_name, requires_licence, licence_metric, notes) VALUES
+  ('Oracle JDK 8 (pre-Jan-2019)',    FALSE, NULL,       'Free for commercial use until Jan 2019 — no Oracle licence required'),
+  ('Oracle JDK 8 (post-Jan-2019)',   TRUE,  'named_user','Commercial use requires Oracle Java SE Subscription since Jan 2019'),
+  ('Oracle JDK 11 / 17 (2021-2022)', TRUE,  'employee',  'Employee-count metric: Oracle Java SE Universal Subscription from Sept 2021'),
+  ('Oracle JDK 17+ (post-Jan-2023)', TRUE,  'employee',  'Oracle Java SE Universal Subscription: covers all employees regardless of JDK usage'),
+  ('Oracle JDK 21+ LTS',            TRUE,  'employee',  'Long-term support release under employee-count subscription model'),
+  ('Oracle GraalVM Enterprise',      TRUE,  'processor', 'Processor-licensed; included with Oracle Java SE Subscription'),
+  ('OpenJDK',                        FALSE, NULL,        'Free — no Oracle licence required'),
+  ('Eclipse Temurin / AdoptOpenJDK', FALSE, NULL,        'Free Adoptium build of OpenJDK — no Oracle licence required'),
+  ('Amazon Corretto',                FALSE, NULL,        'Free AWS build of OpenJDK — no Oracle licence required'),
+  ('Microsoft Build of OpenJDK',     FALSE, NULL,        'Free Microsoft build of OpenJDK — no Oracle licence required'),
+  ('Azul Zulu',                      FALSE, NULL,        'Free community build; Azul Platform Core/Prime require separate Azul subscription'),
+  ('Oracle JRE 8 (desktop only)',    FALSE, NULL,        'JRE-only personal desktop use — free under NFTC; review terms carefully');
+
+-- ---------------------------------------------------------------------------
+-- MYSQL LICENSE EDITIONS
+-- Reference table for MySQL edition classification.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS shared.mysql_license_editions (
+  edition_id        SERIAL PRIMARY KEY,
+  edition_name      TEXT NOT NULL UNIQUE,
+  requires_licence  BOOLEAN NOT NULL DEFAULT FALSE,
+  licence_metric    TEXT,
+  notes             TEXT
+);
+
+INSERT INTO shared.mysql_license_editions
+  (edition_name, requires_licence, licence_metric, notes) VALUES
+  ('MySQL Community Server', FALSE, NULL,     'GPL — free for open source; proprietary redistribution requires commercial licence'),
+  ('MySQL Enterprise',       TRUE,  'server', 'Annual per-server subscription; includes Enterprise features and Oracle support'),
+  ('MySQL Cluster CGE',      TRUE,  'server', 'Annual per-data-node subscription for NDB Cluster'),
+  ('MySQL Standard',         TRUE,  'server', 'Legacy edition — discontinued; verify against existing contracts'),
+  ('MySQL Classic',          TRUE,  'server', 'Legacy edition — discontinued; verify against existing contracts'),
+  ('MariaDB',                FALSE, NULL,     'Open-source MySQL fork — no Oracle licence required');
+
+-- ---------------------------------------------------------------------------
+-- ULA CERTIFICATION TRACKING
+-- One row per product per client per ULA contract.
+-- Used to track progress toward ULA certification, which must be completed
+-- before the ULA expiry date to lock in deployment counts as perpetual licences.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS shared.ula_certifications (
+  cert_id                SERIAL PRIMARY KEY,
+  csi_id                 INTEGER NOT NULL REFERENCES shared.csi_contracts (csi_id),
+  client_id              INTEGER NOT NULL REFERENCES sam_admin.clients (client_id),
+  product_name           TEXT NOT NULL,
+  ula_start_date         DATE NOT NULL,
+  ula_expiry_date        DATE NOT NULL,
+  deployment_at_start    INTEGER,
+  current_deployment     INTEGER,
+  declared_quantity      INTEGER,
+  certification_date     DATE,
+  certified_by           TEXT,
+  certified_at           TIMESTAMPTZ,
+  status                 TEXT NOT NULL DEFAULT 'pending'
+                           CHECK (status IN ('pending','certified','overdue','at_risk')),
+  notes                  TEXT,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT chk_ula_cert_dates CHECK (ula_expiry_date > ula_start_date),
+  UNIQUE (csi_id, client_id, product_name)
+);
+
+CREATE INDEX idx_ula_csi    ON shared.ula_certifications (csi_id);
+CREATE INDEX idx_ula_client ON shared.ula_certifications (client_id);
+CREATE INDEX idx_ula_status ON shared.ula_certifications (status);
+CREATE INDEX idx_ula_expiry ON shared.ula_certifications (ula_expiry_date);
+
+CREATE TRIGGER trg_ula_updated
+  BEFORE UPDATE ON shared.ula_certifications
+  FOR EACH ROW EXECUTE FUNCTION shared.touch_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- ULA CERTIFICATION STATUS VIEW
+-- Shows health of each ULA: days to expiry, growth since start, risk level.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE VIEW shared.ula_certification_status AS
+SELECT
+  uc.cert_id,
+  uc.csi_id,
+  cs.csi_number,
+  cs.contract_name,
+  c.client_code,
+  c.client_name,
+  uc.product_name,
+  uc.ula_start_date,
+  uc.ula_expiry_date,
+  (uc.ula_expiry_date - CURRENT_DATE)::INTEGER   AS days_until_expiry,
+  uc.deployment_at_start,
+  uc.current_deployment,
+  CASE
+    WHEN uc.current_deployment IS NOT NULL AND uc.deployment_at_start IS NOT NULL
+    THEN uc.current_deployment - uc.deployment_at_start
+    ELSE NULL
+  END                                            AS deployment_growth,
+  uc.declared_quantity,
+  uc.certification_date,
+  uc.certified_by,
+  uc.status,
+  uc.notes,
+  CASE
+    WHEN uc.status = 'certified'                                         THEN 'CERTIFIED'
+    WHEN uc.ula_expiry_date < CURRENT_DATE                               THEN 'OVERDUE'
+    WHEN uc.ula_expiry_date < CURRENT_DATE + INTERVAL '60 days'         THEN 'EXPIRING_SOON'
+    WHEN uc.ula_expiry_date < CURRENT_DATE + INTERVAL '180 days'        THEN 'AT_RISK'
+    ELSE 'ON_TRACK'
+  END                                            AS ula_health,
+  COALESCE(uc.current_deployment, 0)             AS estimated_certifiable_quantity
+FROM shared.ula_certifications uc
+JOIN shared.csi_contracts       cs ON cs.csi_id   = uc.csi_id
+JOIN sam_admin.clients          c  ON c.client_id = uc.client_id
+ORDER BY uc.ula_expiry_date ASC;
+
+-- ---------------------------------------------------------------------------
+-- COST AND RENEWAL FORECASTING VIEW
+-- Projects annual support costs and surfaces contracts by renewal urgency.
+-- Support cost = stated annual_support_cost or 22% of licence cost if unset.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE VIEW shared.cost_renewal_forecast AS
+WITH support_rollup AS (
+  SELECT
+    l.csi_id,
+    SUM(l.total_price)                                                    AS total_licence_cost,
+    SUM(l.annual_support_cost)                                            AS stated_annual_support,
+    CASE
+      WHEN SUM(l.annual_support_cost) IS NOT NULL
+      THEN SUM(l.annual_support_cost)
+      ELSE ROUND(SUM(COALESCE(l.total_price, 0)) * 0.22, 2)
+    END                                                                   AS effective_annual_support
+  FROM shared.license_entitlement_lines l
+  WHERE l.is_active = TRUE
+  GROUP BY l.csi_id
+)
+SELECT
+  cs.csi_id,
+  cs.csi_number,
+  cs.contract_name,
+  cs.currency,
+  cs.purchase_date,
+  cs.support_start,
+  cs.support_expiry,
+  cs.is_ula,
+  cs.ula_expiry,
+  cs.status,
+  cs.sharing_policy,
+  oc.client_code                                                          AS owning_client,
+  sr.total_licence_cost,
+  sr.stated_annual_support,
+  sr.effective_annual_support,
+  -- Years of active support remaining
+  CASE
+    WHEN cs.support_expiry IS NULL THEN NULL
+    ELSE GREATEST(0, ROUND(
+      EXTRACT(EPOCH FROM (cs.support_expiry - CURRENT_DATE)) / (365.25 * 86400), 1
+    ))
+  END                                                                     AS support_years_remaining,
+  -- Support cost projections
+  ROUND(sr.effective_annual_support * 1, 2)                              AS forecast_1yr_support,
+  ROUND(sr.effective_annual_support * 2, 2)                              AS forecast_2yr_support,
+  ROUND(sr.effective_annual_support * 3, 2)                              AS forecast_3yr_support,
+  -- Total cost of ownership (licence + N years support)
+  COALESCE(sr.total_licence_cost, 0)
+    + COALESCE(sr.effective_annual_support, 0)                           AS tco_1yr,
+  COALESCE(sr.total_licence_cost, 0)
+    + COALESCE(sr.effective_annual_support * 3, 0)                       AS tco_3yr,
+  -- Renewal urgency classification
+  CASE
+    WHEN cs.support_expiry IS NULL                               THEN 'NO_EXPIRY_SET'
+    WHEN cs.support_expiry < CURRENT_DATE                        THEN 'EXPIRED'
+    WHEN cs.support_expiry < CURRENT_DATE + INTERVAL '30 days'  THEN 'RENEW_NOW'
+    WHEN cs.support_expiry < CURRENT_DATE + INTERVAL '90 days'  THEN 'URGENT'
+    WHEN cs.support_expiry < CURRENT_DATE + INTERVAL '180 days' THEN 'DUE_SOON'
+    ELSE 'CURRENT'
+  END                                                                     AS renewal_urgency,
+  (cs.support_expiry - CURRENT_DATE)::INTEGER                            AS days_until_renewal
+FROM shared.csi_contracts       cs
+LEFT JOIN support_rollup        sr ON sr.csi_id        = cs.csi_id
+LEFT JOIN sam_admin.clients     oc ON oc.client_id     = cs.owning_client_id
+ORDER BY
+  CASE
+    WHEN cs.support_expiry IS NULL THEN 9999999
+    ELSE (cs.support_expiry - CURRENT_DATE)
+  END ASC;
+
+-- ---------------------------------------------------------------------------
+-- CROSS-CLIENT COMPLIANCE ALERTS
+-- Returns all actionable alerts across every client:
+--   - CSI contracts expiring within 90 days
+--   - ULA contracts expiring within 180 days
+--   - Unacknowledged HIGH severity changelog entries older than 7 days
+--   - CSI contracts with no policy or client assignment
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION shared.get_compliance_alerts()
+RETURNS TABLE (
+  alert_type    TEXT,
+  severity      TEXT,
+  client_code   TEXT,
+  client_name   TEXT,
+  object_name   TEXT,
+  description   TEXT,
+  days_until    INTEGER,
+  action_needed TEXT
+) LANGUAGE plpgsql AS $$
+DECLARE
+  v_client RECORD;
+  v_sql    TEXT;
+  v_row    RECORD;
+BEGIN
+
+  -- Alert: CSI support contracts expiring within 90 days
+  FOR v_row IN
+    SELECT cs.csi_number, cs.contract_name,
+           c.client_code, c.client_name,
+           (cs.support_expiry - CURRENT_DATE)::INTEGER AS days_left,
+           cs.support_expiry
+    FROM   shared.csi_contracts   cs
+    JOIN   shared.csi_client_map  m  ON m.csi_id    = cs.csi_id
+    JOIN   sam_admin.clients      c  ON c.client_id = m.client_id
+    WHERE  cs.support_expiry IS NOT NULL
+      AND  cs.support_expiry >= CURRENT_DATE
+      AND  cs.support_expiry <  CURRENT_DATE + INTERVAL '90 days'
+      AND  cs.status = 'active'
+  LOOP
+    alert_type    := 'CSI_EXPIRING';
+    severity      := CASE WHEN v_row.days_left <= 30 THEN 'HIGH' ELSE 'MEDIUM' END;
+    client_code   := v_row.client_code;
+    client_name   := v_row.client_name;
+    object_name   := v_row.csi_number || ' — ' || v_row.contract_name;
+    description   := 'Support contract expires in ' || v_row.days_left
+                     || ' days (' || v_row.support_expiry || ')';
+    days_until    := v_row.days_left;
+    action_needed := 'Initiate renewal with Oracle LMS / reseller before expiry';
+    RETURN NEXT;
+  END LOOP;
+
+  -- Alert: ULA contracts expiring within 180 days
+  FOR v_row IN
+    SELECT cs.csi_number, cs.contract_name,
+           c.client_code, c.client_name,
+           cs.ula_expiry,
+           (cs.ula_expiry - CURRENT_DATE)::INTEGER AS days_left
+    FROM   shared.csi_contracts   cs
+    JOIN   shared.csi_client_map  m  ON m.csi_id    = cs.csi_id
+    JOIN   sam_admin.clients      c  ON c.client_id = m.client_id
+    WHERE  cs.is_ula = TRUE
+      AND  cs.ula_expiry IS NOT NULL
+      AND  cs.ula_expiry >= CURRENT_DATE
+      AND  cs.ula_expiry <  CURRENT_DATE + INTERVAL '180 days'
+  LOOP
+    alert_type    := 'ULA_EXPIRING';
+    severity      := CASE WHEN v_row.days_left <= 60 THEN 'HIGH' ELSE 'MEDIUM' END;
+    client_code   := v_row.client_code;
+    client_name   := v_row.client_name;
+    object_name   := v_row.csi_number || ' — ' || v_row.contract_name;
+    description   := 'ULA expires in ' || v_row.days_left
+                     || ' days. Certification must be completed before '
+                     || v_row.ula_expiry;
+    days_until    := v_row.days_left;
+    action_needed := 'Run full deployment count and initiate ULA certification with Oracle';
+    RETURN NEXT;
+  END LOOP;
+
+  -- Alert: unacknowledged HIGH severity changelog entries older than 7 days
+  FOR v_client IN
+    SELECT client_code, schema_name FROM sam_admin.clients WHERE is_active = TRUE
+  LOOP
+    BEGIN
+      v_sql := format(
+        $q$SELECT hostname, change_category, object_name, detected_at,
+                  EXTRACT(EPOCH FROM (NOW() - detected_at)) / 86400 AS days_old
+           FROM %I.discovery_changelog
+           WHERE severity = 'HIGH' AND NOT acknowledged
+             AND detected_at < NOW() - INTERVAL '7 days'$q$,
+        v_client.schema_name
+      );
+      FOR v_row IN EXECUTE v_sql LOOP
+        alert_type    := 'STALE_HIGH_CHANGE';
+        severity      := 'HIGH';
+        client_code   := v_client.client_code;
+        client_name   := (SELECT c.client_name FROM sam_admin.clients c
+                          WHERE  c.client_code = v_client.client_code);
+        object_name   := v_row.hostname || ': ' || v_row.object_name;
+        description   := 'Unacknowledged HIGH severity change ('
+                         || v_row.change_category || ') detected '
+                         || ROUND(v_row.days_old) || ' days ago';
+        days_until    := NULL;
+        action_needed := 'Acknowledge in discovery_changelog; update server_csi_map if licence impact is confirmed';
+        RETURN NEXT;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+  END LOOP;
+
+  -- Alert: licences with no policy or no client assignment
+  FOR v_row IN
+    SELECT csi_number, contract_name, allocation_status, product_families
+    FROM   shared.unassigned_licences
+  LOOP
+    alert_type    := 'UNASSIGNED_LICENCE';
+    severity      := 'MEDIUM';
+    client_code   := NULL;
+    client_name   := NULL;
+    object_name   := v_row.csi_number || ' — ' || v_row.contract_name;
+    description   := v_row.allocation_status || ': '
+                     || COALESCE(v_row.product_families, 'unknown product');
+    days_until    := NULL;
+    action_needed := CASE v_row.allocation_status
+      WHEN 'NEEDS POLICY'     THEN 'Set sharing_policy via shared.set_csi_owner() or shared.assign_csi_to_client()'
+      WHEN 'NEEDS ASSIGNMENT' THEN 'Assign this CSI to a client via shared.assign_csi_to_client()'
+      ELSE 'Review and assign'
+    END;
+    RETURN NEXT;
+  END LOOP;
+
+END;
+$$;
+
+-- Convenience view — materialises alerts as a plain table for Power BI
+CREATE OR REPLACE VIEW shared.compliance_alerts AS
+SELECT * FROM shared.get_compliance_alerts();
+
+-- ---------------------------------------------------------------------------
 -- CROSS-CLIENT SUMMARY VIEW (placeholder — rebuilt by refresh function)
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE VIEW shared.cross_client_summary AS

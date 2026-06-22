@@ -1,0 +1,179 @@
+---
+# =============================================================================
+# Oracle SAM - Java SE Discovery Playbook
+# Discovers all Java installations on target hosts and classifies each one
+# against Oracle's licensing model to identify which installations require
+# an Oracle Java SE Subscription.
+#
+# Oracle changed Java licensing three times:
+#   Jan 2019  — JDK 8 commercial use now requires a subscription
+#   Sep 2021  — Employee-count metric replaces named-user for JDK 11+
+#   Jan 2023  — All JDK 17+ require subscription; count is total employees
+#
+# Only Oracle JDK / GraalVM EE require licences.
+# OpenJDK, Temurin, Corretto, Zulu, and other builds are free.
+# =============================================================================
+
+- name: Oracle Java SE SAM discovery
+  hosts: all
+  gather_facts: true
+  become: false
+  serial: 10
+
+  vars:
+    sam_run_id: "{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}-{{ inventory_hostname | hash('md5') | truncate(6, true, '') }}"
+    sam_client_schema: "{{ sam_client_schema | mandatory('sam_client_schema must be set, e.g. client_acme') }}"
+    java_search_paths:
+      - /usr/lib/jvm
+      - /usr/java
+      - /opt/java
+      - /opt/jdk
+      - /usr/local/java
+      - /oracle/java
+      - /u01/app/oracle/product
+
+  tasks:
+
+    # ------------------------------------------------------------------
+    # 1. FIND ALL JAVA BINARIES
+    # ------------------------------------------------------------------
+    - name: Find all java executables on the system
+      ansible.builtin.shell: |
+        find {{ java_search_paths | join(' ') }} /home -name java -type f \
+          -not -path '*/jre/bin/java' 2>/dev/null | sort -u
+        # Also check PATH-based entries
+        which -a java 2>/dev/null
+      register: java_paths_raw
+      changed_when: false
+      ignore_errors: true
+
+    - name: Deduplicate and resolve java paths
+      ansible.builtin.shell: |
+        echo "{{ java_paths_raw.stdout }}" | sort -u | while read p; do
+          [ -x "$p" ] && readlink -f "$p" 2>/dev/null || echo "$p"
+        done | sort -u
+      register: java_binaries
+      changed_when: false
+      ignore_errors: true
+
+    - name: Set java binary list
+      ansible.builtin.set_fact:
+        sam_java_binaries: "{{ java_binaries.stdout_lines | reject('equalto','') | list }}"
+
+    # ------------------------------------------------------------------
+    # 2. QUERY EACH JAVA BINARY FOR VERSION AND VENDOR
+    # ------------------------------------------------------------------
+    - name: Query java version and vendor for each binary
+      ansible.builtin.shell: |
+        JAVA="{{ item }}"
+        JAVA_HOME=$(dirname $(dirname "$JAVA"))
+        VERSION_OUTPUT=$("$JAVA" -version 2>&1)
+        VERSION=$(echo "$VERSION_OUTPUT" | grep -oP '(?<=")\d+\.\d+[\.\d_]*(?=")' | head -1)
+        [ -z "$VERSION" ] && VERSION=$(echo "$VERSION_OUTPUT" | grep -oP '\d+\.\d+[\.\d_]*' | head -1)
+        MAJOR=$(echo "$VERSION" | cut -d. -f1)
+        [ "$MAJOR" = "1" ] && MAJOR=$(echo "$VERSION" | cut -d. -f2)
+        VENDOR_LINE=$(echo "$VERSION_OUTPUT" | grep -iE 'openjdk|corretto|temurin|zulu|microsoft|graalvm|oracle' | head -1)
+
+        IS_ORACLE=false
+        EDITION="Unknown"
+        VENDOR="Unknown"
+
+        if echo "$VERSION_OUTPUT" | grep -qi 'GraalVM'; then
+          IS_ORACLE=true
+          VENDOR="GraalVM"
+          if echo "$VERSION_OUTPUT" | grep -qi 'Enterprise'; then
+            EDITION="Oracle GraalVM Enterprise"
+          else
+            EDITION="GraalVM Community"
+            IS_ORACLE=false
+          fi
+        elif echo "$VERSION_OUTPUT" | grep -qi 'Amazon Corretto\|Corretto'; then
+          VENDOR="Amazon Corretto"
+          EDITION="Amazon Corretto"
+        elif echo "$VERSION_OUTPUT" | grep -qi 'Temurin\|AdoptOpenJDK'; then
+          VENDOR="Eclipse Temurin"
+          EDITION="Eclipse Temurin / AdoptOpenJDK"
+        elif echo "$VERSION_OUTPUT" | grep -qi 'Microsoft'; then
+          VENDOR="Microsoft"
+          EDITION="Microsoft Build of OpenJDK"
+        elif echo "$VERSION_OUTPUT" | grep -qi 'Zulu'; then
+          VENDOR="Azul"
+          EDITION="Azul Zulu"
+        elif echo "$VERSION_OUTPUT" | grep -qi 'OpenJDK'; then
+          VENDOR="OpenJDK"
+          EDITION="OpenJDK"
+        elif echo "$VERSION_OUTPUT" | grep -qi 'Java(TM)\|Java HotSpot\|Oracle'; then
+          IS_ORACLE=true
+          VENDOR="Oracle"
+          if [ -n "$MAJOR" ] && [ "$MAJOR" -ge 21 ]; then
+            EDITION="Oracle JDK 21+ LTS"
+          elif [ -n "$MAJOR" ] && [ "$MAJOR" -ge 17 ]; then
+            EDITION="Oracle JDK 17+ (post-Jan-2023)"
+          elif [ -n "$MAJOR" ] && [ "$MAJOR" -ge 11 ]; then
+            EDITION="Oracle JDK 11 / 17 (2021-2022)"
+          elif [ -n "$MAJOR" ] && [ "$MAJOR" -le 8 ]; then
+            EDITION="Oracle JDK 8 (post-Jan-2019)"
+          else
+            EDITION="Oracle JDK 17+ (post-Jan-2023)"
+          fi
+        fi
+
+        echo "{\"java_home\":\"$JAVA_HOME\",\"java_binary\":\"$JAVA\",\"java_version\":\"$VERSION\",\"java_major_version\":$MAJOR,\"java_vendor\":\"$VENDOR\",\"java_edition\":\"$EDITION\",\"is_oracle_jdk\":$IS_ORACLE}"
+      loop: "{{ sam_java_binaries | default([]) }}"
+      loop_control:
+        label: "{{ item }}"
+      register: java_version_results
+      changed_when: false
+      ignore_errors: true
+
+    - name: Parse java discovery results
+      ansible.builtin.set_fact:
+        sam_java_installations: >-
+          {{
+            java_version_results.results
+            | selectattr('rc', 'equalto', 0)
+            | map(attribute='stdout')
+            | map('trim')
+            | select
+            | map('from_json')
+            | list
+            | unique(attribute='java_home')
+          }}
+
+    # ------------------------------------------------------------------
+    # 3. ASSEMBLE AND WRITE PAYLOAD
+    # ------------------------------------------------------------------
+    - name: Assemble Java discovery payload
+      ansible.builtin.set_fact:
+        sam_java_payload:
+          run_id:              "{{ sam_run_id }}"
+          hostname:            "{{ inventory_hostname }}"
+          fqdn:                "{{ ansible_fqdn }}"
+          ip_address:          "{{ ansible_default_ipv4.address | default('') }}"
+          os_family:           "{{ ansible_os_family }}"
+          os_distribution:     "{{ ansible_distribution }}"
+          os_version:          "{{ ansible_distribution_version }}"
+          environment:         "{{ sam_environment | default('unknown') }}"
+          total_ram_mb:        "{{ ansible_memtotal_mb | default(0) }}"
+          java_installations:  "{{ sam_java_installations | default([]) }}"
+
+    - name: Load Java payload into PostgreSQL
+      community.postgresql.postgresql_query:
+        db:             "{{ sam_db_name }}"
+        login_host:     "{{ sam_db_host }}"
+        login_port:     "{{ sam_db_port }}"
+        login_user:     "{{ sam_db_user }}"
+        login_password: "{{ sam_db_password }}"
+        query: "SELECT {{ sam_client_schema }}.upsert_java_discovery(%(payload)s::jsonb)"
+        named_args:
+          payload: "{{ sam_java_payload | to_json }}"
+      delegate_to: localhost
+      ignore_errors: true
+
+    - name: Print Java discovery summary
+      ansible.builtin.debug:
+        msg: >
+          {{ inventory_hostname }} —
+          Java installations found: {{ sam_java_installations | default([]) | length }},
+          Oracle JDK: {{ sam_java_installations | default([]) | selectattr('is_oracle_jdk') | list | length }},
+          Requiring licence: {{ sam_java_installations | default([]) | selectattr('is_oracle_jdk') | list | length }}

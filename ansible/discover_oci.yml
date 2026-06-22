@@ -1,0 +1,209 @@
+---
+# =============================================================================
+# Oracle SAM - OCI (Oracle Cloud Infrastructure) Discovery Playbook
+# Discovers Oracle Database instances running in OCI and classifies them as:
+#   BYOL (Bring Your Own Licence) — customer must supply Oracle DB licences
+#                                   from their existing on-prem contracts.
+#   Licence-included             — Oracle charges for the licence within the
+#                                   hourly OCI rate; no separate CSI required.
+#
+# This playbook runs from the Ansible control node using the OCI CLI.
+# It does NOT SSH into target hosts — it calls the OCI REST API via oci-cli.
+#
+# Prerequisites:
+#   pip install oci-cli
+#   oci setup config  (or set OCI_CLI_CONFIG_FILE env var)
+#
+# Compartments to scan are set via the oci_compartment_ids variable in
+# ansible/hosts.yml or passed with -e 'oci_compartment_ids=[...]'.
+#
+# Set sam_client_schema to the target client schema, e.g. client_acme.
+# =============================================================================
+
+- name: Oracle OCI instance discovery
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    sam_run_id: "{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}-oci"
+    sam_client_schema: "{{ sam_client_schema | mandatory('sam_client_schema must be set, e.g. client_acme') }}"
+    oci_compartment_ids: "{{ oci_compartment_ids | default([]) }}"
+    oci_regions: "{{ oci_regions | default(['us-ashburn-1', 'us-phoenix-1', 'eu-frankfurt-1', 'uk-london-1']) }}"
+    oci_cli_bin: "{{ oci_cli_path | default('oci') }}"
+    sam_instances: []
+
+  tasks:
+
+    # ------------------------------------------------------------------
+    # 1. VERIFY OCI CLI IS AVAILABLE
+    # ------------------------------------------------------------------
+    - name: Check OCI CLI is available
+      ansible.builtin.command: "{{ oci_cli_bin }} --version"
+      register: oci_cli_check
+      changed_when: false
+      failed_when: oci_cli_check.rc != 0
+
+    - name: Verify OCI config
+      ansible.builtin.command: "{{ oci_cli_bin }} iam region list --output json"
+      register: oci_regions_check
+      changed_when: false
+      ignore_errors: true
+
+    # ------------------------------------------------------------------
+    # 2. DISCOVER COMPUTE INSTANCES PER COMPARTMENT
+    #    For each compartment, list all compute instances across regions.
+    # ------------------------------------------------------------------
+    - name: List compute instances per compartment
+      ansible.builtin.shell: |
+        {{ oci_cli_bin }} compute instance list \
+          --compartment-id "{{ item.0 }}" \
+          --region "{{ item.1 }}" \
+          --lifecycle-state RUNNING \
+          --output json \
+          --all 2>/dev/null \
+        | python3 -c "
+        import json, sys
+        data = json.load(sys.stdin)
+        compartment_id = '{{ item.0 }}'
+        region = '{{ item.1 }}'
+        for inst in data.get('data', []):
+          src = inst.get('source-details', {})
+          img_id = src.get('image-id', '')
+          print(json.dumps({
+            'id':                   inst.get('id', ''),
+            'display_name':         inst.get('display-name', ''),
+            'compartment_id':       compartment_id,
+            'compartment_name':     '',
+            'availability_domain':  inst.get('availability-domain', ''),
+            'region':               region,
+            'shape':                inst.get('shape', ''),
+            'ocpu_count':           inst.get('shape-config', {}).get('ocpus', 0),
+            'memory_gb':            inst.get('shape-config', {}).get('memory-in-gbs', 0),
+            'image_os':             inst.get('image', {}).get('operating-system', ''),
+            'lifecycle_state':      inst.get('lifecycle-state', ''),
+            'private_ip':           (inst.get('primary-private-ip', '') or ''),
+            'public_ip':            (inst.get('primary-public-ip', '') or ''),
+            'is_byol':              False,
+            'oracle_db_edition':    None
+          }))
+        " 2>/dev/null
+      loop: "{{ oci_compartment_ids | product(oci_regions) | list }}"
+      loop_control:
+        label: "compartment={{ item.0 | truncate(20,true,'') }} region={{ item.1 }}"
+      register: oci_compute_raw
+      changed_when: false
+      ignore_errors: true
+
+    # ------------------------------------------------------------------
+    # 3. DISCOVER DB SYSTEMS (Oracle Database on OCI)
+    #    DB Systems are separate from compute — they have explicit edition
+    #    and licence model fields.
+    # ------------------------------------------------------------------
+    - name: List Oracle DB systems per compartment
+      ansible.builtin.shell: |
+        {{ oci_cli_bin }} db system list \
+          --compartment-id "{{ item.0 }}" \
+          --region "{{ item.1 }}" \
+          --lifecycle-state AVAILABLE \
+          --output json \
+          --all 2>/dev/null \
+        | python3 -c "
+        import json, sys
+        data = json.load(sys.stdin)
+        compartment_id = '{{ item.0 }}'
+        region = '{{ item.1 }}'
+        for db in data.get('data', []):
+          is_byol = (db.get('license-model', '') == 'BRING_YOUR_OWN_LICENSE')
+          edition_map = {
+            'ENTERPRISE_EDITION':          'Enterprise Edition',
+            'ENTERPRISE_EDITION_HIGH_PERFORMANCE': 'Enterprise Edition High Performance',
+            'ENTERPRISE_EDITION_EXTREME_PERFORMANCE': 'Enterprise Edition Extreme Performance',
+            'STANDARD_EDITION':            'Standard Edition'
+          }
+          edition = edition_map.get(db.get('database-edition', ''), db.get('database-edition', ''))
+          print(json.dumps({
+            'id':                   db.get('id', ''),
+            'display_name':         db.get('display-name', ''),
+            'compartment_id':       compartment_id,
+            'compartment_name':     '',
+            'availability_domain':  db.get('availability-domain', ''),
+            'region':               region,
+            'shape':                db.get('shape', ''),
+            'ocpu_count':           db.get('cpu-core-count', 0),
+            'memory_gb':            0,
+            'image_os':             'Oracle Linux (DB System)',
+            'lifecycle_state':      db.get('lifecycle-state', ''),
+            'private_ip':           (db.get('scan-ip-ids', [None])[0] or ''),
+            'public_ip':            '',
+            'is_byol':              is_byol,
+            'oracle_db_edition':    edition
+          }))
+        " 2>/dev/null
+      loop: "{{ oci_compartment_ids | product(oci_regions) | list }}"
+      loop_control:
+        label: "compartment={{ item.0 | truncate(20,true,'') }} region={{ item.1 }}"
+      register: oci_dbsystem_raw
+      changed_when: false
+      ignore_errors: true
+
+    # ------------------------------------------------------------------
+    # 4. MERGE AND DEDUPLICATE RESULTS
+    # ------------------------------------------------------------------
+    - name: Combine compute and DB system instances
+      ansible.builtin.set_fact:
+        sam_oci_instances: >-
+          {{
+            (
+              oci_compute_raw.results
+              | selectattr('rc', 'equalto', 0)
+              | map(attribute='stdout_lines')
+              | flatten
+              | reject('equalto','')
+              | map('from_json')
+              | list
+            ) + (
+              oci_dbsystem_raw.results
+              | selectattr('rc', 'equalto', 0)
+              | map(attribute='stdout_lines')
+              | flatten
+              | reject('equalto','')
+              | map('from_json')
+              | list
+            )
+          }}
+
+    - name: Remove instances with empty IDs
+      ansible.builtin.set_fact:
+        sam_oci_instances: "{{ sam_oci_instances | rejectattr('id', 'equalto', '') | list }}"
+
+    # ------------------------------------------------------------------
+    # 5. ASSEMBLE AND WRITE PAYLOAD
+    # ------------------------------------------------------------------
+    - name: Assemble OCI discovery payload
+      ansible.builtin.set_fact:
+        sam_oci_payload:
+          run_id:    "{{ sam_run_id }}"
+          instances: "{{ sam_oci_instances | default([]) }}"
+
+    - name: Load OCI payload into PostgreSQL
+      community.postgresql.postgresql_query:
+        db:             "{{ sam_db_name }}"
+        login_host:     "{{ sam_db_host }}"
+        login_port:     "{{ sam_db_port }}"
+        login_user:     "{{ sam_db_user }}"
+        login_password: "{{ sam_db_password }}"
+        query: "SELECT {{ sam_client_schema }}.upsert_oci_discovery(%(payload)s::jsonb)"
+        named_args:
+          payload: "{{ sam_oci_payload | to_json }}"
+      when: sam_oci_instances | default([]) | length > 0
+
+    - name: Print OCI discovery summary
+      ansible.builtin.debug:
+        msg: >
+          OCI discovery complete —
+          Total instances: {{ sam_oci_instances | default([]) | length }},
+          BYOL: {{ sam_oci_instances | default([]) | selectattr('is_byol') | list | length }}
+          (BYOL instances require on-premises licence coverage),
+          Licence-included: {{ sam_oci_instances | default([]) | rejectattr('is_byol') | list | length }},
+          DB Systems: {{ sam_oci_instances | default([]) | selectattr('oracle_db_edition','ne',none) | list | length }}

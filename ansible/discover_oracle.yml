@@ -167,7 +167,7 @@
       ignore_errors: true
       changed_when: false
 
-    - name: Query installed options per instance
+    - name: Query installed options per instance (dba_registry)
       ansible.builtin.shell: |
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
@@ -190,7 +190,159 @@
       changed_when: false
 
     # ------------------------------------------------------------------
-    # 5. ASSEMBLE FACT PAYLOAD
+    # 5. EXTENDED DISCOVERY — v$option, NUP users, PDBs, RAC nodes
+    #    These queries feed the extended upsert function for richer
+    #    licence detection (Multitenant, Active Data Guard, RAC, NUP).
+    # ------------------------------------------------------------------
+    - name: Query v$option for all licensed features
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s / as sysdba << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        SELECT '{"option":"' || parameter || '","value":"' || value || '"}'
+        FROM   v$option
+        WHERE  value = 'TRUE'
+          AND  parameter IN (
+            'Real Application Clusters',
+            'Active Data Guard',
+            'Advanced Compression',
+            'Oracle Database Vault',
+            'Label Security',
+            'Advanced Security',
+            'Multitenant',
+            'Partitioning',
+            'OLAP',
+            'Spatial and Graph',
+            'Oracle Streams AQ',
+            'Data Mining'
+          )
+        ORDER BY parameter;
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: voption_results
+      become: true
+      become_user: oracle
+      ignore_errors: true
+      changed_when: false
+
+    - name: Query dba_users for Named User Plus counting
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s / as sysdba << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        SELECT
+          '{"nup_total_users":' || COUNT(*) ||
+          ',"nup_active_users":' || SUM(CASE WHEN account_status = 'OPEN' THEN 1 ELSE 0 END) ||
+          ',"nup_locked_users":' || SUM(CASE WHEN account_status LIKE '%LOCKED%' THEN 1 ELSE 0 END) ||
+          ',"nup_sample_users":' || '[' ||
+            LISTAGG('"' || username || '"', ',') WITHIN GROUP (ORDER BY username) ||
+          ']' || '}'
+        FROM (
+          SELECT username, account_status
+          FROM   dba_users
+          WHERE  oracle_maintained = 'N'
+             OR  oracle_maintained IS NULL
+          ORDER  BY username
+          FETCH FIRST 50 ROWS ONLY
+        );
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: nup_results
+      become: true
+      become_user: oracle
+      ignore_errors: true
+      changed_when: false
+
+    - name: Query v$pdbs for CDB/PDB topology (Oracle 12c+)
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s / as sysdba << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        WHENEVER SQLERROR CONTINUE
+        SELECT '{"pdb_name":"' || name || '","con_id":' || con_id ||
+               ',"open_mode":"' || open_mode || '","restricted":"' || restricted || '"}'
+        FROM   v$pdbs
+        ORDER  BY con_id;
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: pdb_results
+      become: true
+      become_user: oracle
+      ignore_errors: true
+      changed_when: false
+
+    - name: Query gv$instance for RAC cluster nodes
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s / as sysdba << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        WHENEVER SQLERROR CONTINUE
+        SELECT '{"node_name":"' || host_name || '","node_number":' || instance_number ||
+               ',"instance_name":"' || instance_name || '"}'
+        FROM   gv$instance
+        ORDER  BY instance_number;
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: rac_results
+      become: true
+      become_user: oracle
+      ignore_errors: true
+      changed_when: false
+
+    - name: Assemble extended instance data
+      ansible.builtin.set_fact:
+        sam_extended_instances: >-
+          {{
+            sam_oracle_instances | default([]) | map('combine', {}) | list
+            | zip(
+                nup_results.results | map(attribute='stdout') | map('trim') | list,
+                pdb_results.results | map(attribute='stdout') | map('trim') | list,
+                rac_results.results | map(attribute='stdout') | map('trim') | list,
+                voption_results.results | map(attribute='stdout') | map('trim') | list
+              )
+            | list
+          }}
+
+    - name: Build extended instance payload list
+      ansible.builtin.set_fact:
+        sam_instances_extended: >-
+          {{
+            sam_instances_extended | default([]) + [{
+              'sid': item.0.sid,
+              'nup_total_users':  (item.1 | from_json).nup_total_users  | default(0),
+              'nup_active_users': (item.1 | from_json).nup_active_users | default(0),
+              'nup_locked_users': (item.1 | from_json).nup_locked_users | default(0),
+              'nup_sample_users': (item.1 | from_json).nup_sample_users | default([]),
+              'pdbs': item.2.split('\n') | reject('equalto','') | map('from_json') | list,
+              'rac_nodes': item.3.split('\n') | reject('equalto','') | map('from_json') | list,
+              'v_options': item.4.split('\n') | reject('equalto','') | map('from_json') | list
+            }]
+          }}
+      loop: "{{ sam_extended_instances | default([]) }}"
+      when: sam_extended_instances is defined
+
+    # ------------------------------------------------------------------
+    # 6. ASSEMBLE FACT PAYLOAD
     # ------------------------------------------------------------------
     - name: Assemble SAM discovery payload
       ansible.builtin.set_fact:
@@ -225,8 +377,15 @@
               | list
             }}
 
+    - name: Assemble SAM extended payload
+      ansible.builtin.set_fact:
+        sam_extended_payload:
+          run_id:    "{{ sam_run_id }}"
+          hostname:  "{{ inventory_hostname }}"
+          instances: "{{ sam_instances_extended | default([]) }}"
+
     # ------------------------------------------------------------------
-    # 6. WRITE TO POSTGRESQL
+    # 7. WRITE TO POSTGRESQL
     # ------------------------------------------------------------------
     - name: Load SAM payload into PostgreSQL
       community.postgresql.postgresql_query:
@@ -238,6 +397,19 @@
         query: "SELECT sam.upsert_server_discovery(%(payload)s::jsonb)"
         named_args:
           payload: "{{ sam_payload | to_json }}"
+      delegate_to: localhost
+      ignore_errors: true
+
+    - name: Load extended SAM payload into PostgreSQL (RAC, PDB, NUP)
+      community.postgresql.postgresql_query:
+        db:             "{{ sam_db_name }}"
+        login_host:     "{{ sam_db_host }}"
+        login_port:     "{{ sam_db_port }}"
+        login_user:     "{{ sam_db_user }}"
+        login_password: "{{ sam_db_password }}"
+        query: "SELECT {{ sam_client_schema }}.upsert_oracle_extended_discovery(%(payload)s::jsonb)"
+        named_args:
+          payload: "{{ sam_extended_payload | to_json }}"
       delegate_to: localhost
       ignore_errors: true
 

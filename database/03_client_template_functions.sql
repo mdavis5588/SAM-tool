@@ -1267,6 +1267,579 @@ BEGIN
 
 END;
 $$;
+-- ---------------------------------------------------------------------------
+-- INSTALL EXTENDED VIEWS
+-- Creates views and upsert functions for:
+--   - Java SE licence position
+--   - MySQL Enterprise licence position
+--   - Named User Plus (NUP) coverage vs minimum requirements
+--   - OCI instance licence position (BYOL vs licence-included)
+--   - Extended Oracle upsert (RAC nodes, PDBs, NUP users, v$option extras)
+--   - Java discovery upsert
+--   - MySQL discovery upsert
+--   - OCI discovery upsert
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION sam_admin.install_extended_views(p_schema TEXT)
+RETURNS VOID LANGUAGE plpgsql AS $$
+BEGIN
+
+  -- -------------------------------------------------------------------------
+  -- JAVA LICENCE POSITION VIEW
+  -- Shows every discovered Java installation with its licence requirement.
+  -- -------------------------------------------------------------------------
+  EXECUTE format($view$
+    CREATE OR REPLACE VIEW %I.java_licence_position AS
+    SELECT
+      s.server_id,
+      s.hostname,
+      s.environment::TEXT,
+      s.datacenter,
+      j.java_id,
+      j.java_home,
+      j.java_vendor,
+      j.java_version,
+      j.java_major_version,
+      j.java_edition,
+      j.is_oracle_jdk,
+      j.requires_licence,
+      j.licence_metric,
+      j.first_seen,
+      j.last_seen,
+      COALESCE(je.notes, 'Unknown edition — manual review required') AS edition_notes
+    FROM   %I.java_installations j
+    JOIN   %I.oracle_servers      s  ON s.server_id = j.server_id AND s.is_active
+    LEFT   JOIN shared.java_license_editions je
+           ON  je.edition_name = j.java_edition
+    ORDER  BY j.requires_licence DESC, s.hostname, j.java_major_version DESC
+  $view$, p_schema, p_schema, p_schema);
+
+  -- -------------------------------------------------------------------------
+  -- MYSQL LICENCE POSITION VIEW
+  -- Shows every discovered MySQL installation with its licence requirement.
+  -- -------------------------------------------------------------------------
+  EXECUTE format($view$
+    CREATE OR REPLACE VIEW %I.mysql_licence_position AS
+    SELECT
+      s.server_id,
+      s.hostname,
+      s.environment::TEXT,
+      s.datacenter,
+      m.mysql_id,
+      m.mysql_version,
+      m.mysql_edition,
+      m.install_path,
+      m.port,
+      m.is_enterprise,
+      m.requires_licence,
+      m.first_seen,
+      m.last_seen,
+      COALESCE(me.licence_metric, 'server') AS licence_metric,
+      COALESCE(me.notes, 'Unknown edition') AS edition_notes
+    FROM   %I.mysql_installations m
+    JOIN   %I.oracle_servers       s  ON s.server_id = m.server_id AND s.is_active
+    LEFT   JOIN shared.mysql_license_editions me
+           ON  me.edition_name = m.mysql_edition
+    ORDER  BY m.requires_licence DESC, s.hostname
+  $view$, p_schema, p_schema, p_schema);
+
+  -- -------------------------------------------------------------------------
+  -- NUP COVERAGE VIEW
+  -- Compares the most recent actual user count per instance against the
+  -- NUP minimum floor (25 NUP per EE processor licence, 10 NUP per SE2).
+  -- -------------------------------------------------------------------------
+  EXECUTE format($view$
+    CREATE OR REPLACE VIEW %I.nup_coverage AS
+    WITH latest_proc AS (
+      SELECT DISTINCT ON (server_id)
+        server_id, cpu_model, cpu_sockets, total_physical_cores
+      FROM %I.oracle_processors
+      ORDER BY server_id, recorded_at DESC
+    ),
+    core_factor AS (
+      SELECT
+        lp.server_id,
+        lp.total_physical_cores,
+        lp.cpu_sockets,
+        COALESCE(
+          (SELECT cf.core_factor FROM shared.core_factor_table cf
+           WHERE  lp.cpu_model ILIKE cf.processor_pattern
+             AND  cf.processor_pattern <> 'Unknown' AND cf.is_current = TRUE
+           ORDER  BY cf.effective_date DESC LIMIT 1),
+          (SELECT cf.core_factor FROM shared.core_factor_table cf
+           WHERE  cf.processor_pattern = 'Unknown' LIMIT 1),
+          0.5
+        ) AS core_factor
+      FROM latest_proc lp
+    ),
+    latest_nup AS (
+      SELECT DISTINCT ON (instance_id)
+        instance_id, active_user_count, total_user_count,
+        locked_user_count, snapshot_date
+      FROM %I.oracle_nup_users
+      ORDER BY instance_id, snapshot_date DESC, recorded_at DESC
+    )
+    SELECT
+      s.server_id,
+      s.hostname,
+      s.environment::TEXT,
+      i.instance_id,
+      i.oracle_sid,
+      i.edition,
+      cf.cpu_sockets,
+      cf.total_physical_cores,
+      cf.core_factor,
+      -- NUP minimum: 25 per EE processor licence, 10 per SE2 processor licence
+      CASE
+        WHEN i.edition ILIKE '%%Enterprise%%'
+          THEN ROUND(cf.total_physical_cores * cf.core_factor * 25, 0)
+        WHEN i.edition ILIKE '%%Standard Edition 2%%'
+          THEN (LEAST(cf.cpu_sockets, 2) * 10)::NUMERIC
+        WHEN i.edition ILIKE '%%Standard%%'
+          THEN (cf.cpu_sockets * 10)::NUMERIC
+        ELSE ROUND(cf.total_physical_cores * cf.core_factor * 25, 0)
+      END                          AS nup_minimum_required,
+      n.active_user_count,
+      n.total_user_count,
+      n.locked_user_count,
+      n.snapshot_date              AS nup_snapshot_date,
+      -- Actual users vs minimum required
+      CASE
+        WHEN n.active_user_count IS NULL THEN 'NO_DATA'
+        WHEN n.active_user_count >= (
+          CASE
+            WHEN i.edition ILIKE '%%Enterprise%%'
+              THEN ROUND(cf.total_physical_cores * cf.core_factor * 25, 0)
+            WHEN i.edition ILIKE '%%Standard Edition 2%%'
+              THEN (LEAST(cf.cpu_sockets, 2) * 10)::NUMERIC
+            ELSE ROUND(cf.total_physical_cores * cf.core_factor * 25, 0)
+          END
+        ) THEN 'ACTUAL_EXCEEDS_MINIMUM'
+        ELSE 'MINIMUM_APPLIES'
+      END                          AS nup_basis,
+      -- Effective NUP count to licence (greater of actual or minimum)
+      GREATEST(
+        COALESCE(n.active_user_count, 0)::NUMERIC,
+        CASE
+          WHEN i.edition ILIKE '%%Enterprise%%'
+            THEN ROUND(cf.total_physical_cores * cf.core_factor * 25, 0)
+          WHEN i.edition ILIKE '%%Standard Edition 2%%'
+            THEN (LEAST(cf.cpu_sockets, 2) * 10)::NUMERIC
+          ELSE ROUND(cf.total_physical_cores * cf.core_factor * 25, 0)
+        END
+      )                            AS effective_nup_to_licence
+    FROM   %I.oracle_servers    s
+    JOIN   %I.oracle_instances  i  ON i.server_id = s.server_id AND i.is_active
+    JOIN   core_factor          cf ON cf.server_id = s.server_id
+    LEFT   JOIN latest_nup      n  ON n.instance_id = i.instance_id
+    WHERE  s.is_active = TRUE
+    ORDER  BY s.hostname, i.oracle_sid
+  $view$, p_schema,
+  p_schema, p_schema, p_schema,
+  p_schema, p_schema);
+
+  -- -------------------------------------------------------------------------
+  -- OCI LICENCE POSITION VIEW
+  -- Shows OCI instances with their licensing model.
+  -- BYOL = customer provides their own licences (counted in license_position).
+  -- Licence-included = Oracle charges for the licence within OCI pricing.
+  -- -------------------------------------------------------------------------
+  EXECUTE format($view$
+    CREATE OR REPLACE VIEW %I.oci_licence_position AS
+    SELECT
+      o.oci_id,
+      o.oci_instance_id,
+      o.display_name,
+      o.region,
+      o.availability_domain,
+      o.compartment_name,
+      o.shape,
+      o.ocpu_count,
+      o.memory_gb,
+      o.image_os,
+      o.lifecycle_state,
+      o.oracle_db_edition,
+      o.is_byol,
+      o.private_ip,
+      o.public_ip,
+      o.last_seen,
+      s.hostname,
+      s.environment::TEXT,
+      CASE
+        WHEN o.is_byol THEN
+          'BYOL — include in on-premises licence position calculations'
+        ELSE
+          'Licence-included — Oracle bills within OCI; no separate CSI required'
+      END  AS licensing_note,
+      CASE
+        WHEN o.is_byol AND o.oracle_db_edition IS NOT NULL THEN
+          ROUND(o.ocpu_count * 0.5, 2)
+        ELSE NULL
+      END  AS byol_processor_licences_required
+    FROM   %I.oci_instances  o
+    LEFT   JOIN %I.oracle_servers s ON s.server_id = o.server_id
+    WHERE  o.lifecycle_state NOT IN ('TERMINATED', 'TERMINATING')
+       OR  o.lifecycle_state IS NULL
+    ORDER  BY o.region, o.display_name
+  $view$, p_schema, p_schema, p_schema);
+
+  -- -------------------------------------------------------------------------
+  -- PDB MULTITENANT VIEW
+  -- Shows CDBs with their PDB count and whether Multitenant is required.
+  -- Oracle requires the Multitenant option when a CDB has more than 1 PDB
+  -- (the CDB itself counts as 1; a second user PDB triggers the option).
+  -- -------------------------------------------------------------------------
+  EXECUTE format($view$
+    CREATE OR REPLACE VIEW %I.pdb_multitenant_position AS
+    SELECT
+      s.server_id,
+      s.hostname,
+      s.environment::TEXT,
+      i.instance_id,
+      i.oracle_sid,
+      i.edition,
+      i.db_version,
+      COUNT(p.pdb_id)                                       AS total_pdb_count,
+      COUNT(p.pdb_id) FILTER (WHERE NOT p.is_cdb_root)     AS user_pdb_count,
+      BOOL_OR(p.requires_multitenant_licence)               AS multitenant_licence_required,
+      STRING_AGG(p.pdb_name || ' (' || COALESCE(p.open_mode,'?') || ')',
+                 ', ' ORDER BY p.pdb_name)                  AS pdb_list,
+      CASE
+        WHEN COUNT(p.pdb_id) FILTER (WHERE NOT p.is_cdb_root) > 1
+          THEN 'MULTITENANT_LICENCE_REQUIRED'
+        WHEN COUNT(p.pdb_id) FILTER (WHERE NOT p.is_cdb_root) = 1
+          THEN 'SINGLE_PDB_FREE'
+        WHEN COUNT(p.pdb_id) = 0
+          THEN 'NON_CDB'
+        ELSE 'REVIEW_REQUIRED'
+      END                                                   AS multitenant_status
+    FROM   %I.oracle_servers    s
+    JOIN   %I.oracle_instances  i  ON i.server_id  = s.server_id AND i.is_active
+    LEFT   JOIN %I.oracle_pdbs  p  ON p.instance_id = i.instance_id
+    WHERE  s.is_active = TRUE
+    GROUP  BY s.server_id, s.hostname, s.environment,
+              i.instance_id, i.oracle_sid, i.edition, i.db_version
+    ORDER  BY multitenant_licence_required DESC NULLS LAST,
+              s.hostname, i.oracle_sid
+  $view$, p_schema, p_schema, p_schema, p_schema);
+
+  -- -------------------------------------------------------------------------
+  -- UPSERT_ORACLE_EXTENDED_DISCOVERY
+  -- Called after upsert_oracle_discovery to load RAC nodes, PDBs, and
+  -- NUP user counts discovered in the extended playbook queries.
+  -- -------------------------------------------------------------------------
+  EXECUTE format($fn$
+    CREATE OR REPLACE FUNCTION %I.upsert_oracle_extended_discovery(p_payload JSONB)
+    RETURNS VOID LANGUAGE plpgsql AS $body$
+    DECLARE
+      v_server_id   INTEGER;
+      v_instance_id INTEGER;
+      v_inst        JSONB;
+      v_node        JSONB;
+      v_pdb         JSONB;
+      v_pdb_count   INTEGER;
+    BEGIN
+      SELECT server_id INTO v_server_id
+      FROM   %I.oracle_servers WHERE hostname = p_payload->>'hostname';
+
+      IF v_server_id IS NULL THEN
+        RAISE EXCEPTION 'Extended discovery: server %% not found — run base discovery first.',
+          p_payload->>'hostname';
+      END IF;
+
+      FOR v_inst IN SELECT * FROM jsonb_array_elements(p_payload->'instances')
+      LOOP
+        SELECT instance_id INTO v_instance_id
+        FROM   %I.oracle_instances
+        WHERE  server_id = v_server_id
+          AND  oracle_sid = v_inst->>'sid';
+
+        IF v_instance_id IS NULL THEN CONTINUE; END IF;
+
+        -- Upsert RAC nodes
+        FOR v_node IN SELECT * FROM jsonb_array_elements(COALESCE(v_inst->'rac_nodes', '[]'::jsonb))
+        LOOP
+          INSERT INTO %I.oracle_rac_nodes
+            (instance_id, server_id, node_name, node_number,
+             instance_name, last_seen, discovery_run_id)
+          VALUES (
+            v_instance_id, v_server_id,
+            v_node->>'node_name',
+            (v_node->>'node_number')::INTEGER,
+            v_node->>'instance_name',
+            NOW(), p_payload->>'run_id'
+          )
+          ON CONFLICT (instance_id, node_name) DO UPDATE SET
+            node_number      = EXCLUDED.node_number,
+            instance_name    = EXCLUDED.instance_name,
+            is_active        = TRUE,
+            last_seen        = NOW(),
+            discovery_run_id = EXCLUDED.discovery_run_id;
+        END LOOP;
+
+        -- Upsert PDB records
+        FOR v_pdb IN SELECT * FROM jsonb_array_elements(COALESCE(v_inst->'pdbs', '[]'::jsonb))
+        LOOP
+          -- Count user PDBs to determine Multitenant licence requirement
+          SELECT COUNT(*) INTO v_pdb_count
+          FROM   %I.oracle_pdbs
+          WHERE  instance_id = v_instance_id
+            AND  NOT is_cdb_root
+            AND  pdb_name <> (v_pdb->>'pdb_name');
+
+          INSERT INTO %I.oracle_pdbs
+            (instance_id, pdb_name, pdb_con_id, open_mode, restricted,
+             is_cdb_root, requires_multitenant_licence,
+             last_seen, discovery_run_id)
+          VALUES (
+            v_instance_id,
+            v_pdb->>'pdb_name',
+            (v_pdb->>'con_id')::INTEGER,
+            v_pdb->>'open_mode',
+            v_pdb->>'restricted',
+            (COALESCE(v_pdb->>'con_id', '0') = '1')::BOOLEAN,
+            -- Multitenant licence required when there will be > 1 user PDB
+            (v_pdb_count >= 1 AND (COALESCE(v_pdb->>'con_id', '0') <> '1')),
+            NOW(), p_payload->>'run_id'
+          )
+          ON CONFLICT (instance_id, pdb_name) DO UPDATE SET
+            pdb_con_id                   = EXCLUDED.pdb_con_id,
+            open_mode                    = EXCLUDED.open_mode,
+            restricted                   = EXCLUDED.restricted,
+            requires_multitenant_licence = EXCLUDED.requires_multitenant_licence,
+            last_seen                    = NOW(),
+            discovery_run_id             = EXCLUDED.discovery_run_id;
+        END LOOP;
+
+        -- Insert NUP user count snapshot
+        IF v_inst ? 'nup_active_users' THEN
+          INSERT INTO %I.oracle_nup_users
+            (instance_id, snapshot_date, active_user_count,
+             total_user_count, locked_user_count,
+             sample_user_list, discovery_run_id)
+          VALUES (
+            v_instance_id,
+            CURRENT_DATE,
+            (v_inst->>'nup_active_users')::INTEGER,
+            (v_inst->>'nup_total_users')::INTEGER,
+            (v_inst->>'nup_locked_users')::INTEGER,
+            ARRAY(SELECT jsonb_array_elements_text(COALESCE(v_inst->'nup_sample_users', '[]'::jsonb))),
+            p_payload->>'run_id'
+          );
+        END IF;
+
+      END LOOP;
+    END;
+    $body$;
+  $fn$,
+  p_schema, p_schema, p_schema,
+  p_schema, p_schema, p_schema,
+  p_schema, p_schema);
+
+  -- -------------------------------------------------------------------------
+  -- UPSERT_JAVA_DISCOVERY
+  -- Called by the Java discovery Ansible playbook.
+  -- -------------------------------------------------------------------------
+  EXECUTE format($fn$
+    CREATE OR REPLACE FUNCTION %I.upsert_java_discovery(p_payload JSONB)
+    RETURNS VOID LANGUAGE plpgsql AS $body$
+    DECLARE
+      v_server_id INTEGER;
+      v_install   JSONB;
+      v_licensed  BOOLEAN;
+      v_metric    TEXT;
+    BEGIN
+      -- Ensure server record exists
+      INSERT INTO %I.oracle_servers
+        (hostname, fqdn, ip_address, os_family, os_distribution, os_version,
+         environment, total_ram_mb, last_seen, last_discovery_run)
+      VALUES (
+        p_payload->>'hostname', p_payload->>'fqdn',
+        (p_payload->>'ip_address')::INET,
+        p_payload->>'os_family', p_payload->>'os_distribution',
+        p_payload->>'os_version',
+        (COALESCE(p_payload->>'environment', 'unknown'))::environment_type,
+        (p_payload->>'total_ram_mb')::INTEGER,
+        NOW(), p_payload->>'run_id'
+      )
+      ON CONFLICT (hostname) DO UPDATE SET
+        last_seen          = NOW(),
+        last_discovery_run = EXCLUDED.last_discovery_run
+      RETURNING server_id INTO v_server_id;
+
+      FOR v_install IN SELECT * FROM jsonb_array_elements(p_payload->'java_installations')
+      LOOP
+        -- Classify licensing based on vendor and version
+        SELECT requires_licence, licence_metric
+        INTO   v_licensed, v_metric
+        FROM   shared.java_license_editions
+        WHERE  edition_name = v_install->>'java_edition'
+        LIMIT  1;
+
+        INSERT INTO %I.java_installations
+          (server_id, java_home, java_vendor, java_version,
+           java_major_version, java_edition, is_oracle_jdk,
+           requires_licence, licence_metric,
+           last_seen, discovery_run_id)
+        VALUES (
+          v_server_id,
+          v_install->>'java_home',
+          v_install->>'java_vendor',
+          v_install->>'java_version',
+          (v_install->>'java_major_version')::INTEGER,
+          v_install->>'java_edition',
+          (COALESCE(v_install->>'is_oracle_jdk', 'false'))::BOOLEAN,
+          COALESCE(v_licensed, FALSE),
+          v_metric,
+          NOW(), p_payload->>'run_id'
+        )
+        ON CONFLICT (server_id, java_home) DO UPDATE SET
+          java_vendor        = EXCLUDED.java_vendor,
+          java_version       = EXCLUDED.java_version,
+          java_major_version = EXCLUDED.java_major_version,
+          java_edition       = EXCLUDED.java_edition,
+          is_oracle_jdk      = EXCLUDED.is_oracle_jdk,
+          requires_licence   = EXCLUDED.requires_licence,
+          licence_metric     = EXCLUDED.licence_metric,
+          last_seen          = NOW(),
+          discovery_run_id   = EXCLUDED.discovery_run_id;
+      END LOOP;
+    END;
+    $body$;
+  $fn$,
+  p_schema, p_schema, p_schema);
+
+  -- -------------------------------------------------------------------------
+  -- UPSERT_MYSQL_DISCOVERY
+  -- Called by the MySQL discovery Ansible playbook.
+  -- -------------------------------------------------------------------------
+  EXECUTE format($fn$
+    CREATE OR REPLACE FUNCTION %I.upsert_mysql_discovery(p_payload JSONB)
+    RETURNS VOID LANGUAGE plpgsql AS $body$
+    DECLARE
+      v_server_id INTEGER;
+      v_install   JSONB;
+      v_licensed  BOOLEAN;
+    BEGIN
+      INSERT INTO %I.oracle_servers
+        (hostname, fqdn, ip_address, os_family, os_distribution, os_version,
+         environment, total_ram_mb, last_seen, last_discovery_run)
+      VALUES (
+        p_payload->>'hostname', p_payload->>'fqdn',
+        (p_payload->>'ip_address')::INET,
+        p_payload->>'os_family', p_payload->>'os_distribution',
+        p_payload->>'os_version',
+        (COALESCE(p_payload->>'environment', 'unknown'))::environment_type,
+        (p_payload->>'total_ram_mb')::INTEGER,
+        NOW(), p_payload->>'run_id'
+      )
+      ON CONFLICT (hostname) DO UPDATE SET
+        last_seen          = NOW(),
+        last_discovery_run = EXCLUDED.last_discovery_run
+      RETURNING server_id INTO v_server_id;
+
+      FOR v_install IN SELECT * FROM jsonb_array_elements(p_payload->'mysql_installations')
+      LOOP
+        SELECT requires_licence INTO v_licensed
+        FROM   shared.mysql_license_editions
+        WHERE  edition_name = v_install->>'mysql_edition'
+        LIMIT  1;
+
+        INSERT INTO %I.mysql_installations
+          (server_id, mysql_version, mysql_edition, install_path,
+           data_dir, port, is_enterprise, requires_licence,
+           last_seen, discovery_run_id)
+        VALUES (
+          v_server_id,
+          v_install->>'mysql_version',
+          v_install->>'mysql_edition',
+          v_install->>'install_path',
+          v_install->>'data_dir',
+          (v_install->>'port')::INTEGER,
+          (COALESCE(v_install->>'is_enterprise', 'false'))::BOOLEAN,
+          COALESCE(v_licensed, FALSE),
+          NOW(), p_payload->>'run_id'
+        )
+        ON CONFLICT (server_id, COALESCE(install_path, 'unknown')) DO UPDATE SET
+          mysql_version    = EXCLUDED.mysql_version,
+          mysql_edition    = EXCLUDED.mysql_edition,
+          data_dir         = EXCLUDED.data_dir,
+          port             = EXCLUDED.port,
+          is_enterprise    = EXCLUDED.is_enterprise,
+          requires_licence = EXCLUDED.requires_licence,
+          last_seen        = NOW(),
+          discovery_run_id = EXCLUDED.discovery_run_id;
+      END LOOP;
+    END;
+    $body$;
+  $fn$,
+  p_schema, p_schema, p_schema);
+
+  -- -------------------------------------------------------------------------
+  -- UPSERT_OCI_DISCOVERY
+  -- Called by the OCI discovery Ansible playbook.
+  -- -------------------------------------------------------------------------
+  EXECUTE format($fn$
+    CREATE OR REPLACE FUNCTION %I.upsert_oci_discovery(p_payload JSONB)
+    RETURNS VOID LANGUAGE plpgsql AS $body$
+    DECLARE
+      v_instance JSONB;
+      v_server_id INTEGER;
+    BEGIN
+      FOR v_instance IN SELECT * FROM jsonb_array_elements(p_payload->'instances')
+      LOOP
+        -- Try to match to a known server by private IP
+        SELECT server_id INTO v_server_id
+        FROM   %I.oracle_servers
+        WHERE  ip_address = (v_instance->>'private_ip')::INET
+        LIMIT  1;
+
+        INSERT INTO %I.oci_instances
+          (oci_instance_id, display_name, compartment_id, compartment_name,
+           availability_domain, region, shape, ocpu_count, memory_gb,
+           image_os, lifecycle_state, is_byol, oracle_db_edition,
+           private_ip, public_ip, server_id,
+           last_seen, discovery_run_id)
+        VALUES (
+          v_instance->>'id',
+          v_instance->>'display_name',
+          v_instance->>'compartment_id',
+          v_instance->>'compartment_name',
+          v_instance->>'availability_domain',
+          v_instance->>'region',
+          v_instance->>'shape',
+          (v_instance->>'ocpu_count')::NUMERIC,
+          (v_instance->>'memory_gb')::NUMERIC,
+          v_instance->>'image_os',
+          v_instance->>'lifecycle_state',
+          (COALESCE(v_instance->>'is_byol', 'false'))::BOOLEAN,
+          v_instance->>'oracle_db_edition',
+          v_instance->>'private_ip',
+          v_instance->>'public_ip',
+          v_server_id,
+          NOW(), p_payload->>'run_id'
+        )
+        ON CONFLICT (oci_instance_id) DO UPDATE SET
+          display_name         = EXCLUDED.display_name,
+          compartment_name     = EXCLUDED.compartment_name,
+          lifecycle_state      = EXCLUDED.lifecycle_state,
+          ocpu_count           = EXCLUDED.ocpu_count,
+          memory_gb            = EXCLUDED.memory_gb,
+          is_byol              = EXCLUDED.is_byol,
+          oracle_db_edition    = EXCLUDED.oracle_db_edition,
+          private_ip           = EXCLUDED.private_ip,
+          public_ip            = EXCLUDED.public_ip,
+          server_id            = COALESCE(EXCLUDED.server_id, %I.oci_instances.server_id),
+          last_seen            = NOW(),
+          discovery_run_id     = EXCLUDED.discovery_run_id;
+      END LOOP;
+    END;
+    $body$;
+  $fn$,
+  p_schema, p_schema, p_schema, p_schema);
+
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION sam_admin.migrate_all_clients()
 RETURNS TABLE (client_code TEXT, result TEXT) LANGUAGE plpgsql AS $$
 DECLARE
@@ -1281,6 +1854,7 @@ BEGIN
       PERFORM sam_admin.install_server_coverage_view(v_client.schema_name);
       PERFORM sam_admin.install_changelog_objects(v_client.schema_name);
       PERFORM sam_admin.install_upsert_functions(v_client.schema_name);
+      PERFORM sam_admin.install_extended_views(v_client.schema_name);
       client_code := v_client.client_code;
       result      := 'ok';
       RETURN NEXT;
