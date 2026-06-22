@@ -9,15 +9,15 @@
 <div class="card shadow-sm">
   <div class="card-body p-0">
     <div class="table-responsive">
-      <table class="table table-hover table-striped mb-0">
+      <table class="table table-hover table-striped align-middle mb-0">
         <thead class="table-dark">
           <tr>
             <th>Hostname</th>
             <th>Environment</th>
-            <th>Datacenter</th>
-            <th>IP Address</th>
             <th>Licence Metric</th>
+            <th>Licences Required</th>
             <th>CSI Assignments</th>
+            <th>Compliance</th>
             <th>Last Seen</th>
             <th></th>
           </tr>
@@ -25,29 +25,69 @@
         <tbody>
           {% for s in servers %}
           <tr>
-            <td><strong>{{ s.hostname }}</strong></td>
+            <td>
+              <strong>{{ s.hostname }}</strong>
+              {% if s.datacenter %}<br><small class="text-muted">{{ s.datacenter }}</small>{% endif %}
+              {% if s.ip_address %}<br><small><code>{{ s.ip_address }}</code></small>{% endif %}
+            </td>
             <td>{{ s.environment | title }}</td>
-            <td>{{ s.datacenter or '—' }}</td>
-            <td><code>{{ s.ip_address or '—' }}</code></td>
             <td>
               {% if s.licence_metric == 'named_user_plus' %}
-                <span class="badge bg-purple" style="background:#6f42c1">Named User Plus</span>
-                <i class="bi bi-pencil-fill text-muted ms-1" title="Manually overridden"></i>
+                <span class="badge" style="background:#6f42c1">Named User Plus</span>
               {% else %}
                 <span class="badge bg-primary">Processor Perpetual</span>
-                {% if s.metric_overridden %}
-                  <i class="bi bi-pencil-fill text-muted ms-1" title="Manually set"></i>
-                {% endif %}
+              {% endif %}
+              {% if s.metric_overridden %}
+                <br><small class="text-muted"><i class="bi bi-pencil-fill"></i> Manually set</small>
               {% endif %}
             </td>
+
+            <!-- Licence requirements broken down by product -->
+            <td>
+              {% if s.licence_rows %}
+                {% for row in s.licence_rows %}
+                  <div class="d-flex align-items-baseline gap-2 {% if not loop.last %}mb-1{% endif %}">
+                    <span class="fw-bold">{{ row.licences_required }}</span>
+                    <small class="text-muted">
+                      {% if row.product_family == 'oracle_database' %}
+                        <i class="bi bi-database"></i>
+                      {% elif row.product_family == 'oracle_weblogic' %}
+                        <i class="bi bi-boxes"></i>
+                      {% endif %}
+                      {{ row.product_family | replace('oracle_','') | replace('_',' ') | title }}
+                      {% if row.product_detail %}
+                        <span class="text-muted">({{ row.product_detail | truncate(25, true, '…') }})</span>
+                      {% endif %}
+                    </small>
+                  </div>
+                {% endfor %}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+
             <td>
               {% if s.csi_count > 0 %}
                 <span class="badge bg-success">{{ s.csi_count }} assigned</span>
               {% else %}
-                <span class="badge bg-warning text-dark">Unassigned</span>
+                <span class="badge bg-warning text-dark">None</span>
               {% endif %}
             </td>
-            <td>{{ s.last_seen or '—' }}</td>
+
+            <td>
+              {% if s.licence_rows is none %}
+                <span class="text-muted">—</span>
+              {% elif s.any_under_licensed %}
+                <span class="badge bg-danger"><i class="bi bi-x-circle"></i> Under-licensed</span>
+              {% elif s.csi_count == 0 %}
+                <span class="badge bg-warning text-dark"><i class="bi bi-question-circle"></i> Unassigned</span>
+              {% else %}
+                <span class="badge bg-success"><i class="bi bi-check-circle"></i> Compliant</span>
+              {% endif %}
+            </td>
+
+            <td><small>{{ s.last_seen or '—' }}</small></td>
+
             <td>
               <a href="{{ url_for('edit_server', server_id=s.server_id) }}"
                  class="btn btn-sm btn-outline-primary">
@@ -56,7 +96,9 @@
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="8" class="text-center text-muted py-4">No servers discovered yet.</td></tr>
+          <tr>
+            <td colspan="8" class="text-center text-muted py-4">No servers discovered yet.</td>
+          </tr>
           {% endfor %}
         </tbody>
       </table>

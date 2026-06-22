@@ -82,22 +82,49 @@ def logout():
 @login_required
 def servers():
     rows = query(f"""
+        WITH lp AS (
+            SELECT
+                server_id,
+                -- Aggregate licence requirements per server across all products
+                JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                        'product_family',  product_family,
+                        'product_detail',  product_detail,
+                        'licences_required', licences_required,
+                        'compliance_status', compliance_status
+                    ) ORDER BY product_family
+                ) AS licence_rows,
+                SUM(licences_required)                                       AS total_licences_required,
+                BOOL_OR(compliance_status = 'under_licensed')                AS any_under_licensed,
+                STRING_AGG(
+                    product_family || ': ' || licences_required::TEXT,
+                    ' | ' ORDER BY product_family
+                )                                                            AS licence_summary
+            FROM {CLIENT_SCHEMA}.license_position
+            GROUP BY server_id
+        )
         SELECT
             s.server_id,
             s.hostname,
             s.environment::TEXT,
             s.datacenter,
             s.ip_address::TEXT,
-            s.is_active,
             s.last_seen::DATE AS last_seen,
             COALESCE(s.licence_metric_override, 'processor_perpetual') AS licence_metric,
             s.licence_metric_override IS NOT NULL                        AS metric_overridden,
-            COUNT(DISTINCT m.csi_id)                                     AS csi_count
+            COUNT(DISTINCT m.csi_id)                                     AS csi_count,
+            lp.licence_rows,
+            COALESCE(lp.total_licences_required, 0)                      AS total_licences_required,
+            COALESCE(lp.any_under_licensed, FALSE)                       AS any_under_licensed,
+            lp.licence_summary
         FROM {CLIENT_SCHEMA}.oracle_servers s
         LEFT JOIN {CLIENT_SCHEMA}.server_csi_map m ON m.server_id = s.server_id
+        LEFT JOIN lp                               ON lp.server_id = s.server_id
         WHERE s.is_active = TRUE
         GROUP BY s.server_id, s.hostname, s.environment, s.datacenter,
-                 s.ip_address, s.is_active, s.last_seen, s.licence_metric_override
+                 s.ip_address, s.last_seen, s.licence_metric_override,
+                 lp.licence_rows, lp.total_licences_required,
+                 lp.any_under_licensed, lp.licence_summary
         ORDER BY s.hostname
     """)
     return render_template("servers.html", servers=rows, schema=CLIENT_SCHEMA)
