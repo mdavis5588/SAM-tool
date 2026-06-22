@@ -109,6 +109,89 @@ ORDER  BY client_code, hostname;
   -i /opt/oracle-sam/ansible/inventory/hosts.yml >> /var/log/sam/weblogic.log 2>&1
 ```
 
+## Manual discovery (no Ansible)
+
+When Ansible cannot reach a server — firewall restrictions, isolated networks, or ad-hoc
+one-off collection — you can run discovery directly on the Oracle DB server using SQL*Plus
+and then load the output file from any machine that can reach the SAM PostgreSQL database.
+
+### 1. Run the discovery script on the Oracle server
+
+```bash
+# Copy the script to the Oracle server (any method — scp, USB, shared drive)
+scp scripts/oracle_discovery.sql oracle-server:/tmp/
+
+# Run with OS authentication (common for DBAs already logged in as oracle)
+sqlplus / as sysdba @/tmp/oracle_discovery.sql
+
+# Or with explicit credentials / TNS alias
+sqlplus sys/yourpassword@ORCL as sysdba @/tmp/oracle_discovery.sql
+```
+
+The script queries `v$instance`, `v$database`, `v$osstat`, `gv$instance`, `v$pdbs`,
+`v$option`, and `dba_users`.  It writes a single JSON file:
+
+```
+oracle_discovery_<hostname>_<YYYYMMDD_HH24MISS>.json
+```
+
+### 2. Transfer the JSON file to the SAM host
+
+```bash
+scp oracle-server:/tmp/oracle_discovery_myserver_20250101_120000.json .
+```
+
+### 3. Load into PostgreSQL
+
+```bash
+# Install dependency if needed
+pip install psycopg2-binary
+
+# Set connection variables
+export DB_HOST=localhost DB_NAME=samdb DB_USER=sam_admin DB_PASSWORD=yourpassword
+export SAM_CLIENT_SCHEMA=client_acme
+
+# Load
+python3 scripts/load_discovery.py oracle_discovery_myserver_20250101_120000.json
+```
+
+**Optional flags:**
+
+| Flag | Description |
+|---|---|
+| `--client SCHEMA` | Override `SAM_CLIENT_SCHEMA` env var |
+| `--host / --port / --dbname / --user / --password` | Override any DB connection env var |
+| `--dry-run` | Parse and validate JSON without writing to the database |
+| `--verbose` | Print each SQL call as it executes |
+
+### 4. Combined one-liner (if Python is available on the Oracle server)
+
+If the Oracle server can also reach the SAM PostgreSQL database directly, the wrapper
+script runs both steps in sequence:
+
+```bash
+# Copy both scripts to the Oracle server
+scp scripts/oracle_discovery.sql scripts/load_discovery.py scripts/run_and_load.sh oracle-server:/tmp/
+
+ssh oracle-server
+cd /tmp
+export DB_HOST=sam-db.internal DB_NAME=samdb DB_USER=sam_admin DB_PASSWORD=yourpassword
+export SAM_CLIENT_SCHEMA=client_acme
+./run_and_load.sh "/ as sysdba"
+```
+
+### What gets loaded
+
+The loader calls three operations in a single transaction:
+
+| Step | Function | Data |
+|---|---|---|
+| 1 | `upsert_oracle_discovery` | Server, CPU/processor, Oracle instances |
+| 2 | `upsert_oracle_extended_discovery` | RAC nodes, PDBs, NUP user counts |
+| 3 | Direct upsert | `v$option` flags (partitioning, RAC, etc.) |
+
+Afterwards the `license_position` view recalculates automatically on next query.
+
 ## Licence calculation rules
 
 ### Oracle Database
