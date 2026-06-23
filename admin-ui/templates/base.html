@@ -15,6 +15,7 @@
     .status-active   { color: #198754; }
     .status-expired  { color: #dc3545; }
     .status-expiring { color: #fd7e14; }
+    .client-switcher .dropdown-item.active { background: #0d6efd; color: #fff; }
   </style>
 </head>
 <body>
@@ -42,10 +43,63 @@
           <a class="nav-link {% if request.endpoint == 'alerts' %}active{% endif %}"
              href="{{ url_for('alerts') }}"><i class="bi bi-exclamation-triangle"></i> Alerts</a>
         </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'vmware' %}active{% endif %}"
+             href="{{ url_for('vmware') }}"><i class="bi bi-diagram-3"></i> VMware</a>
+        </li>
       </ul>
-      <a class="btn btn-outline-light btn-sm" href="{{ url_for('logout') }}">
-        <i class="bi bi-box-arrow-right"></i> Logout
-      </a>
+
+      <ul class="navbar-nav ms-auto align-items-center gap-2">
+
+        <!-- Client switcher -->
+        {% if all_clients %}
+        <li class="nav-item dropdown client-switcher">
+          <a class="nav-link dropdown-toggle d-flex align-items-center gap-1" href="#"
+             role="button" data-bs-toggle="dropdown">
+            <i class="bi bi-building"></i>
+            <span class="badge bg-info text-dark">{{ active_schema | replace('client_','') }}</span>
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end" style="min-width:220px">
+            <li><h6 class="dropdown-header">Switch Client</h6></li>
+            {% for c in all_clients %}
+            <li>
+              <form method="post" action="{{ url_for('switch_client') }}">
+                <input type="hidden" name="schema" value="{{ c.schema_name }}">
+                <button type="submit"
+                        class="dropdown-item {% if c.schema_name == active_schema %}active{% endif %}">
+                  <i class="bi bi-person-badge me-1"></i>
+                  {{ c.client_name }}
+                  <small class="text-muted ms-1">({{ c.client_code }})</small>
+                </button>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
+        </li>
+        {% endif %}
+
+        <!-- LMS Export -->
+        <li class="nav-item">
+          <a class="btn btn-outline-warning btn-sm" href="{{ url_for('export_lms') }}">
+            <i class="bi bi-file-earmark-excel"></i> LMS Export
+          </a>
+        </li>
+
+        <!-- Settings -->
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}"
+             href="{{ url_for('settings') }}" title="Alert Settings">
+            <i class="bi bi-gear"></i>
+          </a>
+        </li>
+
+        <!-- Logout -->
+        <li class="nav-item">
+          <a class="btn btn-outline-light btn-sm" href="{{ url_for('logout') }}">
+            <i class="bi bi-box-arrow-right"></i> Logout
+          </a>
+        </li>
+      </ul>
     </div>
   </div>
 </nav>

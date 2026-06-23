@@ -1869,6 +1869,104 @@ BEGIN
   $fn$,
   p_schema, p_schema, p_schema, p_schema);
 
+  -- -------------------------------------------------------------------------
+  -- SE2 VIOLATIONS VIEW
+  -- Flags servers/instances that violate Oracle SE2 licensing rules.
+  -- SE2 rules: max 2 CPU sockets per server; max 2 nodes in a RAC cluster.
+  -- -------------------------------------------------------------------------
+  EXECUTE format($view$
+    CREATE OR REPLACE VIEW %I.se2_violations AS
+    WITH socket_check AS (
+      SELECT
+        s.server_id,
+        s.hostname,
+        i.instance_id,
+        i.oracle_sid,
+        i.edition,
+        p.cpu_sockets,
+        CASE WHEN p.cpu_sockets > 2 THEN TRUE ELSE FALSE END AS socket_violation
+      FROM   %I.oracle_servers s
+      JOIN   %I.oracle_instances i ON i.server_id = s.server_id AND i.is_active
+      JOIN   LATERAL (
+        SELECT cpu_sockets FROM %I.oracle_processors
+        WHERE  server_id = s.server_id ORDER BY recorded_at DESC LIMIT 1
+      ) p ON TRUE
+      WHERE  s.is_active
+        AND  (i.edition ILIKE '%%Standard Edition 2%%' OR i.edition = 'SE2')
+    ),
+    rac_check AS (
+      SELECT
+        i.instance_id,
+        i.oracle_sid,
+        COUNT(DISTINCT n.node_name) AS rac_node_count,
+        CASE WHEN COUNT(DISTINCT n.node_name) > 2 THEN TRUE ELSE FALSE END AS rac_violation
+      FROM   %I.oracle_instances i
+      JOIN   %I.oracle_rac_nodes n ON n.instance_id = i.instance_id
+      WHERE  i.is_active
+        AND  (i.edition ILIKE '%%Standard Edition 2%%' OR i.edition = 'SE2')
+      GROUP  BY i.instance_id, i.oracle_sid
+    )
+    SELECT
+      sc.server_id,
+      sc.hostname,
+      sc.oracle_sid,
+      sc.edition,
+      sc.cpu_sockets,
+      COALESCE(rc.rac_node_count, 1)              AS rac_node_count,
+      sc.socket_violation,
+      COALESCE(rc.rac_violation, FALSE)            AS rac_violation,
+      CASE
+        WHEN sc.socket_violation AND COALESCE(rc.rac_violation, FALSE)
+          THEN 'SOCKET + RAC SIZE'
+        WHEN sc.socket_violation
+          THEN 'SOCKET LIMIT (' || sc.cpu_sockets || ' > 2)'
+        WHEN COALESCE(rc.rac_violation, FALSE)
+          THEN 'RAC SIZE (' || rc.rac_node_count || ' nodes > 2)'
+        ELSE 'OK'
+      END                                         AS violation_summary
+    FROM   socket_check sc
+    LEFT   JOIN rac_check rc ON rc.instance_id = sc.instance_id
+    WHERE  sc.socket_violation OR COALESCE(rc.rac_violation, FALSE)
+  $view$,
+  p_schema, p_schema, p_schema, p_schema,
+  p_schema, p_schema);
+
+  -- -------------------------------------------------------------------------
+  -- CPU VALIDATION REPORT VIEW
+  -- Surfaces servers whose CPU model is not found in the Oracle Processor
+  -- Core Factor Table (shared.core_factor_table).  An unrecognised model
+  -- means the licence calculation may be using the wrong factor.
+  -- -------------------------------------------------------------------------
+  EXECUTE format($view$
+    CREATE OR REPLACE VIEW %I.cpu_validation_report AS
+    SELECT
+      s.server_id,
+      s.hostname,
+      s.environment::TEXT,
+      p.cpu_model,
+      p.cpu_sockets,
+      p.cores_per_socket,
+      p.cpu_sockets * p.cores_per_socket           AS total_physical_cores,
+      shared.cpu_core_factor_lookup(p.cpu_model)   AS validated_factor,
+      shared.cpu_core_factor_lookup(p.cpu_model) IS NULL AS factor_unknown,
+      CASE
+        WHEN shared.cpu_core_factor_lookup(p.cpu_model) IS NULL
+          THEN 'UNRECOGNISED — verify at oracle.com/assets/processor-core-factor-table-070634.pdf'
+        ELSE 'OK (factor = ' || shared.cpu_core_factor_lookup(p.cpu_model) || ')'
+      END                                          AS validation_status,
+      p.recorded_at                                AS last_processor_snapshot
+    FROM   %I.oracle_servers s
+    JOIN   LATERAL (
+      SELECT cpu_model, cpu_sockets, cores_per_socket, recorded_at
+      FROM   %I.oracle_processors
+      WHERE  server_id = s.server_id
+      ORDER  BY recorded_at DESC LIMIT 1
+    ) p ON TRUE
+    WHERE  s.is_active
+    ORDER  BY factor_unknown DESC, s.hostname
+  $view$,
+  p_schema, p_schema, p_schema);
+
 END;
 $$;
 

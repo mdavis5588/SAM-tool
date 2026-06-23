@@ -9,6 +9,50 @@
   </ol>
 </nav>
 
+<div class="d-flex gap-2 mb-3">
+  <a href="{{ url_for('server_history', server_id=server.server_id) }}"
+     class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-clock-history"></i> Change History
+  </a>
+</div>
+
+<!-- SE2 violations banner -->
+{% if se2_violations %}
+<div class="alert alert-danger d-flex gap-2 mb-3">
+  <i class="bi bi-exclamation-triangle-fill fs-5 flex-shrink-0"></i>
+  <div>
+    <strong>Oracle SE2 Licence Violation Detected</strong>
+    {% for v in se2_violations %}
+    <div class="mt-1">
+      <code>{{ v.oracle_sid }}</code> — {{ v.violation_summary }}.
+      {% if v.socket_violation %}
+        SE2 permits max 2 CPU sockets; this server has {{ v.cpu_sockets }}.
+      {% endif %}
+      {% if v.rac_violation %}
+        SE2 RAC clusters are limited to 2 nodes; this cluster has {{ v.rac_node_count }}.
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- CPU validation warning -->
+{% if cpu_validation and cpu_validation.factor_unknown %}
+<div class="alert alert-warning d-flex gap-2 mb-3">
+  <i class="bi bi-cpu fs-5 flex-shrink-0"></i>
+  <div>
+    <strong>Unrecognised CPU Model:</strong> <code>{{ cpu_validation.cpu_model }}</code>
+    ({{ cpu_validation.cpu_sockets }} socket(s) × {{ cpu_validation.cores_per_socket }} core(s) = {{ cpu_validation.total_physical_cores }} cores).
+    This CPU model was not found in the Oracle Processor Core Factor Table — licence calculations
+    may be using an incorrect factor.
+    <a href="https://www.oracle.com/assets/processor-core-factor-table-070634.pdf"
+       target="_blank" class="alert-link">Check the Oracle factor table</a>
+    and add the correct entry to <code>shared.core_factor_table</code>.
+  </div>
+</div>
+{% endif %}
+
 <div class="row g-4">
 
   <!-- Left column: server info + metric + instances -->

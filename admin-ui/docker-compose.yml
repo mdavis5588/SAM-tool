@@ -17,6 +17,8 @@ services:
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:-changeme}"
       # Flask secret key (set to a random string in production)
       FLASK_SECRET:   "${FLASK_SECRET:-change-me-in-production}"
+      # Key required by /api/dispatch-alerts (leave blank to disable auth)
+      DISPATCH_KEY:   "${DISPATCH_KEY:-}"
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"   # allows reaching DB on the host

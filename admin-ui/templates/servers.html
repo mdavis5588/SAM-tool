@@ -4,6 +4,11 @@
 <div class="d-flex align-items-center mb-3">
   <h4 class="mb-0"><i class="bi bi-server"></i> Servers</h4>
   <span class="badge bg-secondary ms-2">{{ servers | length }}</span>
+  {% if se2_count > 0 %}
+    <span class="badge bg-danger ms-2" title="Servers with SE2 licence violations">
+      <i class="bi bi-exclamation-triangle"></i> {{ se2_count }} SE2 violation{{ 's' if se2_count != 1 }}
+    </span>
+  {% endif %}
 </div>
 
 <div class="card shadow-sm">
@@ -27,6 +32,12 @@
           <tr>
             <td>
               <strong>{{ s.hostname }}</strong>
+              {% if s.cpu_unvalidated %}
+                <span class="badge bg-warning text-dark ms-1"
+                      title="CPU model not in Oracle core factor table — licence calculation may be wrong">
+                  <i class="bi bi-cpu"></i> CPU?
+                </span>
+              {% endif %}
               {% if s.datacenter %}<br><small class="text-muted">{{ s.datacenter }}</small>{% endif %}
               {% if s.ip_address %}<br><small><code>{{ s.ip_address }}</code></small>{% endif %}
             </td>

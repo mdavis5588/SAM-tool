@@ -536,3 +536,110 @@ BEGIN
   NULL;
 END;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- VMWARE CLUSTER INFRASTRUCTURE
+-- Tracks vSphere clusters so Oracle licence footprint can be calculated
+-- across all physical hosts in a cluster (Oracle does not accept VMware as
+-- hard partitioning — the entire cluster must be licensed if any VM runs Oracle).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sam_admin.vmware_clusters (
+  cluster_id       SERIAL PRIMARY KEY,
+  cluster_name     TEXT NOT NULL,
+  vcenter_host     TEXT NOT NULL,
+  datacenter       TEXT,
+  client_id        INTEGER REFERENCES sam_admin.clients (client_id) ON DELETE SET NULL,
+  discovery_run_id TEXT,
+  last_seen        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (vcenter_host, cluster_name)
+);
+
+CREATE TABLE IF NOT EXISTS sam_admin.vmware_hosts (
+  host_id          SERIAL PRIMARY KEY,
+  cluster_id       INTEGER NOT NULL
+                     REFERENCES sam_admin.vmware_clusters (cluster_id) ON DELETE CASCADE,
+  hostname         TEXT NOT NULL,
+  cpu_model        TEXT,
+  cpu_sockets      INTEGER NOT NULL DEFAULT 1,
+  cores_per_socket INTEGER NOT NULL DEFAULT 1,
+  total_cores      INTEGER GENERATED ALWAYS AS (cpu_sockets * cores_per_socket) STORED,
+  memory_gb        NUMERIC(10,2),
+  is_active        BOOLEAN NOT NULL DEFAULT TRUE,
+  discovery_run_id TEXT,
+  last_seen        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (cluster_id, hostname)
+);
+
+CREATE TABLE IF NOT EXISTS sam_admin.vmware_vms (
+  vm_id                   SERIAL PRIMARY KEY,
+  cluster_id              INTEGER NOT NULL
+                            REFERENCES sam_admin.vmware_clusters (cluster_id) ON DELETE CASCADE,
+  host_id                 INTEGER
+                            REFERENCES sam_admin.vmware_hosts (host_id) ON DELETE SET NULL,
+  vm_name                 TEXT NOT NULL,
+  vm_uuid                 TEXT UNIQUE,
+  guest_hostname          TEXT,    -- matches oracle_servers.hostname when populated
+  guest_ip                TEXT,
+  power_state             TEXT,
+  vcpu_count              INTEGER,
+  memory_mb               INTEGER,
+  has_oracle_db           BOOLEAN NOT NULL DEFAULT FALSE,
+  has_oracle_wls          BOOLEAN NOT NULL DEFAULT FALSE,
+  has_oracle_java         BOOLEAN NOT NULL DEFAULT FALSE,
+  discovery_run_id        TEXT,
+  last_seen               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (cluster_id, vm_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_vmw_cluster_client  ON sam_admin.vmware_clusters (client_id);
+CREATE INDEX IF NOT EXISTS idx_vmw_host_cluster    ON sam_admin.vmware_hosts    (cluster_id);
+CREATE INDEX IF NOT EXISTS idx_vmw_vm_cluster      ON sam_admin.vmware_vms      (cluster_id);
+CREATE INDEX IF NOT EXISTS idx_vmw_vm_host         ON sam_admin.vmware_vms      (host_id);
+CREATE INDEX IF NOT EXISTS idx_vmw_vm_hostname     ON sam_admin.vmware_vms      (guest_hostname);
+
+-- View: clusters that contain at least one Oracle VM —
+-- shows total physical core count that Oracle would require to be licensed.
+CREATE OR REPLACE VIEW sam_admin.vmware_licence_exposure AS
+SELECT
+  vc.cluster_id,
+  vc.cluster_name,
+  vc.vcenter_host,
+  vc.datacenter,
+  c.client_code,
+  COUNT(DISTINCT vh.host_id)                          AS host_count,
+  SUM(vh.cpu_sockets)                                 AS total_sockets,
+  SUM(vh.total_cores)                                 AS total_physical_cores,
+  COUNT(DISTINCT vm.vm_id) FILTER (WHERE vm.has_oracle_db)   AS oracle_db_vm_count,
+  COUNT(DISTINCT vm.vm_id) FILTER (WHERE vm.has_oracle_wls)  AS oracle_wls_vm_count,
+  COUNT(DISTINCT vm.vm_id) FILTER (WHERE vm.has_oracle_java) AS oracle_java_vm_count,
+  BOOL_OR(vm.has_oracle_db OR vm.has_oracle_wls OR vm.has_oracle_java) AS has_oracle_workloads,
+  vc.last_seen
+FROM   sam_admin.vmware_clusters vc
+JOIN   sam_admin.vmware_hosts    vh ON vh.cluster_id = vc.cluster_id AND vh.is_active
+LEFT   JOIN sam_admin.vmware_vms vm ON vm.cluster_id = vc.cluster_id
+LEFT   JOIN sam_admin.clients    c  ON c.client_id   = vc.client_id
+GROUP  BY vc.cluster_id, vc.cluster_name, vc.vcenter_host, vc.datacenter,
+          c.client_code, vc.last_seen;
+
+-- ---------------------------------------------------------------------------
+-- ALERT CHANNELS
+-- Stores email / Slack / Teams webhook destinations for compliance alerts.
+-- Dispatch is triggered by calling GET /api/dispatch-alerts from cron.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sam_admin.alert_channels (
+  channel_id    SERIAL PRIMARY KEY,
+  channel_type  TEXT NOT NULL CHECK (channel_type IN ('email', 'slack', 'teams')),
+  channel_name  TEXT NOT NULL,
+  config        JSONB NOT NULL DEFAULT '{}',
+  -- email config keys: smtp_host, smtp_port, smtp_user, smtp_password,
+  --                    from_addr, to_addrs (array)
+  -- slack config keys: webhook_url
+  -- teams config keys: webhook_url
+  enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+  min_severity  TEXT NOT NULL DEFAULT 'MEDIUM'
+                  CHECK (min_severity IN ('LOW', 'MEDIUM', 'HIGH')),
+  last_sent_at  TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+

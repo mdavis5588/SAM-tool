@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}VMware Clusters — Oracle SAM{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-diagram-3"></i> VMware Cluster Licence Exposure</h4>
+  <span class="badge bg-secondary ms-2">{{ clusters | length }}</span>
+  {% set exposed = clusters | selectattr('has_oracle_workloads') | list | length %}
+  {% if exposed > 0 %}
+    <span class="badge bg-danger ms-1">{{ exposed }} with Oracle workloads</span>
+  {% endif %}
+</div>
+
+<div class="alert alert-warning d-flex gap-2 mb-4">
+  <i class="bi bi-info-circle-fill fs-5 flex-shrink-0"></i>
+  <div>
+    <strong>Oracle licensing on VMware:</strong>
+    Oracle does not accept VMware as a form of hard partitioning.
+    If any VM in a vSphere cluster runs Oracle software, all physical CPU cores
+    in <strong>every host in that cluster</strong> must be licensed —
+    not just the cores on the host running the Oracle VM.
+    <a href="https://www.oracle.com/assets/partitioning-070609.pdf"
+       target="_blank" class="alert-link">Oracle Partitioning Policy (PDF)</a>
+  </div>
+</div>
+
+{% if clusters %}
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover table-striped align-middle mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>Cluster</th>
+            <th>vCenter</th>
+            <th>Client</th>
+            <th>Hosts</th>
+            <th>Total Sockets</th>
+            <th>Total Physical Cores</th>
+            <th>Oracle DB VMs</th>
+            <th>WLS VMs</th>
+            <th>Java VMs</th>
+            <th>Exposure</th>
+            <th>Last Seen</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in clusters %}
+          <tr class="{% if c.has_oracle_workloads %}table-danger{% endif %}">
+            <td>
+              <strong>{{ c.cluster_name }}</strong>
+              {% if c.datacenter %}<br><small class="text-muted">{{ c.datacenter }}</small>{% endif %}
+            </td>
+            <td><small><code>{{ c.vcenter_host }}</code></small></td>
+            <td>{{ c.client_code or '—' }}</td>
+            <td class="text-center">{{ c.host_count }}</td>
+            <td class="text-center">{{ c.total_sockets }}</td>
+            <td class="text-center fw-bold">{{ c.total_physical_cores }}</td>
+            <td class="text-center">
+              {% if c.oracle_db_vm_count > 0 %}
+                <span class="badge bg-danger">{{ c.oracle_db_vm_count }}</span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-center">
+              {% if c.oracle_wls_vm_count > 0 %}
+                <span class="badge bg-warning text-dark">{{ c.oracle_wls_vm_count }}</span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-center">
+              {% if c.oracle_java_vm_count > 0 %}
+                <span class="badge bg-info text-dark">{{ c.oracle_java_vm_count }}</span>
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              {% if c.has_oracle_workloads %}
+                <span class="badge bg-danger">
+                  <i class="bi bi-exclamation-triangle"></i>
+                  Entire cluster must be licensed
+                </span>
+              {% else %}
+                <span class="badge bg-success"><i class="bi bi-check-circle"></i> No Oracle workloads</span>
+              {% endif %}
+            </td>
+            <td><small>{{ c.last_seen.strftime('%Y-%m-%d') if c.last_seen else '—' }}</small></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="mt-3 text-muted small">
+  <i class="bi bi-info-circle"></i>
+  Oracle workloads are detected by matching VM name keywords against common Oracle product names
+  (oracle, orcl, weblogic, wls, java, etc.).
+  Run the <code>discover_vmware.yml</code> Ansible playbook to populate or update this data.
+</div>
+
+{% else %}
+<div class="alert alert-info">
+  <i class="bi bi-cloud"></i>
+  No VMware clusters discovered yet.
+  Run <code>ansible-playbook ansible/playbooks/discover_vmware.yml</code> to populate this view.
+</div>
+{% endif %}
+
+{% endblock %}

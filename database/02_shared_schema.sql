@@ -1017,3 +1017,271 @@ BEGIN
     CASE WHEN p_lock THEN ', locked' ELSE '' END);
 END;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- CPU CORE FACTOR LOOKUP FUNCTION
+-- Returns the Oracle-specified core factor for a given CPU model string by
+-- matching against core_factor_table patterns (most-specific match wins).
+-- Returns NULL when the CPU model is unrecognised — this should trigger an alert.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION shared.cpu_core_factor_lookup(p_cpu_model TEXT)
+RETURNS NUMERIC LANGUAGE sql STABLE AS $$
+  SELECT core_factor
+  FROM   shared.core_factor_table
+  WHERE  UPPER(p_cpu_model) LIKE UPPER(processor_pattern)
+    AND  is_current = TRUE
+  ORDER  BY LENGTH(processor_pattern) DESC   -- longest (most specific) pattern wins
+  LIMIT  1;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- UPDATED COMPLIANCE ALERTS — replaces the version in get_compliance_alerts()
+-- Adds: SE2 socket violations, SE2 RAC cluster size violations,
+--       unrecognised CPU model alerts, VMware cluster exposure warnings.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION shared.get_compliance_alerts()
+RETURNS TABLE (
+  alert_type    TEXT,
+  severity      TEXT,
+  client_code   TEXT,
+  client_name   TEXT,
+  object_name   TEXT,
+  description   TEXT,
+  days_until    INTEGER,
+  action_needed TEXT
+) LANGUAGE plpgsql AS $$
+DECLARE
+  v_client RECORD;
+  v_sql    TEXT;
+  v_row    RECORD;
+BEGIN
+
+  -- Alert: CSI support contracts expiring within 90 days
+  FOR v_row IN
+    SELECT cs.csi_number, cs.contract_name,
+           c.client_code, c.client_name,
+           (cs.support_expiry - CURRENT_DATE)::INTEGER AS days_left,
+           cs.support_expiry
+    FROM   shared.csi_contracts   cs
+    JOIN   shared.csi_client_map  m  ON m.csi_id    = cs.csi_id
+    JOIN   sam_admin.clients      c  ON c.client_id = m.client_id
+    WHERE  cs.support_expiry IS NOT NULL
+      AND  cs.support_expiry >= CURRENT_DATE
+      AND  cs.support_expiry <  CURRENT_DATE + INTERVAL '90 days'
+      AND  cs.status = 'active'
+  LOOP
+    alert_type    := 'CSI_EXPIRING';
+    severity      := CASE WHEN v_row.days_left <= 30 THEN 'HIGH' ELSE 'MEDIUM' END;
+    client_code   := v_row.client_code;
+    client_name   := v_row.client_name;
+    object_name   := v_row.csi_number || ' — ' || v_row.contract_name;
+    description   := 'Support contract expires in ' || v_row.days_left
+                     || ' days (' || v_row.support_expiry || ')';
+    days_until    := v_row.days_left;
+    action_needed := 'Initiate renewal with Oracle LMS / reseller before expiry';
+    RETURN NEXT;
+  END LOOP;
+
+  -- Alert: ULA contracts expiring within 180 days
+  FOR v_row IN
+    SELECT cs.csi_number, cs.contract_name,
+           c.client_code, c.client_name,
+           cs.ula_expiry,
+           (cs.ula_expiry - CURRENT_DATE)::INTEGER AS days_left
+    FROM   shared.csi_contracts   cs
+    JOIN   shared.csi_client_map  m  ON m.csi_id    = cs.csi_id
+    JOIN   sam_admin.clients      c  ON c.client_id = m.client_id
+    WHERE  cs.is_ula = TRUE
+      AND  cs.ula_expiry IS NOT NULL
+      AND  cs.ula_expiry >= CURRENT_DATE
+      AND  cs.ula_expiry <  CURRENT_DATE + INTERVAL '180 days'
+  LOOP
+    alert_type    := 'ULA_EXPIRING';
+    severity      := CASE WHEN v_row.days_left <= 60 THEN 'HIGH' ELSE 'MEDIUM' END;
+    client_code   := v_row.client_code;
+    client_name   := v_row.client_name;
+    object_name   := v_row.csi_number || ' — ' || v_row.contract_name;
+    description   := 'ULA expires in ' || v_row.days_left
+                     || ' days. Certification must be completed before '
+                     || v_row.ula_expiry;
+    days_until    := v_row.days_left;
+    action_needed := 'Run full deployment count and initiate ULA certification with Oracle';
+    RETURN NEXT;
+  END LOOP;
+
+  -- Alert: unacknowledged HIGH severity changelog entries older than 7 days
+  -- + SE2 violations + unrecognised CPUs (per-client schema loop)
+  FOR v_client IN
+    SELECT client_code, client_name, schema_name
+    FROM   sam_admin.clients WHERE is_active = TRUE
+  LOOP
+
+    -- Stale HIGH changelog entries
+    BEGIN
+      v_sql := format(
+        $q$SELECT hostname, change_category, object_name, detected_at,
+                  EXTRACT(EPOCH FROM (NOW() - detected_at)) / 86400 AS days_old
+           FROM %I.discovery_changelog
+           WHERE severity = 'HIGH' AND NOT acknowledged
+             AND detected_at < NOW() - INTERVAL '7 days'$q$,
+        v_client.schema_name
+      );
+      FOR v_row IN EXECUTE v_sql LOOP
+        alert_type    := 'STALE_HIGH_CHANGE';
+        severity      := 'HIGH';
+        client_code   := v_client.client_code;
+        client_name   := v_client.client_name;
+        object_name   := v_row.hostname || ': ' || v_row.object_name;
+        description   := 'Unacknowledged HIGH severity change ('
+                         || v_row.change_category || ') detected '
+                         || ROUND(v_row.days_old) || ' days ago';
+        days_until    := NULL;
+        action_needed := 'Acknowledge in discovery_changelog; update server_csi_map if licence impact is confirmed';
+        RETURN NEXT;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    -- SE2 socket limit violations (max 2 sockets per server)
+    BEGIN
+      v_sql := format(
+        $q$SELECT s.hostname, i.oracle_sid, p.cpu_sockets
+           FROM   %I.oracle_servers s
+           JOIN   %I.oracle_instances i ON i.server_id = s.server_id AND i.is_active
+           JOIN   LATERAL (
+             SELECT cpu_sockets FROM %I.oracle_processors
+             WHERE  server_id = s.server_id
+             ORDER  BY recorded_at DESC LIMIT 1
+           ) p ON TRUE
+           WHERE  s.is_active
+             AND  (i.edition ILIKE '%%Standard Edition 2%%'
+                   OR  i.edition = 'SE2')
+             AND  p.cpu_sockets > 2$q$,
+        v_client.schema_name, v_client.schema_name, v_client.schema_name
+      );
+      FOR v_row IN EXECUTE v_sql LOOP
+        alert_type    := 'SE2_SOCKET_VIOLATION';
+        severity      := 'HIGH';
+        client_code   := v_client.client_code;
+        client_name   := v_client.client_name;
+        object_name   := v_row.hostname || ' / ' || v_row.oracle_sid;
+        description   := 'SE2 permits max 2 CPU sockets but server has '
+                         || v_row.cpu_sockets || ' sockets';
+        days_until    := NULL;
+        action_needed := 'Upgrade to EE licence, reduce socket count, or move instance to a compliant server';
+        RETURN NEXT;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    -- SE2 RAC cluster size violations (max 2 nodes)
+    BEGIN
+      v_sql := format(
+        $q$SELECT i.oracle_sid, COUNT(DISTINCT n.node_name) AS node_count
+           FROM   %I.oracle_instances   i
+           JOIN   %I.oracle_rac_nodes   n ON n.instance_id = i.instance_id
+           WHERE  i.is_active
+             AND  (i.edition ILIKE '%%Standard Edition 2%%' OR i.edition = 'SE2')
+           GROUP  BY i.oracle_sid
+           HAVING COUNT(DISTINCT n.node_name) > 2$q$,
+        v_client.schema_name, v_client.schema_name
+      );
+      FOR v_row IN EXECUTE v_sql LOOP
+        alert_type    := 'SE2_RAC_SIZE_VIOLATION';
+        severity      := 'HIGH';
+        client_code   := v_client.client_code;
+        client_name   := v_client.client_name;
+        object_name   := v_row.oracle_sid;
+        description   := 'SE2 RAC cluster has ' || v_row.node_count
+                         || ' nodes — Oracle permits max 2 nodes in an SE2 RAC cluster';
+        days_until    := NULL;
+        action_needed := 'Remove nodes to reduce to ≤2, or upgrade all nodes to EE licences';
+        RETURN NEXT;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    -- Unrecognised CPU models (no matching entry in core_factor_table)
+    BEGIN
+      v_sql := format(
+        $q$SELECT DISTINCT s.hostname, p.cpu_model
+           FROM   %I.oracle_servers s
+           JOIN   LATERAL (
+             SELECT cpu_model FROM %I.oracle_processors
+             WHERE  server_id = s.server_id
+             ORDER  BY recorded_at DESC LIMIT 1
+           ) p ON TRUE
+           WHERE  s.is_active
+             AND  p.cpu_model IS NOT NULL
+             AND  shared.cpu_core_factor_lookup(p.cpu_model) IS NULL$q$,
+        v_client.schema_name, v_client.schema_name
+      );
+      FOR v_row IN EXECUTE v_sql LOOP
+        alert_type    := 'UNRECOGNISED_CPU';
+        severity      := 'MEDIUM';
+        client_code   := v_client.client_code;
+        client_name   := v_client.client_name;
+        object_name   := v_row.hostname;
+        description   := 'CPU model "' || v_row.cpu_model
+                         || '" does not match any entry in the Oracle Processor Core Factor Table';
+        days_until    := NULL;
+        action_needed := 'Verify correct core factor at oracle.com/assets/processor-core-factor-table-070634.pdf and add to shared.core_factor_table';
+        RETURN NEXT;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+  END LOOP;
+
+  -- Alert: licences with no policy or no client assignment
+  FOR v_row IN
+    SELECT csi_number, contract_name, allocation_status, product_families
+    FROM   shared.unassigned_licences
+  LOOP
+    alert_type    := 'UNASSIGNED_LICENCE';
+    severity      := 'MEDIUM';
+    client_code   := NULL;
+    client_name   := NULL;
+    object_name   := v_row.csi_number || ' — ' || v_row.contract_name;
+    description   := v_row.allocation_status || ': '
+                     || COALESCE(v_row.product_families, 'unknown product');
+    days_until    := NULL;
+    action_needed := CASE v_row.allocation_status
+      WHEN 'NEEDS POLICY'     THEN 'Set sharing_policy via shared.set_csi_owner() or shared.assign_csi_to_client()'
+      WHEN 'NEEDS ASSIGNMENT' THEN 'Assign this CSI to a client via shared.assign_csi_to_client()'
+      ELSE 'Review and assign'
+    END;
+    RETURN NEXT;
+  END LOOP;
+
+  -- Alert: VMware clusters with Oracle workloads
+  FOR v_row IN
+    SELECT cluster_name, vcenter_host, client_code,
+           host_count, total_sockets, total_physical_cores,
+           oracle_db_vm_count, oracle_wls_vm_count
+    FROM   sam_admin.vmware_licence_exposure
+    WHERE  has_oracle_workloads = TRUE
+  LOOP
+    alert_type    := 'VMWARE_CLUSTER_EXPOSURE';
+    severity      := 'HIGH';
+    client_code   := v_row.client_code;
+    client_name   := NULL;
+    object_name   := v_row.cluster_name || ' @ ' || v_row.vcenter_host;
+    description   := 'VMware cluster has ' || v_row.oracle_db_vm_count
+                     || ' Oracle DB VM(s) and ' || v_row.oracle_wls_vm_count
+                     || ' WLS VM(s) across ' || v_row.host_count || ' hosts ('
+                     || v_row.total_sockets || ' sockets / '
+                     || v_row.total_physical_cores || ' cores total). '
+                     || 'Oracle requires the entire cluster to be licensed.';
+    days_until    := NULL;
+    action_needed := 'Verify licences cover all ' || v_row.total_physical_cores
+                     || ' physical cores in this vSphere cluster, or implement Oracle-approved hard partitioning';
+    RETURN NEXT;
+  END LOOP;
+
+END;
+$$;
+
+-- Refresh the convenience view (needed because the function was replaced)
+CREATE OR REPLACE VIEW shared.compliance_alerts AS
+SELECT * FROM shared.get_compliance_alerts();
