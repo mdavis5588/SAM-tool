@@ -339,7 +339,69 @@ Rows highlighted **red** indicate compliance failures (under-licensed, SE2 viola
 Oracle VM clusters). Rows highlighted **amber** indicate items requiring manual review
 (unrecognised CPU models, VMware clusters with Oracle workloads).
 
-### 4. Running without Docker (development)
+### 5. Configuring alert channels (email, Slack, Teams)
+
+The **Settings** page lets you add one or more alert channels. When the
+`/api/dispatch-alerts` endpoint is called (manually or by cron), the tool
+evaluates all active compliance alerts and sends them to every enabled channel.
+
+#### 5a. Microsoft Teams (Incoming Webhook)
+
+1. In Teams, open the channel you want to post alerts to.
+2. Click **···** → **Connectors** → search for **Incoming Webhook** → **Add**.
+3. Give it a name (e.g. *Oracle SAM Alerts*), optionally upload an icon, then
+   click **Create**.
+4. Copy the webhook URL (it looks like
+   `https://your-org.webhook.office.com/webhookb2/…`).
+5. In the Admin UI, go to **Settings** → **Add Channel**:
+   - **Channel type**: Teams
+   - **Name**: anything descriptive (e.g. *#oracle-alerts*)
+   - **Webhook URL**: paste the URL from step 4
+   - **Minimum severity**: LOW / MEDIUM / HIGH — alerts below this level are
+     suppressed for this channel
+6. Click **Add Channel**, then optionally click **Test** to send a sample message.
+
+#### 5b. Slack (Incoming Webhook)
+
+1. Go to **api.slack.com/apps** → **Create New App** → **From scratch**.
+2. Under **Features**, choose **Incoming Webhooks** and activate them.
+3. Click **Add New Webhook to Workspace**, select the target channel, and
+   copy the webhook URL (`https://hooks.slack.com/services/…`).
+4. In the Admin UI go to **Settings** → **Add Channel**:
+   - **Channel type**: Slack
+   - **Webhook URL**: paste the Slack webhook URL
+5. Click **Add Channel** and optionally **Test**.
+
+#### 5c. Email (SMTP)
+
+| Field | Description |
+|---|---|
+| **SMTP host** | Your mail relay, e.g. `smtp.office365.com` or `smtp.gmail.com` |
+| **SMTP port** | `587` for STARTTLS (recommended), `465` for implicit TLS, `25` for plain |
+| **From address** | Sender address the relay permits, e.g. `oracle-sam@yourcompany.com` |
+| **SMTP username** | Usually the same as the from address |
+| **SMTP password** | Account password or app-specific password |
+| **To addresses** | Comma-separated list of recipients |
+
+The tool uses STARTTLS on port 587 / 465 and plain SMTP on port 25. If your
+relay requires no authentication (e.g. an internal smarthost), leave username
+and password blank.
+
+#### 5d. Scheduled dispatch (cron)
+
+The endpoint `/api/dispatch-alerts` triggers alert evaluation and delivery.
+Set `DISPATCH_KEY` in `.env` to a random string, then call it from cron:
+
+```cron
+# Check and send compliance alerts every morning at 07:00
+0 7 * * * curl -s "http://your-server:5000/api/dispatch-alerts?key=YOUR_DISPATCH_KEY" \
+  >> /var/log/sam/alerts.log 2>&1
+```
+
+Leave `DISPATCH_KEY` blank in `.env` to disable authentication (not
+recommended in production).
+
+### 6. Running without Docker (development)
 
 ```bash
 cd admin-ui
@@ -353,7 +415,7 @@ export FLASK_SECRET=dev-only-secret
 python app.py
 ```
 
-### 5. Running on a different port
+### 7. Running on a different port
 
 Edit `docker-compose.yml` and change the left side of the port mapping:
 
