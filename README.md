@@ -283,11 +283,61 @@ docker compose down
 - **Servers** — see every discovered server with its calculated licence requirement
   (processor count and type), CSI assignment status, and compliance badge
 - **Edit a server** — switch between Processor Perpetual (default) and Named User Plus;
-  assign or remove CSI contracts with optional licence quantity override
+  assign or remove CSI contracts with optional licence quantity override;
+  view change history and acknowledge entries
 - **Contracts** — browse all CSI contracts, view entitlement lines and which servers
   are consuming them
 - **Alerts** — live compliance alerts: expiring contracts, ULA deadlines,
-  unacknowledged HIGH severity changes, and unassigned licences
+  unacknowledged HIGH severity changes, SE2 violations, unrecognised CPUs, and VMware exposure
+- **VMware** — vSphere cluster inventory showing Oracle VM workloads and the full
+  physical core count that Oracle requires to be licensed across each cluster
+- **LMS Export** — download a 10-sheet Excel workbook covering the full audit pack
+  (see below)
+- **Settings** — configure email, Slack, or Teams alert channels
+
+### 4. LMS Audit Export
+
+The **LMS Export** button in the top navigation bar generates an Excel workbook
+(`.xlsx`) covering everything an Oracle audit typically requires.
+
+#### Download from a browser
+
+1. Log in to the Admin UI.
+2. Click **LMS Export** in the navbar (top-right).
+3. The file downloads immediately as
+   `oracle_lms_export_<client_schema>_<date>.xlsx`.
+
+#### Download from the command line
+
+```bash
+# Basic — saves the file in the current directory
+curl -c cookies.txt -b cookies.txt \
+     -X POST http://your-server:5000/login \
+     -d "username=admin&password=yourpassword" \
+     -L -o /dev/null
+
+curl -c cookies.txt -b cookies.txt \
+     http://your-server:5000/export/lms \
+     -o oracle_lms_export.xlsx
+```
+
+#### What the workbook contains
+
+| Sheet | Contents |
+|---|---|
+| **Server Inventory** | All active Oracle servers — hostname, environment, OS, RAM |
+| **Processor Details** | CPU model, socket count, core count, Oracle core factor |
+| **Oracle Instances** | SID, edition, version, platform per instance |
+| **Options** | Active `v$option` flags (Partitioning, RAC, Diagnostics Pack, etc.) |
+| **Licence Position** | Calculated licence requirements vs. entitlements, surplus/deficit |
+| **CSI Contracts** | Contract headers, quantities, costs, and expiry dates |
+| **SE2 Violations** | Servers breaching the SE2 2-socket or 2-node RAC limits |
+| **CPU Validation** | Servers with CPU models not matched in the Oracle core factor table |
+| **VMware Exposure** | vSphere clusters with Oracle workloads and full physical core counts |
+
+Rows highlighted **red** indicate compliance failures (under-licensed, SE2 violations,
+Oracle VM clusters). Rows highlighted **amber** indicate items requiring manual review
+(unrecognised CPU models, VMware clusters with Oracle workloads).
 
 ### 4. Running without Docker (development)
 
