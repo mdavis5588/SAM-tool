@@ -182,6 +182,30 @@ def edit_server(server_id):
             )
             flash("CSI assignment removed.", "success")
 
+        elif action == "set_java_exempt":
+            java_id = request.form.get("java_id")
+            exempt  = request.form.get("exempt") == "1"
+            reason  = request.form.get("exempt_reason") or None
+            notes   = request.form.get("exempt_notes") or None
+            if exempt:
+                execute(
+                    f"UPDATE {CLIENT_SCHEMA}.java_installations "
+                    f"SET licence_exempt = TRUE, exempt_reason = %s, "
+                    f"    exempt_notes = %s, exempt_set_by = %s, exempt_set_at = NOW() "
+                    f"WHERE java_id = %s",
+                    (reason, notes, ADMIN_USER, java_id)
+                )
+                flash("Java installation marked as exempt from licensing.", "success")
+            else:
+                execute(
+                    f"UPDATE {CLIENT_SCHEMA}.java_installations "
+                    f"SET licence_exempt = FALSE, exempt_reason = NULL, "
+                    f"    exempt_notes = NULL, exempt_set_by = NULL, exempt_set_at = NULL "
+                    f"WHERE java_id = %s",
+                    (java_id,)
+                )
+                flash("Java licence exemption cleared.", "success")
+
         return redirect(url_for("edit_server", server_id=server_id))
 
     # GET
@@ -232,12 +256,25 @@ def edit_server(server_id):
         (server_id,)
     )
 
+    java_installations = query(
+        f"""SELECT java_id, java_home, java_vendor, java_version,
+                   java_major_version, java_edition, is_oracle_jdk,
+                   requires_licence, licence_metric,
+                   licence_exempt, exempt_reason, exempt_notes,
+                   exempt_set_by, exempt_set_at::DATE AS exempt_set_at
+            FROM {CLIENT_SCHEMA}.java_installations
+            WHERE server_id = %s
+            ORDER BY java_major_version DESC, java_home""",
+        (server_id,)
+    )
+
     return render_template("edit_server.html",
                            server=server,
                            instances=instances,
                            assignments=assignments,
                            available_csis=available_csis,
-                           licence_position=licence_position)
+                           licence_position=licence_position,
+                           java_installations=java_installations)
 
 
 # ---------------------------------------------------------------------------

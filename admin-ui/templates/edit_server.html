@@ -134,6 +134,119 @@
     </div>
     {% endif %}
 
+    <!-- Java installations -->
+    {% if java_installations %}
+    <div class="card shadow-sm mb-4">
+      <div class="card-header d-flex align-items-center">
+        <span><i class="bi bi-cup-hot"></i> Java Installations</span>
+        <span class="badge bg-secondary ms-2">{{ java_installations | length }}</span>
+        {% set exempt_count = java_installations | selectattr('licence_exempt') | list | length %}
+        {% if exempt_count > 0 %}
+          <span class="badge bg-success ms-1">{{ exempt_count }} exempt</span>
+        {% endif %}
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Java Home</th>
+              <th>Edition / Version</th>
+              <th>Licence Status</th>
+              <th>Exemption</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for j in java_installations %}
+            <tr>
+              <td>
+                <code class="small">{{ j.java_home }}</code>
+                {% if j.java_vendor %}<br><small class="text-muted">{{ j.java_vendor }}</small>{% endif %}
+              </td>
+              <td>
+                {{ j.java_edition or '—' }}
+                {% if j.java_version %}<br><small class="text-muted">{{ j.java_version }}</small>{% endif %}
+              </td>
+              <td>
+                {% if j.licence_exempt %}
+                  <span class="badge bg-success"><i class="bi bi-shield-check"></i> Exempt</span>
+                {% elif j.requires_licence %}
+                  <span class="badge bg-danger"><i class="bi bi-exclamation-circle"></i> Licence required</span>
+                {% else %}
+                  <span class="badge bg-secondary">No licence needed</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if j.licence_exempt %}
+                  <small>
+                    <strong>{{ j.exempt_reason | replace('_', ' ') | title }}</strong>
+                    {% if j.exempt_notes %}<br>{{ j.exempt_notes }}{% endif %}
+                    {% if j.exempt_set_by %}<br><span class="text-muted">by {{ j.exempt_set_by }}{% if j.exempt_set_at %} on {{ j.exempt_set_at }}{% endif %}</span>{% endif %}
+                  </small>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td>
+                <button class="btn btn-sm btn-outline-secondary"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#java-exempt-{{ j.java_id }}">
+                  <i class="bi bi-pencil"></i>
+                </button>
+              </td>
+            </tr>
+            <!-- Inline exemption editor (collapsible) -->
+            <tr class="collapse" id="java-exempt-{{ j.java_id }}">
+              <td colspan="5" class="bg-light p-3">
+                <form method="post" class="row g-2 align-items-end">
+                  <input type="hidden" name="action"  value="set_java_exempt">
+                  <input type="hidden" name="java_id" value="{{ j.java_id }}">
+
+                  {% if j.licence_exempt %}
+                  <!-- Currently exempt — offer to clear it -->
+                  <div class="col-auto">
+                    <input type="hidden" name="exempt" value="0">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                      <i class="bi bi-x-circle"></i> Remove exemption
+                    </button>
+                  </div>
+                  {% else %}
+                  <!-- Not currently exempt — offer to set it -->
+                  <input type="hidden" name="exempt" value="1">
+                  <div class="col-md-3">
+                    <label class="form-label form-label-sm">Exemption reason <span class="text-danger">*</span></label>
+                    <select name="exempt_reason" class="form-select form-select-sm" required>
+                      <option value="">— select reason —</option>
+                      <option value="oracle_oem">Oracle Enterprise Manager (OEM)</option>
+                      <option value="oracle_database_jvm">Oracle Database JVM (built-in)</option>
+                      <option value="oracle_weblogic">Oracle WebLogic Server</option>
+                      <option value="oracle_fusion_middleware">Oracle Fusion Middleware</option>
+                      <option value="oracle_forms_reports">Oracle Forms / Reports</option>
+                      <option value="custom">Custom / Other (specify in notes)</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label form-label-sm">Notes</label>
+                    <input type="text" name="exempt_notes" class="form-control form-control-sm"
+                           placeholder="e.g. covered by OEM licence CSI-12345">
+                  </div>
+                  <div class="col-auto">
+                    <button type="submit" class="btn btn-sm btn-success">
+                      <i class="bi bi-shield-check"></i> Mark as exempt
+                    </button>
+                  </div>
+                  {% endif %}
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- Existing CSI assignments -->
     <div class="card shadow-sm mb-4">
       <div class="card-header d-flex align-items-center">

@@ -394,6 +394,16 @@ BEGIN
       is_oracle_jdk      BOOLEAN NOT NULL DEFAULT FALSE,
       requires_licence   BOOLEAN NOT NULL DEFAULT FALSE,
       licence_metric     TEXT,
+      licence_exempt     BOOLEAN NOT NULL DEFAULT FALSE,
+      exempt_reason      TEXT
+                           CHECK (exempt_reason IN (
+                             'oracle_oem', 'oracle_database_jvm', 'oracle_weblogic',
+                             'oracle_fusion_middleware', 'oracle_forms_reports',
+                             'custom'
+                           )),
+      exempt_notes       TEXT,
+      exempt_set_by      TEXT,
+      exempt_set_at      TIMESTAMPTZ,
       first_seen         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       last_seen          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       discovery_run_id   TEXT,

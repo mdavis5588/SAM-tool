@@ -1284,8 +1284,27 @@ RETURNS VOID LANGUAGE plpgsql AS $$
 BEGIN
 
   -- -------------------------------------------------------------------------
+  -- Add exemption columns to java_installations if this is a migration run
+  -- (idempotent — IF NOT EXISTS guards make it safe to re-run)
+  -- -------------------------------------------------------------------------
+  EXECUTE format($ddl$
+    ALTER TABLE %I.java_installations
+      ADD COLUMN IF NOT EXISTS licence_exempt  BOOLEAN NOT NULL DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS exempt_reason   TEXT
+        CHECK (exempt_reason IN (
+          'oracle_oem', 'oracle_database_jvm', 'oracle_weblogic',
+          'oracle_fusion_middleware', 'oracle_forms_reports', 'custom'
+        )),
+      ADD COLUMN IF NOT EXISTS exempt_notes    TEXT,
+      ADD COLUMN IF NOT EXISTS exempt_set_by   TEXT,
+      ADD COLUMN IF NOT EXISTS exempt_set_at   TIMESTAMPTZ
+  $ddl$, p_schema);
+
+  -- -------------------------------------------------------------------------
   -- JAVA LICENCE POSITION VIEW
   -- Shows every discovered Java installation with its licence requirement.
+  -- Exempt installations are included but flagged; use WHERE licence_exempt = FALSE
+  -- to restrict to installs that require a licence.
   -- -------------------------------------------------------------------------
   EXECUTE format($view$
     CREATE OR REPLACE VIEW %I.java_licence_position AS
@@ -1303,14 +1322,25 @@ BEGIN
       j.is_oracle_jdk,
       j.requires_licence,
       j.licence_metric,
+      j.licence_exempt,
+      j.exempt_reason,
+      j.exempt_notes,
+      j.exempt_set_by,
+      j.exempt_set_at,
       j.first_seen,
       j.last_seen,
-      COALESCE(je.notes, 'Unknown edition — manual review required') AS edition_notes
+      COALESCE(je.notes, 'Unknown edition — manual review required') AS edition_notes,
+      CASE
+        WHEN j.licence_exempt THEN 'exempt'
+        WHEN j.requires_licence THEN 'licence_required'
+        ELSE 'no_licence_required'
+      END AS licence_status
     FROM   %I.java_installations j
     JOIN   %I.oracle_servers      s  ON s.server_id = j.server_id AND s.is_active
     LEFT   JOIN shared.java_license_editions je
            ON  je.edition_name = j.java_edition
-    ORDER  BY j.requires_licence DESC, s.hostname, j.java_major_version DESC
+    ORDER  BY j.licence_exempt ASC, j.requires_licence DESC,
+              s.hostname, j.java_major_version DESC
   $view$, p_schema, p_schema, p_schema);
 
   -- -------------------------------------------------------------------------
@@ -1701,7 +1731,9 @@ BEGIN
           requires_licence   = EXCLUDED.requires_licence,
           licence_metric     = EXCLUDED.licence_metric,
           last_seen          = NOW(),
-          discovery_run_id   = EXCLUDED.discovery_run_id;
+          discovery_run_id   = EXCLUDED.discovery_run_id
+          -- Exemption fields are intentionally excluded: discovery never
+          -- clears a manually-set exemption.
       END LOOP;
     END;
     $body$;
