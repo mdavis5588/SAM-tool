@@ -12,9 +12,9 @@
 -- ---------------------------------------------------------------------------
 -- 1. DATABASE ROLES
 -- ---------------------------------------------------------------------------
-CREATE ROLE sam_loader     WITH LOGIN PASSWORD 'admin';   -- Ansible writes
-CREATE ROLE sam_reader     WITH LOGIN PASSWORD 'admin';   -- Power BI reads
-CREATE ROLE sam_admin_role WITH LOGIN PASSWORD 'admin';    -- Full admin
+DO $$ BEGIN CREATE ROLE sam_loader     WITH LOGIN PASSWORD 'admin'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE ROLE sam_reader     WITH LOGIN PASSWORD 'admin'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE ROLE sam_admin_role WITH LOGIN PASSWORD 'admin'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Loader: read shared/admin, write to client schemas (granted per schema below)
 GRANT USAGE  ON SCHEMA shared, sam_admin TO sam_loader;
@@ -40,8 +40,15 @@ GRANT ALL ON ALL FUNCTIONS IN SCHEMA sam_admin TO sam_admin_role;
 -- ---------------------------------------------------------------------------
 -- 2. PROVISION CLIENTS
 -- ---------------------------------------------------------------------------
-SELECT sam_admin.provision_client('acme',   'Acme Corp',   'admin@acme.example.com');
-SELECT sam_admin.provision_client('globex', 'Globex Corp', 'admin@globex.example.com');
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM sam_admin.clients WHERE client_code = 'acme') THEN
+    PERFORM sam_admin.provision_client('acme', 'Acme Corp', 'admin@acme.example.com');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM sam_admin.clients WHERE client_code = 'globex') THEN
+    PERFORM sam_admin.provision_client('globex', 'Globex Corp', 'admin@globex.example.com');
+  END IF;
+END $$;
 
 -- Add more clients:
 -- SELECT sam_admin.provision_client('contoso', 'Contoso Ltd', 'sam@contoso.example.com');
@@ -82,6 +89,9 @@ SELECT shared.refresh_cross_client_summary();
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE csi_number = '11111111') THEN
+    RAISE NOTICE 'CSI 11111111 already exists — skipping seed.'; RETURN;
+  END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'Group Oracle DB EE Pool 2023',
     p_csi_number     => '11111111',
@@ -151,6 +161,9 @@ END $$;
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE csi_number = '22222222') THEN
+    RAISE NOTICE 'CSI 22222222 already exists — skipping seed.'; RETURN;
+  END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'Group WebLogic Server EE Pool 2023',
     p_csi_number     => '22222222',
@@ -196,6 +209,9 @@ END $$;
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE csi_number = '33333333') THEN
+    RAISE NOTICE 'CSI 33333333 already exists — skipping seed.'; RETURN;
+  END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'Globex SE2 Contract 2022',
     p_csi_number     => '33333333',
@@ -227,6 +243,9 @@ END $$;
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE csi_number = '55555555') THEN
+    RAISE NOTICE 'CSI 55555555 already exists — skipping seed.'; RETURN;
+  END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'Acme Advanced Security 2024',
     p_csi_number     => '55555555',
@@ -257,6 +276,9 @@ END $$;
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE csi_number = '44444444') THEN
+    RAISE NOTICE 'CSI 44444444 already exists — skipping seed.'; RETURN;
+  END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'New EE Purchase Q1 2024',
     p_csi_number     => '44444444',

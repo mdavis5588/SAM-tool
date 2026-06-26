@@ -71,9 +71,12 @@ BEGIN
     RAISE EXCEPTION 'client_code must be lowercase alphanumeric/underscore only: %', p_code;
   END IF;
 
-  -- Register client
+  -- Register client (skip silently if already exists)
   INSERT INTO sam_admin.clients (client_code, client_name, schema_name, contact_email)
   VALUES (p_code, p_name, v_schema, p_contact_email)
+  ON CONFLICT (client_code) DO UPDATE
+    SET client_name    = EXCLUDED.client_name,
+        contact_email  = COALESCE(EXCLUDED.contact_email, sam_admin.clients.contact_email)
   RETURNING client_id INTO v_client_id;
 
   -- Create schema
