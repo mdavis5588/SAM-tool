@@ -95,7 +95,7 @@ BEGIN
   v_csi := shared.add_csi(
     p_contract_name  => 'Group Oracle DB EE Pool 2023',
     p_csi_number     => '11111111',
-    p_vendor_reference     => 'ORD-2023-0001',
+    p_vendor_ref     => 'ORD-2023-0001',
     p_purchase_date  => '2023-01-01',
     p_support_start  => '2023-01-01',
     p_support_expiry => '2026-01-01',
@@ -167,7 +167,7 @@ BEGIN
   v_csi := shared.add_csi(
     p_contract_name  => 'Group WebLogic Server EE Pool 2023',
     p_csi_number     => '22222222',
-    p_vendor_reference     => 'ORD-2023-0002',
+    p_vendor_ref     => 'ORD-2023-0002',
     p_purchase_date  => '2023-06-01',
     p_support_start  => '2023-06-01',
     p_support_expiry => '2026-06-01',
@@ -215,7 +215,7 @@ BEGIN
   v_csi := shared.add_csi(
     p_contract_name  => 'Globex SE2 Contract 2022',
     p_csi_number     => '33333333',
-    p_vendor_reference     => 'ORD-2022-0099',
+    p_vendor_ref     => 'ORD-2022-0099',
     p_purchase_date  => '2022-01-01',
     p_support_start  => '2022-01-01',
     p_support_expiry => '2025-01-01',
@@ -249,7 +249,7 @@ BEGIN
   v_csi := shared.add_csi(
     p_contract_name  => 'Acme Advanced Security 2024',
     p_csi_number     => '55555555',
-    p_vendor_reference     => 'ORD-2024-0010',
+    p_vendor_ref     => 'ORD-2024-0010',
     p_purchase_date  => '2024-01-15',
     p_support_start  => '2024-01-15',
     p_support_expiry => '2027-01-15',
@@ -282,7 +282,7 @@ BEGIN
   v_csi := shared.add_csi(
     p_contract_name  => 'New EE Purchase Q1 2024',
     p_csi_number     => '44444444',
-    p_vendor_reference     => 'ORD-2024-0022',
+    p_vendor_ref     => 'ORD-2024-0022',
     p_purchase_date  => '2024-03-01',
     p_support_start  => '2024-03-01',
     p_support_expiry => '2027-03-01',
