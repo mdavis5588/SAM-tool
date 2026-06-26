@@ -414,7 +414,7 @@ SELECT
   CASE
     WHEN cs.support_expiry IS NULL THEN NULL
     ELSE GREATEST(0, ROUND(
-      EXTRACT(EPOCH FROM (cs.support_expiry - CURRENT_DATE)) / (365.25 * 86400), 1
+      (cs.support_expiry - CURRENT_DATE)::NUMERIC / 365.25, 1
     ))
   END                                                                     AS support_years_remaining,
   -- Support cost projections
