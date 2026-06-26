@@ -734,7 +734,7 @@ SELECT
   l.license_metric,
   l.quantity,
   l.unit_price,
-  l.total_price,
+  l.total_price                         AS contract_amount,
   l.annual_support_cost,
   COALESCE(l.total_price, 0)
     + COALESCE(l.annual_support_cost, 0)  AS total_line_cost,
@@ -744,7 +744,7 @@ SELECT
         (COALESCE(l.total_price, 0) + COALESCE(l.annual_support_cost, 0))
         / l.quantity, 2)
     ELSE NULL
-  END                                   AS cost_per_licence_incl_support,
+  END                                   AS price_per_seat,
   l.notes                               AS line_notes,
   l.is_active
 FROM   shared.license_entitlement_lines  l
