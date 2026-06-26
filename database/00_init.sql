@@ -89,13 +89,13 @@ SELECT shared.refresh_cross_client_summary();
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
-  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_ref = 'ORD-2023-0001') THEN
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_reference = 'ORD-2023-0001') THEN
     RAISE NOTICE 'Contract ORD-2023-0001 already exists — skipping seed.'; RETURN;
   END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'Group Oracle DB EE Pool 2023',
     p_csi_number     => '11111111',
-    p_vendor_ref     => 'ORD-2023-0001',
+    p_vendor_reference     => 'ORD-2023-0001',
     p_purchase_date  => '2023-01-01',
     p_support_start  => '2023-01-01',
     p_support_expiry => '2026-01-01',
@@ -161,13 +161,13 @@ END $$;
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
-  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_ref = 'ORD-2023-0002') THEN
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_reference = 'ORD-2023-0002') THEN
     RAISE NOTICE 'Contract ORD-2023-0002 already exists — skipping seed.'; RETURN;
   END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'Group WebLogic Server EE Pool 2023',
     p_csi_number     => '22222222',
-    p_vendor_ref     => 'ORD-2023-0002',
+    p_vendor_reference     => 'ORD-2023-0002',
     p_purchase_date  => '2023-06-01',
     p_support_start  => '2023-06-01',
     p_support_expiry => '2026-06-01',
@@ -209,13 +209,13 @@ END $$;
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
-  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_ref = 'ORD-2022-0099') THEN
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_reference = 'ORD-2022-0099') THEN
     RAISE NOTICE 'Contract ORD-2022-0099 already exists — skipping seed.'; RETURN;
   END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'Globex SE2 Contract 2022',
     p_csi_number     => '33333333',
-    p_vendor_ref     => 'ORD-2022-0099',
+    p_vendor_reference     => 'ORD-2022-0099',
     p_purchase_date  => '2022-01-01',
     p_support_start  => '2022-01-01',
     p_support_expiry => '2025-01-01',
@@ -243,13 +243,13 @@ END $$;
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
-  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_ref = 'ORD-2024-0010') THEN
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_reference = 'ORD-2024-0010') THEN
     RAISE NOTICE 'Contract ORD-2024-0010 already exists — skipping seed.'; RETURN;
   END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'Acme Advanced Security 2024',
     p_csi_number     => '55555555',
-    p_vendor_ref     => 'ORD-2024-0010',
+    p_vendor_reference     => 'ORD-2024-0010',
     p_purchase_date  => '2024-01-15',
     p_support_start  => '2024-01-15',
     p_support_expiry => '2027-01-15',
@@ -276,13 +276,13 @@ END $$;
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
-  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_ref = 'ORD-2024-0022') THEN
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_reference = 'ORD-2024-0022') THEN
     RAISE NOTICE 'Contract ORD-2024-0022 already exists — skipping seed.'; RETURN;
   END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'New EE Purchase Q1 2024',
     p_csi_number     => '44444444',
-    p_vendor_ref     => 'ORD-2024-0022',
+    p_vendor_reference     => 'ORD-2024-0022',
     p_purchase_date  => '2024-03-01',
     p_support_start  => '2024-03-01',
     p_support_expiry => '2027-03-01',
