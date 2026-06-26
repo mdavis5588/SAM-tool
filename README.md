@@ -34,10 +34,10 @@ Each client schema contains identical tables:
 
 ```bash
 createdb oracle_sam
-psql oracle_sam -f database/admin/01_admin_schema.sql
-psql oracle_sam -f database/shared/02_shared_schema.sql
-psql oracle_sam -f database/client_template/03_client_template_functions.sql
-psql oracle_sam -f database/migrations/00_init.sql
+psql oracle_sam -f database/01_admin_schema.sql
+psql oracle_sam -f database/02_shared_schema.sql
+psql oracle_sam -f database/03_client_template_functions.sql
+psql oracle_sam -f database/00_init.sql
 ```
 
 `00_init.sql` creates roles, provisions example clients, and seeds sample entitlements.
