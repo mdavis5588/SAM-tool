@@ -1731,7 +1731,7 @@ BEGIN
           requires_licence   = EXCLUDED.requires_licence,
           licence_metric     = EXCLUDED.licence_metric,
           last_seen          = NOW(),
-          discovery_run_id   = EXCLUDED.discovery_run_id
+          discovery_run_id   = EXCLUDED.discovery_run_id;
           -- Exemption fields are intentionally excluded: discovery never
           -- clears a manually-set exemption.
       END LOOP;
