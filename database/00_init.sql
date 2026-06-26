@@ -89,8 +89,8 @@ SELECT shared.refresh_cross_client_summary();
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
-  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE csi_number = '11111111') THEN
-    RAISE NOTICE 'CSI 11111111 already exists — skipping seed.'; RETURN;
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_ref = 'ORD-2023-0001') THEN
+    RAISE NOTICE 'Contract ORD-2023-0001 already exists — skipping seed.'; RETURN;
   END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'Group Oracle DB EE Pool 2023',
@@ -161,8 +161,8 @@ END $$;
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
-  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE csi_number = '22222222') THEN
-    RAISE NOTICE 'CSI 22222222 already exists — skipping seed.'; RETURN;
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_ref = 'ORD-2023-0002') THEN
+    RAISE NOTICE 'Contract ORD-2023-0002 already exists — skipping seed.'; RETURN;
   END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'Group WebLogic Server EE Pool 2023',
@@ -209,8 +209,8 @@ END $$;
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
-  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE csi_number = '33333333') THEN
-    RAISE NOTICE 'CSI 33333333 already exists — skipping seed.'; RETURN;
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_ref = 'ORD-2022-0099') THEN
+    RAISE NOTICE 'Contract ORD-2022-0099 already exists — skipping seed.'; RETURN;
   END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'Globex SE2 Contract 2022',
@@ -243,8 +243,8 @@ END $$;
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
-  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE csi_number = '55555555') THEN
-    RAISE NOTICE 'CSI 55555555 already exists — skipping seed.'; RETURN;
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_ref = 'ORD-2024-0010') THEN
+    RAISE NOTICE 'Contract ORD-2024-0010 already exists — skipping seed.'; RETURN;
   END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'Acme Advanced Security 2024',
@@ -276,8 +276,8 @@ END $$;
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
-  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE csi_number = '44444444') THEN
-    RAISE NOTICE 'CSI 44444444 already exists — skipping seed.'; RETURN;
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_ref = 'ORD-2024-0022') THEN
+    RAISE NOTICE 'Contract ORD-2024-0022 already exists — skipping seed.'; RETURN;
   END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'New EE Purchase Q1 2024',
