@@ -426,10 +426,13 @@ BEGIN
       requires_licence  BOOLEAN NOT NULL DEFAULT FALSE,
       first_seen        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       last_seen         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      discovery_run_id  TEXT,
-      UNIQUE (server_id, COALESCE(install_path, 'unknown'))
+      discovery_run_id  TEXT
     )
   $sql$, p_schema, p_schema);
+  EXECUTE format($sql$
+    CREATE UNIQUE INDEX IF NOT EXISTS mysql_installations_server_path_uidx
+      ON %I.mysql_installations (server_id, COALESCE(install_path, 'unknown'))
+  $sql$, p_schema);
 
   -- oci_instances: OCI compute instances discovered via OCI CLI
   EXECUTE format($sql$
