@@ -55,8 +55,8 @@ GRANT SELECT ON ALL TABLES IN SCHEMA client_newclient TO sam_reader;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA client_newclient TO sam_loader;
 
 -- Assign their CSI entitlements
-INSERT INTO shared.entitlement_client_map (entitlement_id, client_id, allocated_quantity)
-SELECT <entitlement_id>, c.client_id, <quantity>
+INSERT INTO shared.csi_client_map (csi_id, client_id, allocated_quantity)
+SELECT <csi_id>, c.client_id, <quantity>
 FROM   sam_admin.clients c WHERE c.client_code = 'newclient';
 
 -- Rebuild cross-client view
@@ -219,16 +219,16 @@ Intel Xeon / AMD EPYC = 0.5. IBM POWER = 1.0. SPARC T-series = 0.25.
 ```sql
 -- Scenario A: Group ULA shared across two clients
 -- Total: 100 EE processor licences — Acme gets 60, Globex gets 40
-INSERT INTO shared.entitlement_client_map (entitlement_id, client_id, allocated_quantity)
+INSERT INTO shared.csi_client_map (csi_id, client_id, allocated_quantity)
 VALUES (1, 1, 60), (1, 2, 40);
 
 -- Scenario B: Client-exclusive CSI (full quantity available to one client)
 -- No allocated_quantity means the full entitlement quantity is available
-INSERT INTO shared.entitlement_client_map (entitlement_id, client_id)
+INSERT INTO shared.csi_client_map (csi_id, client_id)
 VALUES (2, 1);
 
 -- Scenario C: ULA covers all current clients
-INSERT INTO shared.entitlement_client_map (entitlement_id, client_id)
+INSERT INTO shared.csi_client_map (csi_id, client_id)
 SELECT 3, client_id FROM sam_admin.clients WHERE is_active = TRUE;
 ```
 
