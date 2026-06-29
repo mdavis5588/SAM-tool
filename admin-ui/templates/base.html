@@ -47,6 +47,10 @@
           <a class="nav-link {% if request.endpoint == 'vmware' %}active{% endif %}"
              href="{{ url_for('vmware') }}"><i class="bi bi-diagram-3"></i> VMware</a>
         </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'clients' %}active{% endif %}"
+             href="{{ url_for('clients') }}"><i class="bi bi-people"></i> Clients</a>
+        </li>
       </ul>
 
       <ul class="navbar-nav ms-auto align-items-center gap-2">
@@ -57,10 +61,23 @@
           <a class="nav-link dropdown-toggle d-flex align-items-center gap-1" href="#"
              role="button" data-bs-toggle="dropdown">
             <i class="bi bi-building"></i>
-            <span class="badge bg-info text-dark">{{ active_schema | replace('client_','') }}</span>
+            <span class="badge bg-info text-dark">
+              {%- if active_schema == '__all__' -%}All Clients
+              {%- else -%}{{ active_schema | replace('client_','') }}{%- endif -%}
+            </span>
           </a>
           <ul class="dropdown-menu dropdown-menu-end" style="min-width:220px">
             <li><h6 class="dropdown-header">Switch Client</h6></li>
+            <li>
+              <form method="post" action="{{ url_for('switch_client') }}">
+                <input type="hidden" name="schema" value="__all__">
+                <button type="submit"
+                        class="dropdown-item {% if active_schema == '__all__' %}active{% endif %}">
+                  <i class="bi bi-globe me-1"></i> All Clients
+                </button>
+              </form>
+            </li>
+            <li><hr class="dropdown-divider"></li>
             {% for c in all_clients %}
             <li>
               <form method="post" action="{{ url_for('switch_client') }}">

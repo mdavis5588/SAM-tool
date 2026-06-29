@@ -17,6 +17,7 @@
       <table class="table table-hover table-striped align-middle mb-0">
         <thead class="table-dark">
           <tr>
+            {% if schema == '__all__' %}<th>Client</th>{% endif %}
             <th>Hostname</th>
             <th>Environment</th>
             <th>Licence Metric</th>
@@ -30,6 +31,12 @@
         <tbody>
           {% for s in servers %}
           <tr>
+            {% if schema == '__all__' %}
+            <td>
+              <span class="badge bg-secondary">{{ s._client_code }}</span><br>
+              <small>{{ s._client_name }}</small>
+            </td>
+            {% endif %}
             <td>
               <strong>{{ s.hostname }}</strong>
               {% if s.cpu_unvalidated %}
@@ -108,7 +115,7 @@
           </tr>
           {% else %}
           <tr>
-            <td colspan="8" class="text-center text-muted py-4">No servers discovered yet.</td>
+            <td colspan="{{ 9 if schema == '__all__' else 8 }}" class="text-center text-muted py-4">No servers discovered yet.</td>
           </tr>
           {% endfor %}
         </tbody>

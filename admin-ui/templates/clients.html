@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Clients — Oracle SAM Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-people me-2"></i>Client Management</h4>
+  <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#provisionModal">
+    <i class="bi bi-plus-circle me-1"></i> Provision New Client
+  </button>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0 align-middle">
+      <thead class="table-dark">
+        <tr>
+          <th>Client</th>
+          <th>Code</th>
+          <th>Schema</th>
+          <th>Contact</th>
+          <th class="text-center">Tables</th>
+          <th class="text-center">Discovery Runs</th>
+          <th>Last Discovery</th>
+          <th>Created</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in clients %}
+        <tr class="{% if not c.is_active %}text-muted{% endif %}">
+          <td class="fw-semibold">{{ c.client_name }}</td>
+          <td><code>{{ c.client_code }}</code></td>
+          <td><code>{{ c.schema_name }}</code></td>
+          <td>{{ c.contact_email or '—' }}</td>
+          <td class="text-center">{{ c.table_count }}</td>
+          <td class="text-center">{{ c.discovery_runs }}</td>
+          <td>{{ c.last_discovery or '—' }}</td>
+          <td>{{ c.created_at }}</td>
+          <td>
+            {% if c.is_active %}
+              <span class="badge bg-success">Active</span>
+            {% else %}
+              <span class="badge bg-secondary">Inactive</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            {% if c.is_active %}
+              <form method="post" class="d-inline"
+                    onsubmit="return confirm('Deactivate {{ c.client_name }}?')">
+                <input type="hidden" name="action" value="deactivate">
+                <input type="hidden" name="client_id" value="{{ c.client_id }}">
+                <button class="btn btn-outline-warning btn-sm">
+                  <i class="bi bi-pause-circle"></i> Deactivate
+                </button>
+              </form>
+            {% else %}
+              <form method="post" class="d-inline">
+                <input type="hidden" name="action" value="reactivate">
+                <input type="hidden" name="client_id" value="{{ c.client_id }}">
+                <button class="btn btn-outline-success btn-sm">
+                  <i class="bi bi-play-circle"></i> Reactivate
+                </button>
+              </form>
+            {% endif %}
+            <form method="post" action="{{ url_for('switch_client') }}" class="d-inline">
+              <input type="hidden" name="schema" value="{{ c.schema_name }}">
+              <button class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-box-arrow-in-right"></i> Switch
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="10" class="text-center text-muted py-4">No clients provisioned yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Provision Modal -->
+<div class="modal fade" id="provisionModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post">
+        <input type="hidden" name="action" value="provision">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Provision New Client</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Client Code <span class="text-danger">*</span></label>
+            <input type="text" name="client_code" class="form-control" required
+                   placeholder="e.g. acme" pattern="[a-z0-9_]+"
+                   title="Lowercase letters, digits, and underscores only">
+            <div class="form-text">Lowercase letters, digits, and underscores only. Used as the schema name prefix.</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Client Name <span class="text-danger">*</span></label>
+            <input type="text" name="client_name" class="form-control" required
+                   placeholder="e.g. Acme Corp">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Contact Email</label>
+            <input type="email" name="contact_email" class="form-control"
+                   placeholder="admin@acme.example.com">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-plus-circle me-1"></i> Provision
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

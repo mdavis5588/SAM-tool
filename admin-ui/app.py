@@ -106,6 +106,10 @@ def logout():
 @login_required
 def switch_client():
     schema = request.form.get("schema", "")
+    if schema == "__all__":
+        session["client_schema"] = "__all__"
+        flash("Viewing all clients.", "success")
+        return redirect(request.referrer or url_for("servers"))
     row = query(
         "SELECT schema_name, client_name FROM sam_admin.clients "
         "WHERE schema_name = %s AND is_active",
@@ -120,6 +124,65 @@ def switch_client():
 
 
 # ---------------------------------------------------------------------------
+# Client management
+# ---------------------------------------------------------------------------
+@app.route("/clients", methods=["GET", "POST"])
+@login_required
+def clients():
+    if request.method == "POST":
+        action = request.form.get("action")
+
+        if action == "provision":
+            code    = request.form.get("client_code", "").strip().lower()
+            name    = request.form.get("client_name", "").strip()
+            contact = request.form.get("contact_email", "").strip() or None
+            if not code or not name:
+                flash("Client code and name are required.", "danger")
+            else:
+                try:
+                    result = query(
+                        "SELECT sam_admin.provision_client(%s, %s, %s) AS msg",
+                        (code, name, contact), fetchall=False
+                    )
+                    flash(result["msg"], "success")
+                except Exception as e:
+                    flash(f"Error provisioning client: {e}", "danger")
+
+        elif action == "deactivate":
+            client_id = request.form.get("client_id")
+            execute(
+                "UPDATE sam_admin.clients SET is_active = FALSE WHERE client_id = %s",
+                (client_id,)
+            )
+            flash("Client deactivated.", "warning")
+
+        elif action == "reactivate":
+            client_id = request.form.get("client_id")
+            execute(
+                "UPDATE sam_admin.clients SET is_active = TRUE WHERE client_id = %s",
+                (client_id,)
+            )
+            flash("Client reactivated.", "success")
+
+        return redirect(url_for("clients"))
+
+    all_clients = query("""
+        SELECT c.client_id, c.client_code, c.client_name, c.schema_name,
+               c.contact_email, c.is_active, c.created_at::DATE AS created_at,
+               (SELECT COUNT(*) FROM pg_tables
+                WHERE schemaname = c.schema_name)           AS table_count,
+               (SELECT COUNT(*) FROM sam_admin.discovery_runs dr
+                WHERE dr.client_id = c.client_id)           AS discovery_runs,
+               (SELECT MAX(started_at)::DATE
+                FROM sam_admin.discovery_runs dr
+                WHERE dr.client_id = c.client_id)           AS last_discovery
+        FROM sam_admin.clients c
+        ORDER BY c.is_active DESC, c.client_name
+    """)
+    return render_template("clients.html", clients=all_clients)
+
+
+# ---------------------------------------------------------------------------
 # Servers list
 # ---------------------------------------------------------------------------
 @app.route("/")
@@ -127,6 +190,69 @@ def switch_client():
 @login_required
 def servers():
     schema = get_schema()
+
+    if schema == "__all__":
+        active_clients = query(
+            "SELECT schema_name, client_name, client_code FROM sam_admin.clients "
+            "WHERE is_active ORDER BY client_name"
+        )
+        rows = []
+        for c in active_clients:
+            s = c["schema_name"]
+            try:
+                client_rows = query(f"""
+                    WITH lp AS (
+                        SELECT server_id,
+                            JSONB_AGG(JSONB_BUILD_OBJECT(
+                                'product_family',    product_family,
+                                'product_detail',    product_detail,
+                                'licences_required', licences_required,
+                                'compliance_status', compliance_status
+                            ) ORDER BY product_family) AS licence_rows,
+                            SUM(licences_required)                        AS total_licences_required,
+                            BOOL_OR(compliance_status = 'under_licensed') AS any_under_licensed,
+                            STRING_AGG(product_family||': '||licences_required::TEXT,
+                                       ' | ' ORDER BY product_family)     AS licence_summary
+                        FROM {s}.license_position GROUP BY server_id
+                    ),
+                    cpu_issues AS (
+                        SELECT server_id, factor_unknown
+                        FROM   {s}.cpu_validation_report WHERE factor_unknown
+                    )
+                    SELECT
+                        s.server_id, s.hostname, s.environment::TEXT, s.datacenter,
+                        s.ip_address::TEXT, s.last_seen::DATE AS last_seen,
+                        COALESCE(s.licence_metric_override,'processor_perpetual') AS licence_metric,
+                        s.licence_metric_override IS NOT NULL AS metric_overridden,
+                        COUNT(DISTINCT m.csi_id) AS csi_count,
+                        lp.licence_rows,
+                        COALESCE(lp.total_licences_required,0) AS total_licences_required,
+                        COALESCE(lp.any_under_licensed,FALSE)  AS any_under_licensed,
+                        lp.licence_summary,
+                        COALESCE(cpu_issues.factor_unknown,FALSE) AS cpu_unvalidated
+                    FROM {s}.oracle_servers s
+                    LEFT JOIN {s}.server_csi_map m ON m.server_id = s.server_id
+                    LEFT JOIN lp                   ON lp.server_id = s.server_id
+                    LEFT JOIN cpu_issues           ON cpu_issues.server_id = s.server_id
+                    WHERE s.is_active
+                    GROUP BY s.server_id, s.hostname, s.environment, s.datacenter,
+                             s.ip_address, s.last_seen, s.licence_metric_override,
+                             lp.licence_rows, lp.total_licences_required,
+                             lp.any_under_licensed, lp.licence_summary, cpu_issues.factor_unknown
+                    ORDER BY s.hostname
+                """)
+                for r in client_rows:
+                    r = dict(r)
+                    r["_client_name"] = c["client_name"]
+                    r["_client_code"] = c["client_code"]
+                    r["_schema"]      = s
+                    rows.append(r)
+            except Exception:
+                pass
+        se2_count = 0
+        return render_template("servers.html", servers=rows, schema="__all__",
+                               se2_count=se2_count)
+
     rows = query(f"""
         WITH lp AS (
             SELECT
