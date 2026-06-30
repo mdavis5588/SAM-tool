@@ -227,6 +227,35 @@ INSERT INTO shared.core_factor_table (processor_pattern, core_factor, notes, sou
   ('Unknown',         1.0,  'Default factor for unrecognised processors', NULL);
 
 -- ---------------------------------------------------------------------------
+-- ORACLE LICENSED OPTIONS
+-- Reference table: which v$option names require a separate Oracle licence.
+-- Joined by the license_position view to surface option lines automatically.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS shared.oracle_licensed_options (
+  option_id       SERIAL PRIMARY KEY,
+  option_name     TEXT NOT NULL UNIQUE,   -- matches v$option / oracle_options.option_name
+  display_name    TEXT NOT NULL,
+  is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+  notes           TEXT
+);
+
+INSERT INTO shared.oracle_licensed_options (option_name, display_name, notes) VALUES
+  ('Partitioning',              'Oracle Partitioning',              'Separate EE option licence required'),
+  ('Advanced Security',         'Oracle Advanced Security',         'TDE and network encryption'),
+  ('Advanced Compression',      'Oracle Advanced Compression',      NULL),
+  ('Diagnostics Pack',          'Oracle Diagnostics Pack',          'Includes AWR, ADDM, ASH'),
+  ('Tuning Pack',               'Oracle Tuning Pack',               'Requires Diagnostics Pack'),
+  ('Database Vault',            'Oracle Database Vault',            NULL),
+  ('Label Security',            'Oracle Label Security',            NULL),
+  ('Real Application Clusters', 'Oracle Real Application Clusters', 'Per-node licence required'),
+  ('Active Data Guard',         'Oracle Active Data Guard',         'Standby read-only access'),
+  ('Multitenant',               'Oracle Multitenant',               'Required when >1 PDB per CDB'),
+  ('Database In-Memory',        'Oracle Database In-Memory',        NULL),
+  ('Spatial and Graph',         'Oracle Spatial and Graph',         NULL),
+  ('OLAP',                      'Oracle OLAP',                      NULL)
+ON CONFLICT (option_name) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
 -- WEBLOGIC LICENCE RULES
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS shared.wls_license_rules (

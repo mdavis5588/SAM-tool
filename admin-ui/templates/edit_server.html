@@ -132,50 +132,135 @@
   <!-- Right column: CSI assignments + licence position -->
   <div class="col-lg-8">
 
-    <!-- Current licence position -->
+    <!-- Per-line licence position with inline CSI assignment -->
     {% if licence_position %}
-    <div class="card shadow-sm mb-4">
-      <div class="card-header"><i class="bi bi-calculator"></i> Calculated Licence Position</div>
-      <div class="table-responsive">
-        <table class="table table-sm table-striped mb-0">
+    <h6 class="text-muted text-uppercase fw-semibold mb-2" style="font-size:.75rem; letter-spacing:.08em">
+      Licence Lines &amp; CSI Assignments
+    </h6>
+
+    {% for row in licence_position %}
+    {% set line_key = row.product_family ~ '|' ~ (row.product_detail or '') %}
+    {% set line_assignments = assignments | selectattr('product_family','eq', row.product_family)
+                                         | selectattr('product_detail','eq', row.product_detail)
+                                         | list %}
+    <div class="card shadow-sm mb-3 {% if row.compliance_status != 'compliant' %}border-danger{% endif %}">
+      <div class="card-header d-flex align-items-center justify-content-between py-2">
+        <div>
+          <span class="fw-semibold">
+            {% if row.product_family == 'oracle_database' %}
+              <i class="bi bi-database me-1"></i>
+            {% elif row.product_family == 'oracle_weblogic' %}
+              <i class="bi bi-boxes me-1"></i>
+            {% endif %}
+            {{ row.product_detail or (row.product_family | replace('_',' ') | title) }}
+          </span>
+          <small class="text-muted ms-2">{{ row.product_family | replace('_',' ') | title }}</small>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge bg-secondary">{{ row.licences_required }} required</span>
+          <span class="badge bg-primary">{{ row.total_licensed }} licensed</span>
+          {% if row.compliance_status == 'compliant' %}
+            <span class="badge bg-success"><i class="bi bi-check-circle"></i> Compliant</span>
+          {% else %}
+            <span class="badge bg-danger"><i class="bi bi-x-circle"></i>
+              {{ (row.licence_surplus_deficit | abs) }} short
+            </span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card-body p-0">
+
+        <!-- Assigned CSIs for this line -->
+        {% set line_maps = [] %}
+        {% for a in assignments %}
+          {% if a.product_family == row.product_family and a.product_detail == row.product_detail %}
+            {% set _ = line_maps.append(a) %}
+          {% endif %}
+        {% endfor %}
+
+        {% if line_maps %}
+        <table class="table table-sm mb-0">
           <thead class="table-light">
             <tr>
-              <th>Product</th>
-              <th>Licences Required</th>
-              <th>Total Licensed</th>
-              <th>Surplus / Deficit</th>
-              <th>Status</th>
+              <th>CSI Number</th>
+              <th>Contract</th>
+              <th>Licences</th>
+              <th>Expiry</th>
+              <th>Notes</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
-            {% for row in licence_position %}
+            {% for a in line_maps %}
             <tr>
-              <td>{{ row.product_family | replace('_',' ') | title }}<br>
-                  <small class="text-muted">{{ row.product_detail or '' }}</small></td>
-              <td>{{ row.licences_required }}</td>
-              <td>{{ row.total_licensed }}</td>
+              <td><code>{{ a.csi_number or '—' }}</code></td>
+              <td>{{ a.contract_name }}</td>
+              <td>{{ a.licences_consumed if a.licences_consumed is not none else '—' }}</td>
               <td>
-                {% if row.licence_surplus_deficit is not none %}
-                  {% if row.licence_surplus_deficit >= 0 %}
-                    <span class="text-success">+{{ row.licence_surplus_deficit }}</span>
-                  {% else %}
-                    <span class="text-danger">{{ row.licence_surplus_deficit }}</span>
-                  {% endif %}
+                {% if a.support_expiry %}
+                  <span class="{% if a.support_expiry < today %}text-danger{% endif %}">
+                    {{ a.support_expiry }}
+                  </span>
                 {% else %}—{% endif %}
               </td>
+              <td><small>{{ a.notes or '' }}</small></td>
               <td>
-                {% if row.compliance_status == 'compliant' %}
-                  <span class="badge bg-success">Compliant</span>
-                {% else %}
-                  <span class="badge bg-danger">Under-licensed</span>
-                {% endif %}
+                <form method="post" onsubmit="return confirm('Remove this CSI assignment?')">
+                  <input type="hidden" name="action" value="remove_csi">
+                  <input type="hidden" name="map_id" value="{{ a.map_id }}">
+                  <button type="submit" class="btn btn-sm btn-outline-danger">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </form>
               </td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
+        {% else %}
+        <div class="px-3 py-2 text-muted small">No CSI assigned to this line.</div>
+        {% endif %}
+
+        <!-- Inline: add another CSI to this line -->
+        <div class="border-top px-3 py-2 bg-light">
+          <form method="post" class="row g-2 align-items-end">
+            <input type="hidden" name="action"         value="assign_csi">
+            <input type="hidden" name="product_family" value="{{ row.product_family }}">
+            <input type="hidden" name="product_detail" value="{{ row.product_detail or '' }}">
+            <div class="col-md-5">
+              <label class="form-label form-label-sm mb-1">Add CSI Contract</label>
+              <select name="csi_id" class="form-select form-select-sm" required>
+                <option value="">— select —</option>
+                {% for c in available_csis %}
+                <option value="{{ c.csi_id }}">
+                  {{ c.csi_number or 'No CSI#' }} — {{ c.contract_name }}
+                  {% if c.support_expiry %}(exp {{ c.support_expiry }}){% endif %}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label form-label-sm mb-1">Licences consumed</label>
+              <input type="number" step="0.5" min="0" name="licences_consumed"
+                     class="form-control form-control-sm"
+                     placeholder="e.g. {{ row.licences_required }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label form-label-sm mb-1">Notes</label>
+              <input type="text" name="notes" class="form-control form-control-sm">
+            </div>
+            <div class="col-auto">
+              <button type="submit" class="btn btn-success btn-sm">
+                <i class="bi bi-plus-lg"></i>
+              </button>
+            </div>
+          </form>
+        </div>
+
       </div>
     </div>
+    {% endfor %}
     {% endif %}
 
     <!-- Java installations -->
@@ -290,109 +375,6 @@
       </div>
     </div>
     {% endif %}
-
-    <!-- Existing CSI assignments -->
-    <div class="card shadow-sm mb-4">
-      <div class="card-header d-flex align-items-center">
-        <span><i class="bi bi-link-45deg"></i> CSI Assignments</span>
-        <span class="badge bg-secondary ms-2">{{ assignments | length }}</span>
-      </div>
-      {% if assignments %}
-      <div class="table-responsive">
-        <table class="table table-sm table-striped mb-0">
-          <thead class="table-light">
-            <tr>
-              <th>CSI Number</th>
-              <th>Contract Name</th>
-              <th>Product Family</th>
-              <th>Licences</th>
-              <th>Expiry</th>
-              <th>Notes</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for a in assignments %}
-            <tr>
-              <td><code>{{ a.csi_number or '—' }}</code></td>
-              <td>{{ a.contract_name }}</td>
-              <td>{{ a.product_family | replace('_',' ') | title }}</td>
-              <td>{{ a.licences_consumed or 'Auto' }}</td>
-              <td>
-                {% if a.support_expiry %}
-                  {% if a.support_expiry < today %}
-                    <span class="text-danger">{{ a.support_expiry }}</span>
-                  {% else %}
-                    {{ a.support_expiry }}
-                  {% endif %}
-                {% else %}—{% endif %}
-              </td>
-              <td><small>{{ a.notes or '' }}</small></td>
-              <td>
-                <form method="post" onsubmit="return confirm('Remove this CSI assignment?')">
-                  <input type="hidden" name="action" value="remove_csi">
-                  <input type="hidden" name="map_id" value="{{ a.map_id }}">
-                  <button type="submit" class="btn btn-sm btn-outline-danger">
-                    <i class="bi bi-trash"></i>
-                  </button>
-                </form>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% else %}
-      <div class="card-body text-muted">No CSI contracts assigned yet.</div>
-      {% endif %}
-    </div>
-
-    <!-- Assign a new CSI -->
-    <div class="card shadow-sm">
-      <div class="card-header"><i class="bi bi-plus-circle"></i> Assign a CSI Contract</div>
-      <div class="card-body">
-        <form method="post">
-          <input type="hidden" name="action" value="assign_csi">
-          <div class="row g-3">
-            <div class="col-md-5">
-              <label class="form-label">CSI Contract <span class="text-danger">*</span></label>
-              <select name="csi_id" class="form-select" required>
-                <option value="">— select a contract —</option>
-                {% for c in available_csis %}
-                <option value="{{ c.csi_id }}">
-                  {{ c.csi_number or 'No CSI#' }} — {{ c.contract_name }}
-                  {% if c.support_expiry %}(exp {{ c.support_expiry }}){% endif %}
-                </option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Product Family <span class="text-danger">*</span></label>
-              <select name="product_family" class="form-select" required>
-                <option value="oracle_database">Oracle Database</option>
-                <option value="oracle_weblogic">Oracle WebLogic</option>
-                <option value="oracle_java">Oracle Java</option>
-                <option value="oracle_middleware">Oracle Middleware</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            <div class="col-md-2">
-              <label class="form-label">Licences</label>
-              <input type="number" step="0.5" min="0" name="licences_consumed"
-                     class="form-control" placeholder="Auto">
-              <div class="form-text">Leave blank to auto-calculate.</div>
-            </div>
-            <div class="col-md-2">
-              <label class="form-label">Notes</label>
-              <input type="text" name="notes" class="form-control" placeholder="Optional">
-            </div>
-          </div>
-          <button type="submit" class="btn btn-success mt-3">
-            <i class="bi bi-plus-lg"></i> Assign CSI
-          </button>
-        </form>
-      </div>
-    </div>
 
   </div>
 </div>

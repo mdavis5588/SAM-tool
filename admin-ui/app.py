@@ -343,20 +343,23 @@ def edit_server(server_id):
             flash("Licence metric updated.", "success")
 
         elif action == "assign_csi":
-            csi_id    = request.form.get("csi_id")
-            family    = request.form.get("product_family")
-            consumed  = request.form.get("licences_consumed") or None
-            notes     = request.form.get("notes") or None
+            csi_id         = request.form.get("csi_id")
+            family         = request.form.get("product_family")
+            product_detail = request.form.get("product_detail") or None
+            consumed       = request.form.get("licences_consumed") or None
+            notes          = request.form.get("notes") or None
+            # Remove any existing assignment for this server+csi+family+detail first
+            execute(f"""
+                DELETE FROM {schema}.server_csi_map
+                WHERE server_id = %s AND csi_id = %s AND product_family = %s
+                  AND (product_detail IS NOT DISTINCT FROM %s)
+            """, (server_id, csi_id, family, product_detail))
             execute(f"""
                 INSERT INTO {schema}.server_csi_map
-                  (server_id, csi_id, product_family, licences_consumed, notes, assigned_by)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (server_id, csi_id, COALESCE(line_id,-1), product_family)
-                  DO UPDATE SET
-                    licences_consumed = EXCLUDED.licences_consumed,
-                    notes             = EXCLUDED.notes,
-                    updated_at        = NOW()
-            """, (server_id, csi_id, family, consumed, notes, ADMIN_USER))
+                  (server_id, csi_id, product_family, product_detail,
+                   licences_consumed, notes, assigned_by)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (server_id, csi_id, family, product_detail, consumed, notes, ADMIN_USER))
             flash("CSI assignment saved.", "success")
 
         elif action == "remove_csi":
@@ -410,14 +413,14 @@ def edit_server(server_id):
     )
 
     assignments = query(f"""
-        SELECT m.map_id, m.csi_id, m.product_family, m.licences_consumed,
-               m.notes, m.assigned_by, m.effective_date,
+        SELECT m.map_id, m.csi_id, m.product_family, m.product_detail,
+               m.licences_consumed, m.notes, m.assigned_by, m.effective_date,
                cs.csi_number, cs.contract_name, cs.support_expiry,
                cs.status AS contract_status
         FROM {schema}.server_csi_map m
         JOIN shared.csi_contracts cs ON cs.csi_id = m.csi_id
         WHERE m.server_id = %s
-        ORDER BY cs.csi_number, m.product_family
+        ORDER BY m.product_family, m.product_detail, cs.csi_number
     """, (server_id,))
 
     available_csis = query("""

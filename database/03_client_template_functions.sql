@@ -20,11 +20,7 @@ BEGIN
   EXECUTE format($view$
     CREATE OR REPLACE VIEW %I.license_position AS
 
-    WITH client_ref AS (
-      SELECT client_id FROM sam_admin.clients WHERE schema_name = %L
-    ),
-
-    latest_proc AS (
+    WITH latest_proc AS (
       SELECT DISTINCT ON (server_id)
         server_id, cpu_model, cpu_sockets, cores_per_socket,
         total_physical_cores, virt_type, is_vmware
@@ -48,9 +44,10 @@ BEGIN
       FROM latest_proc lp
     ),
 
-    -- Licences required per server/product
+    -- One row per server+edition (DISTINCT ON deduplicates multiple instances
+    -- with the same edition — the licence is per physical server, not per instance)
     db_required AS (
-      SELECT
+      SELECT DISTINCT ON (s.server_id, i.edition)
         s.server_id, s.hostname, s.environment::TEXT,
         'oracle_database'::TEXT AS product_family,
         i.edition               AS product_detail,
@@ -66,6 +63,7 @@ BEGIN
       JOIN %I.oracle_instances i ON i.server_id = s.server_id AND i.is_active
       JOIN core_factor cf        ON cf.server_id = s.server_id
       WHERE s.is_active = TRUE
+      ORDER BY s.server_id, i.edition
     ),
 
     wls_required AS (
@@ -90,47 +88,51 @@ BEGIN
       WHERE s.is_active = TRUE
     ),
 
-    all_required AS (
-      SELECT * FROM db_required UNION ALL SELECT * FROM wls_required
+    -- One row per server+licensed option (EE only — options don't apply to SE/SE2).
+    -- Licence requirement = same cores × core_factor metric as base EE.
+    option_required AS (
+      SELECT DISTINCT ON (s.server_id, olo.option_name)
+        s.server_id, s.hostname, s.environment::TEXT,
+        'oracle_database'::TEXT  AS product_family,
+        olo.option_name          AS product_detail,
+        cf.cpu_sockets, cf.total_physical_cores, cf.cpu_model,
+        cf.core_factor, cf.virt_type::TEXT, cf.is_vmware,
+        ROUND(cf.total_physical_cores * cf.core_factor, 2) AS licences_required
+      FROM %I.oracle_servers s
+      JOIN %I.oracle_instances  i   ON i.server_id   = s.server_id
+                                    AND i.is_active
+                                    AND i.edition ILIKE '%%Enterprise%%'
+      JOIN %I.oracle_options    opt ON opt.instance_id = i.instance_id
+                                    AND opt.status = 'TRUE'
+      JOIN shared.oracle_licensed_options olo ON olo.option_name = opt.option_name
+                                              AND olo.is_active
+      JOIN core_factor cf ON cf.server_id = s.server_id
+      WHERE s.is_active
+      ORDER BY s.server_id, olo.option_name
     ),
 
-    -- Explicit CSI assignments for each server from server_csi_map
-    server_assignments AS (
+    all_required AS (
+      SELECT * FROM db_required
+      UNION ALL SELECT * FROM wls_required
+      UNION ALL SELECT * FROM option_required
+    ),
+
+    -- Per-line CSI coverage: sum licences_consumed from assignments that match
+    -- this server + product_family + product_detail exactly.
+    line_csi_coverage AS (
       SELECT
         scm.server_id,
-        scm.csi_id,
-        scm.line_id,
         scm.product_family,
-        scm.licences_consumed,
-        cs.contract_name,
-        cs.csi_number,
-        cs.sharing_policy::TEXT
+        COALESCE(scm.product_detail, '') AS product_detail_key,
+        COALESCE(SUM(scm.licences_consumed), 0) AS total_licensed,
+        STRING_AGG(
+          cs.csi_number || ' (' || cs.contract_name || ')',
+          ', ' ORDER BY cs.csi_number
+        ) AS assigned_csi_numbers,
+        COUNT(scm.map_id) AS csi_assignment_count
       FROM %I.server_csi_map scm
       JOIN shared.csi_contracts cs ON cs.csi_id = scm.csi_id
-    ),
-
-    -- Total licences available to this client from csi_client_map,
-    -- grouped by product_family across all assigned CSI lines
-    client_entitlements AS (
-      SELECT
-        l.product_family::TEXT,
-        SUM(
-          CASE
-            WHEN m.allocated_quantity IS NULL THEN l.quantity
-            ELSE ROUND(
-              l.quantity * m.allocated_quantity
-              / NULLIF((SELECT SUM(q.quantity)
-                        FROM shared.license_entitlement_lines q
-                        WHERE q.csi_id = l.csi_id AND q.is_active), 0),
-              2)
-          END
-        ) AS total_licensed
-      FROM   shared.csi_contracts             cs
-      JOIN   shared.csi_client_map            m  ON m.csi_id    = cs.csi_id
-      JOIN   client_ref                       cr ON cr.client_id = m.client_id
-      JOIN   shared.license_entitlement_lines l  ON l.csi_id    = cs.csi_id AND l.is_active
-      WHERE  cs.status = 'active'
-      GROUP  BY l.product_family
+      GROUP BY scm.server_id, scm.product_family, COALESCE(scm.product_detail, '')
     )
 
     SELECT
@@ -146,54 +148,36 @@ BEGIN
       ar.virt_type,
       ar.is_vmware,
       ar.licences_required,
-
-      -- Which CSIs explicitly cover this server/product combination
-      (SELECT STRING_AGG(sa.csi_number || ' (' || sa.contract_name || ')', ', '
-                         ORDER BY sa.csi_number)
-       FROM   server_assignments sa
-       WHERE  sa.server_id = ar.server_id
-         AND  sa.product_family = ar.product_family
-      )                                              AS assigned_csi_numbers,
-
-      -- Count of explicit CSI assignments for this server/product
-      (SELECT COUNT(*)
-       FROM   server_assignments sa
-       WHERE  sa.server_id = ar.server_id
-         AND  sa.product_family = ar.product_family
-      )                                              AS csi_assignment_count,
-
-      -- Is this server explicitly mapped, or relying on the pool?
+      COALESCE(lcc.assigned_csi_numbers, '')       AS assigned_csi_numbers,
+      COALESCE(lcc.csi_assignment_count, 0)        AS csi_assignment_count,
+      COALESCE(lcc.csi_assignment_count, 0) > 0   AS has_explicit_csi,
+      COALESCE(lcc.total_licensed, 0)              AS total_licensed,
+      COALESCE(lcc.total_licensed, 0)
+        - ar.licences_required                     AS licence_surplus_deficit,
       CASE
-        WHEN EXISTS (
-          SELECT 1 FROM server_assignments sa
-          WHERE sa.server_id = ar.server_id AND sa.product_family = ar.product_family
-        ) THEN TRUE ELSE FALSE
-      END                                            AS has_explicit_csi,
-
-      COALESCE(et.total_licensed, 0)                 AS total_licensed,
-      COALESCE(et.total_licensed, 0)
-        - SUM(ar.licences_required) OVER (PARTITION BY ar.product_family)
-                                                     AS licence_surplus_deficit,
-      CASE
-        WHEN COALESCE(et.total_licensed, 0)
-           - SUM(ar.licences_required) OVER (PARTITION BY ar.product_family) >= 0
+        WHEN COALESCE(lcc.total_licensed, 0) >= ar.licences_required
         THEN 'compliant'
         ELSE 'under_licensed'
-      END                                            AS compliance_status
+      END                                          AS compliance_status
 
     FROM   all_required ar
-    LEFT   JOIN client_entitlements et ON et.product_family = ar.product_family
-    ORDER  BY ar.product_family, ar.environment, ar.hostname;
+    LEFT   JOIN line_csi_coverage lcc
+           ON  lcc.server_id          = ar.server_id
+           AND lcc.product_family     = ar.product_family
+           AND lcc.product_detail_key = COALESCE(ar.product_detail, '')
+    ORDER  BY ar.product_family, ar.environment, ar.hostname, ar.product_detail;
 
   $view$,
-  p_schema,   -- view schema
-  p_schema,   -- client_ref WHERE schema_name
-  p_schema,   -- oracle_processors
-  p_schema,   -- oracle_servers (db_required)
-  p_schema,   -- oracle_instances
-  p_schema,   -- oracle_servers (wls_required)
-  p_schema,   -- wls_domains
-  p_schema    -- server_csi_map
+  p_schema,   -- 1  view schema
+  p_schema,   -- 2  oracle_processors
+  p_schema,   -- 3  oracle_servers  (db_required)
+  p_schema,   -- 4  oracle_instances (db_required)
+  p_schema,   -- 5  oracle_servers  (wls_required)
+  p_schema,   -- 6  wls_domains
+  p_schema,   -- 7  oracle_servers  (option_required)
+  p_schema,   -- 8  oracle_instances (option_required)
+  p_schema,   -- 9  oracle_options
+  p_schema    -- 10 server_csi_map
   );
 END;
 $$;

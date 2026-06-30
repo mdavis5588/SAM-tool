@@ -312,22 +312,28 @@ BEGIN
                             REFERENCES shared.csi_contracts (csi_id),
       line_id             INTEGER
                             REFERENCES shared.license_entitlement_lines (line_id),
-                            -- NULL = assignment covers all lines on the CSI.
-                            -- Set to a specific line_id to assign at product level
-                            -- (e.g. this server uses the Diagnostic Pack line only).
       product_family      TEXT NOT NULL,
-                            -- 'oracle_database' or 'oracle_weblogic' — which
-                            -- product on this server does this CSI assignment cover.
+                            -- 'oracle_database', 'oracle_weblogic', etc.
+      product_detail      TEXT,
+                            -- NULL  = covers the base DB/WLS edition line.
+                            -- Set to the licence line product_detail to scope
+                            -- this assignment to a specific line (e.g. 'Partitioning',
+                            -- 'Oracle Database 19c Enterprise Edition').
       licences_consumed   NUMERIC(10,2),
                             -- How many licence units this server draws from the CSI.
-                            -- NULL = calculated automatically from processor topology.
+                            -- NULL = calculated automatically from licence position.
       effective_date      DATE NOT NULL DEFAULT CURRENT_DATE,
       notes               TEXT,
-      assigned_by         TEXT,          -- username or system that created the mapping
+      assigned_by         TEXT,
       created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (server_id, csi_id, line_id, product_family)
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  $sql$, p_schema, p_schema);
+
+  -- Unique index using COALESCE so NULL product_detail participates in deduplication
+  EXECUTE format($sql$
+    CREATE UNIQUE INDEX IF NOT EXISTS uix_%s_server_csi_line
+      ON %I.server_csi_map (server_id, csi_id, product_family, COALESCE(product_detail, ''))
   $sql$, p_schema, p_schema);
 
   -- oracle_rac_nodes: Real Application Clusters node topology per DB instance
