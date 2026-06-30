@@ -20,8 +20,8 @@ VALUES
   ('db-prod-03',  'db-prod-03.acme.internal',  '10.0.1.13', 'Linux', 'Oracle Linux',             '8.7',  'production',    'HIGH',    65536, 'LON-DC1', TRUE),
   ('db-dr-01',    'db-dr-01.acme.internal',    '10.0.2.11', 'Linux', 'Red Hat Enterprise Linux', '8.8',  'dr',            'HIGH',   131072, 'MAN-DC2', TRUE),
   ('db-dr-02',    'db-dr-02.acme.internal',    '10.0.2.12', 'Linux', 'Oracle Linux',             '8.7',  'dr',            'MEDIUM',  65536, 'MAN-DC2', TRUE),
-  ('db-uat-01',   'db-uat-01.acme.internal',   '10.0.3.11', 'Linux', 'Red Hat Enterprise Linux', '7.9',  'uat',           'MEDIUM',  32768, 'LON-DC1', TRUE),
-  ('db-uat-02',   'db-uat-02.acme.internal',   '10.0.3.12', 'Linux', 'Oracle Linux',             '8.7',  'uat',           'LOW',     16384, 'LON-DC1', TRUE),
+  ('db-uat-01',   'db-uat-01.acme.internal',   '10.0.3.11', 'Linux', 'Red Hat Enterprise Linux', '7.9',  'test',          'MEDIUM',  32768, 'LON-DC1', TRUE),
+  ('db-uat-02',   'db-uat-02.acme.internal',   '10.0.3.12', 'Linux', 'Oracle Linux',             '8.7',  'test',          'LOW',     16384, 'LON-DC1', TRUE),
   ('db-dev-01',   'db-dev-01.acme.internal',   '10.0.4.11', 'Linux', 'Red Hat Enterprise Linux', '8.8',  'development',   'LOW',     16384, 'LON-DC1', TRUE),
   ('db-dev-02',   'db-dev-02.acme.internal',   '10.0.4.12', 'Linux', 'Oracle Linux',             '7.9',  'development',   'LOW',      8192, 'LON-DC1', TRUE),
   ('db-legacy-01','db-legacy-01.acme.internal','10.0.5.11', 'Linux', 'Red Hat Enterprise Linux', '6.10', 'production',    'HIGH',    32768, 'LON-DC1', TRUE)
