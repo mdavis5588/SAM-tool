@@ -1141,8 +1141,8 @@ BEGIN
   -- Alert: unacknowledged HIGH severity changelog entries older than 7 days
   -- + SE2 violations + unrecognised CPUs (per-client schema loop)
   FOR v_client IN
-    SELECT client_code, client_name, schema_name
-    FROM   sam_admin.clients WHERE is_active = TRUE
+    SELECT c.client_code, c.client_name, c.schema_name
+    FROM   sam_admin.clients c WHERE c.is_active = TRUE
   LOOP
 
     -- Stale HIGH changelog entries
