@@ -532,7 +532,7 @@ def contracts():
     rows = query("""
         SELECT cs.csi_id, cs.csi_number, cs.contract_name, cs.vendor_reference,
                cs.purchase_date, cs.support_expiry, cs.is_ula, cs.ula_expiry,
-               cs.sharing_policy, cs.status,
+               cs.sharing_policy, cs.status, cs.currency,
                oc.client_code AS owning_client,
                COUNT(DISTINCT l.line_id)  AS line_count,
                SUM(l.quantity)            AS total_qty,
@@ -543,9 +543,37 @@ def contracts():
         LEFT JOIN sam_admin.clients                oc ON oc.client_id = cs.owning_client_id
         GROUP BY cs.csi_id, cs.csi_number, cs.contract_name, cs.vendor_reference,
                  cs.purchase_date, cs.support_expiry, cs.is_ula, cs.ula_expiry,
-                 cs.sharing_policy, cs.status, oc.client_code
+                 cs.sharing_policy, cs.status, cs.currency, oc.client_code
         ORDER BY cs.csi_number
     """)
+
+    # Sum licences_consumed per CSI across all active client schemas
+    active_schemas = [
+        r["schema_name"] for r in query(
+            "SELECT schema_name FROM sam_admin.clients WHERE is_active ORDER BY schema_name"
+        )
+    ]
+    consumed_by_csi = {}
+    if active_schemas:
+        union_sql = " UNION ALL ".join(
+            f"SELECT csi_id, COALESCE(SUM(licences_consumed), 0) AS consumed "
+            f"FROM {s}.server_csi_map GROUP BY csi_id"
+            for s in active_schemas
+        )
+        consumed_rows = query(
+            f"SELECT csi_id, SUM(consumed) AS total FROM ({union_sql}) t GROUP BY csi_id"
+        )
+        consumed_by_csi = {r["csi_id"]: r["total"] for r in consumed_rows}
+
+    # Attach consumed/available to each contract row
+    rows = [
+        dict(r,
+             total_consumed=consumed_by_csi.get(r["csi_id"], 0),
+             total_available=max(
+                 (r["total_qty"] or 0) - consumed_by_csi.get(r["csi_id"], 0), 0
+             ))
+        for r in rows
+    ]
     return render_template("contracts.html", contracts=rows)
 
 
@@ -565,18 +593,38 @@ def contract_detail(csi_id):
         "SELECT * FROM shared.license_entitlement_lines WHERE csi_id = %s ORDER BY line_number",
         (csi_id,)
     )
-    assigned_servers = query(f"""
-        SELECT s.server_id, s.hostname, s.environment::TEXT, m.product_family,
-               m.licences_consumed, m.notes, m.effective_date, m.map_id
-        FROM {schema}.server_csi_map m
-        JOIN {schema}.oracle_servers s ON s.server_id = m.server_id
-        WHERE m.csi_id = %s
-        ORDER BY s.hostname
-    """, (csi_id,))
+    # Gather assigned servers across all active client schemas
+    all_schemas = query(
+        "SELECT schema_name, client_name FROM sam_admin.clients WHERE is_active ORDER BY client_name"
+    )
+    assigned_servers = []
+    for c in all_schemas:
+        s = c["schema_name"]
+        try:
+            rows = query(f"""
+                SELECT s.server_id, s.hostname, s.environment::TEXT,
+                       m.product_family, m.product_detail,
+                       m.licences_consumed, m.notes, m.effective_date, m.map_id,
+                       %s AS client_name, %s AS schema_name
+                FROM {s}.server_csi_map m
+                JOIN {s}.oracle_servers s ON s.server_id = m.server_id
+                WHERE m.csi_id = %s
+                ORDER BY s.hostname
+            """, (c["client_name"], s, csi_id))
+            assigned_servers.extend(rows)
+        except Exception:
+            pass
+
+    # Sum consumed per product_family across all schemas
+    consumed_by_line = {}
+    for row in assigned_servers:
+        key = row["product_family"]
+        consumed_by_line[key] = consumed_by_line.get(key, 0) + (row["licences_consumed"] or 0)
 
     return render_template("contract_detail.html",
                            contract=contract, lines=lines,
-                           assigned_servers=assigned_servers)
+                           assigned_servers=assigned_servers,
+                           consumed_by_line=consumed_by_line)
 
 
 # ---------------------------------------------------------------------------

@@ -16,6 +16,8 @@
             <th>Contract Name</th>
             <th>Products</th>
             <th>Total Licences</th>
+            <th>Consumed</th>
+            <th>Available</th>
             <th>Total Value</th>
             <th>Support Expiry</th>
             <th>Policy</th>
@@ -30,6 +32,24 @@
             <td>{{ c.contract_name }}</td>
             <td><small>{{ c.products or '—' }}</small></td>
             <td>{{ c.total_qty or '—' }}</td>
+            <td>
+              {% if c.total_consumed %}
+                <span class="fw-semibold">{{ c.total_consumed }}</span>
+              {% else %}
+                <span class="text-muted">0</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if c.total_qty %}
+                {% if c.total_available == 0 %}
+                  <span class="badge bg-danger">0</span>
+                {% elif c.total_available < (c.total_qty * 0.2) %}
+                  <span class="badge bg-warning text-dark">{{ c.total_available }}</span>
+                {% else %}
+                  <span class="badge bg-success">{{ c.total_available }}</span>
+                {% endif %}
+              {% else %}—{% endif %}
+            </td>
             <td>
               {% if c.total_value %}
                 {{ c.currency or 'USD' }} {{ '{:,.0f}'.format(c.total_value) }}
@@ -64,7 +84,7 @@
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="9" class="text-center text-muted py-4">No contracts found.</td></tr>
+          <tr><td colspan="11" class="text-center text-muted py-4">No contracts found.</td></tr>
           {% endfor %}
         </tbody>
       </table>
