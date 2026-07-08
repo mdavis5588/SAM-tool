@@ -9,15 +9,46 @@
   <style>
     :root {
       --sidebar-w: 236px;
-      --sidebar-bg: #142235;
-      --sidebar-bg-alt: #0e1a29;
-      --sidebar-fg: #aab8c9;
+      --sidebar-bg: #2b2438;
+      --sidebar-bg-alt: #221c2c;
+      --sidebar-fg: #b3acc0;
       --sidebar-fg-active: #ffffff;
-      --accent: #00b3a0;
+      --accent: #8b5cf6;
+
+      /* Retint Bootstrap's primary color purple app-wide (buttons, links, badges) */
+      --bs-primary: #7c3aed;
+      --bs-primary-rgb: 124, 58, 237;
+      --bs-link-color: #7c3aed;
+      --bs-link-color-rgb: 124, 58, 237;
+      --bs-link-hover-color: #6d28d9;
+      --bs-link-hover-color-rgb: 109, 40, 217;
     }
     body { background: #f4f6f8; }
-    .badge-metric-processor { background: #0d6efd; }
-    .badge-metric-nup       { background: #6f42c1; }
+
+    /* Bootstrap's compiled CSS hardcodes hex per-component for these, so the
+       --bs-primary variable above doesn't reach them — override directly. */
+    .btn-primary {
+      --bs-btn-bg: #7c3aed; --bs-btn-border-color: #7c3aed;
+      --bs-btn-hover-bg: #6d28d9; --bs-btn-hover-border-color: #6d28d9;
+      --bs-btn-active-bg: #6d28d9; --bs-btn-active-border-color: #5b21b6;
+      --bs-btn-disabled-bg: #7c3aed; --bs-btn-disabled-border-color: #7c3aed;
+      --bs-btn-focus-shadow-rgb: 124,58,237;
+    }
+    .btn-outline-primary {
+      --bs-btn-color: #7c3aed; --bs-btn-border-color: #7c3aed;
+      --bs-btn-hover-bg: #7c3aed; --bs-btn-hover-border-color: #7c3aed;
+      --bs-btn-active-bg: #7c3aed; --bs-btn-active-border-color: #7c3aed;
+      --bs-btn-disabled-color: #7c3aed; --bs-btn-disabled-border-color: #7c3aed;
+      --bs-btn-focus-shadow-rgb: 124,58,237;
+    }
+    .form-check-input:checked { background-color: #7c3aed; border-color: #7c3aed; }
+    .form-check-input:focus,
+    .form-control:focus,
+    .form-select:focus {
+      border-color: #a78bfa; box-shadow: 0 0 0 .25rem rgba(124,58,237,.25);
+    }
+    .badge-metric-processor { background: var(--accent); }
+    .badge-metric-nup       { background: #6c757d; }
     .table th { white-space: nowrap; }
     .status-active   { color: #198754; }
     .status-expired  { color: #dc3545; }
@@ -45,6 +76,19 @@
       border-bottom: 1px solid rgba(255,255,255,.08);
     }
     .sidebar-brand i { color: var(--accent); font-size: 1.2rem; }
+
+    .sidebar-client-switcher {
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      padding: .5rem 0;
+    }
+    .sidebar-client-switcher .client-switcher-toggle {
+      font-size: .88rem;
+    }
+    .sidebar-client-switcher .client-switcher-label {
+      background: rgba(255,255,255,.12);
+      color: #fff;
+      font-weight: 600;
+    }
 
     .sidebar-nav { flex: 1 1 auto; overflow-y: auto; padding: .75rem 0; }
     .sidebar-link {
@@ -75,10 +119,10 @@
       background: var(--sidebar-bg-alt);
       padding: .6rem 0;
     }
-    .sidebar-bottom .sidebar-link.text-warning-link { color: #ffc670; }
-    .sidebar-bottom .sidebar-link.text-warning-link:hover { color: #ffd68f; }
+    .sidebar-bottom .sidebar-link.text-warning-link { color: var(--sidebar-fg); font-weight: 600; }
+    .sidebar-bottom .sidebar-link.text-warning-link:hover { color: var(--sidebar-fg-active); }
 
-    /* client switcher lives in sidebar footer, dropdown opens upward */
+    /* client switcher lives at the top of the sidebar, under the brand */
     .client-switcher-toggle {
       display: flex; align-items: center; gap: .55rem;
       width: 100%; padding: .6rem 1.1rem;
@@ -124,6 +168,45 @@
       <i class="bi bi-shield-check"></i> <span>Oracle SAM</span>
     </a>
 
+    <!-- Client switcher -->
+    {% if all_clients %}
+    <div class="sidebar-client-switcher dropdown client-switcher">
+      <button class="client-switcher-toggle dropdown-toggle" type="button" data-bs-toggle="dropdown">
+        <i class="bi bi-building"></i>
+        <span class="badge client-switcher-label">
+          {%- if active_schema == '__all__' -%}All Clients
+          {%- else -%}{{ active_schema | replace('client_','') }}{%- endif -%}
+        </span>
+      </button>
+      <ul class="dropdown-menu" style="min-width:220px">
+        <li><h6 class="dropdown-header">Switch Client</h6></li>
+        <li>
+          <form method="post" action="{{ url_for('switch_client') }}">
+            <input type="hidden" name="schema" value="__all__">
+            <button type="submit"
+                    class="dropdown-item {% if active_schema == '__all__' %}active{% endif %}">
+              <i class="bi bi-globe me-1"></i> All Clients
+            </button>
+          </form>
+        </li>
+        <li><hr class="dropdown-divider"></li>
+        {% for c in all_clients %}
+        <li>
+          <form method="post" action="{{ url_for('switch_client') }}">
+            <input type="hidden" name="schema" value="{{ c.schema_name }}">
+            <button type="submit"
+                    class="dropdown-item {% if c.schema_name == active_schema %}active{% endif %}">
+              <i class="bi bi-person-badge me-1"></i>
+              {{ c.client_name }}
+              <small class="text-muted ms-1">({{ c.client_code }})</small>
+            </button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
     <nav class="sidebar-nav">
       <div class="sidebar-section-label">Inventory</div>
       <a class="sidebar-link {% if request.endpoint == 'servers' %}active{% endif %}"
@@ -145,45 +228,6 @@
     </nav>
 
     <div class="sidebar-bottom">
-      <!-- Client switcher -->
-      {% if all_clients %}
-      <div class="dropup client-switcher">
-        <button class="client-switcher-toggle dropdown-toggle" type="button" data-bs-toggle="dropdown">
-          <i class="bi bi-building"></i>
-          <span class="badge bg-info text-dark">
-            {%- if active_schema == '__all__' -%}All Clients
-            {%- else -%}{{ active_schema | replace('client_','') }}{%- endif -%}
-          </span>
-        </button>
-        <ul class="dropdown-menu" style="min-width:220px">
-          <li><h6 class="dropdown-header">Switch Client</h6></li>
-          <li>
-            <form method="post" action="{{ url_for('switch_client') }}">
-              <input type="hidden" name="schema" value="__all__">
-              <button type="submit"
-                      class="dropdown-item {% if active_schema == '__all__' %}active{% endif %}">
-                <i class="bi bi-globe me-1"></i> All Clients
-              </button>
-            </form>
-          </li>
-          <li><hr class="dropdown-divider"></li>
-          {% for c in all_clients %}
-          <li>
-            <form method="post" action="{{ url_for('switch_client') }}">
-              <input type="hidden" name="schema" value="{{ c.schema_name }}">
-              <button type="submit"
-                      class="dropdown-item {% if c.schema_name == active_schema %}active{% endif %}">
-                <i class="bi bi-person-badge me-1"></i>
-                {{ c.client_name }}
-                <small class="text-muted ms-1">({{ c.client_code }})</small>
-              </button>
-            </form>
-          </li>
-          {% endfor %}
-        </ul>
-      </div>
-      {% endif %}
-
       <a class="sidebar-link text-warning-link" href="{{ url_for('export_lms') }}">
         <i class="bi bi-file-earmark-excel"></i><span>LMS Export</span>
       </a>
