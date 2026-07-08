@@ -199,7 +199,7 @@
               <td>{{ a.licences_consumed if a.licences_consumed is not none else '—' }}</td>
               <td>
                 {% if a.support_expiry %}
-                  <span class="{% if a.support_expiry < today %}text-danger{% endif %}">
+                  <span class="{% if a.support_expiry < today_date %}text-danger{% endif %}">
                     {{ a.support_expiry }}
                   </span>
                 {% else %}—{% endif %}
