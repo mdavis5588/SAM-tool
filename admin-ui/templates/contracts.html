@@ -43,7 +43,7 @@
               {% if c.total_qty %}
                 {% if c.total_available == 0 %}
                   <span class="badge bg-danger">0</span>
-                {% elif c.total_available < (c.total_qty * 0.2) %}
+                {% elif c.total_available * 5 < c.total_qty %}
                   <span class="badge bg-warning text-dark">{{ c.total_available }}</span>
                 {% else %}
                   <span class="badge bg-success">{{ c.total_available }}</span>

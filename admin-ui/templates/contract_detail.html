@@ -76,7 +76,7 @@
                 {% if qty %}
                   {% if available == 0 %}
                     <span class="badge bg-danger">0</span>
-                  {% elif available < (qty * 0.2) %}
+                  {% elif available * 5 < qty %}
                     <span class="badge bg-warning text-dark">{{ available }}</span>
                   {% else %}
                     <span class="badge bg-success">{{ available }}</span>
