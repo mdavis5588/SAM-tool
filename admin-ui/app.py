@@ -4,6 +4,7 @@ import os
 import smtplib
 import ssl
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from functools import wraps
@@ -68,6 +69,42 @@ def get_clients():
         )
     except Exception:
         return []
+
+
+# ---------------------------------------------------------------------------
+# CSI <-> licence line compatibility
+#
+# A server's licence position line (product_family + product_detail) needs a
+# CSI whose entitlement lines actually cover that same product/edition — a
+# Standard Edition 2 CSI must never be usable to cover an Enterprise Edition
+# requirement, and vice versa. Entitlement line product names are free text
+# (e.g. "Oracle Database Enterprise Edition"), so edition rows are matched by
+# edition class and everything else (options like "Partitioning") is matched
+# by substring containment.
+# ---------------------------------------------------------------------------
+def _edition_class(text):
+    if not text:
+        return None
+    t = text.lower()
+    if "enterprise" in t:
+        return "enterprise"
+    if "standard edition 2" in t or "se2" in t:
+        return "standard2"
+    if "standard" in t:
+        return "standard"
+    return None
+
+
+def _is_compatible_product(family, product_detail, line_family, line_product_name):
+    if family != line_family:
+        return False
+    detail_class = _edition_class(product_detail)
+    line_class = _edition_class(line_product_name)
+    if detail_class or line_class:
+        return detail_class is not None and detail_class == line_class
+    if not product_detail:
+        return True
+    return product_detail.lower() in (line_product_name or "").lower()
 
 
 # ---------------------------------------------------------------------------
@@ -346,8 +383,60 @@ def edit_server(server_id):
             csi_id         = request.form.get("csi_id")
             family         = request.form.get("product_family")
             product_detail = request.form.get("product_detail") or None
-            consumed       = request.form.get("licences_consumed") or None
+            consumed_raw   = request.form.get("licences_consumed") or None
             notes          = request.form.get("notes") or None
+
+            # Re-derive the server's actual requirement for this line server-side —
+            # never trust the hidden form fields as authorization for the write.
+            line_row = query(
+                f"SELECT licences_required FROM {schema}.license_position "
+                f"WHERE server_id = %s AND product_family = %s "
+                f"AND product_detail IS NOT DISTINCT FROM %s",
+                (server_id, family, product_detail), fetchall=False
+            )
+            if not line_row:
+                flash("That licence line no longer exists for this server.", "danger")
+                return redirect(url_for("edit_server", server_id=server_id))
+
+            entitlement_lines = query(
+                "SELECT product_name, product_family::TEXT AS product_family "
+                "FROM shared.license_entitlement_lines WHERE csi_id = %s AND is_active",
+                (csi_id,)
+            )
+            if not any(_is_compatible_product(family, product_detail,
+                                               l["product_family"], l["product_name"])
+                       for l in entitlement_lines):
+                flash("That CSI contract doesn't cover this product/edition — "
+                      "pick a contract that matches.", "danger")
+                return redirect(url_for("edit_server", server_id=server_id))
+
+            consumed = None
+            if consumed_raw:
+                try:
+                    consumed = Decimal(consumed_raw)
+                except InvalidOperation:
+                    flash("Licences consumed must be a number.", "danger")
+                    return redirect(url_for("edit_server", server_id=server_id))
+
+                required = line_row["licences_required"]
+                if required is not None:
+                    other_consumed = query(
+                        f"SELECT COALESCE(SUM(licences_consumed), 0) AS total "
+                        f"FROM {schema}.server_csi_map "
+                        f"WHERE server_id = %s AND product_family = %s "
+                        f"AND product_detail IS NOT DISTINCT FROM %s AND csi_id != %s",
+                        (server_id, family, product_detail, csi_id), fetchall=False
+                    )["total"]
+                    if other_consumed + consumed > required:
+                        remaining = required - other_consumed
+                        flash(
+                            f"This line only needs {required} licence(s) — "
+                            f"{other_consumed} already assigned from other contracts, "
+                            f"leaving {remaining} available. Reduce the quantity.",
+                            "danger"
+                        )
+                        return redirect(url_for("edit_server", server_id=server_id))
+
             # Remove any existing assignment for this server+csi+family+detail first
             execute(f"""
                 DELETE FROM {schema}.server_csi_map
@@ -423,21 +512,42 @@ def edit_server(server_id):
         ORDER BY m.product_family, m.product_detail, cs.csi_number
     """, (server_id,))
 
-    available_csis = query("""
-        SELECT cs.csi_id, cs.csi_number, cs.contract_name, cs.support_expiry,
-               cs.status,
-               STRING_AGG(DISTINCT l.product_family::TEXT, ', ') AS families
+    entitlement_lines = query("""
+        SELECT l.csi_id, l.product_name, l.product_family::TEXT AS product_family,
+               cs.csi_number, cs.contract_name, cs.support_expiry
         FROM shared.csi_contracts cs
-        JOIN shared.license_entitlement_lines l ON l.csi_id = cs.csi_id
+        JOIN shared.license_entitlement_lines l ON l.csi_id = cs.csi_id AND l.is_active
         WHERE cs.status = 'active'
-        GROUP BY cs.csi_id, cs.csi_number, cs.contract_name,
-                 cs.support_expiry, cs.status
         ORDER BY cs.csi_number
     """)
 
     licence_position = query(
         f"SELECT * FROM {schema}.license_position WHERE server_id = %s", (server_id,)
     )
+
+    # Per-line: which active CSIs actually cover this product/edition, and how
+    # much licence headroom is left once existing assignments are subtracted.
+    consumed_by_line = {}
+    for a in assignments:
+        if a["licences_consumed"] is not None:
+            key = (a["product_family"], a["product_detail"])
+            consumed_by_line[key] = consumed_by_line.get(key, 0) + a["licences_consumed"]
+
+    compatible_csis_by_line = {}
+    for row in licence_position:
+        key = f"{row['product_family']}|{row['product_detail'] or ''}"
+        matches = {}
+        for l in entitlement_lines:
+            if _is_compatible_product(row["product_family"], row["product_detail"],
+                                       l["product_family"], l["product_name"]):
+                matches.setdefault(l["csi_id"], l)
+        compatible_csis_by_line[key] = list(matches.values())
+
+        already = consumed_by_line.get((row["product_family"], row["product_detail"]), 0)
+        row["already_consumed"] = already
+        row["remaining_capacity"] = (
+            row["licences_required"] - already if row["licences_required"] is not None else None
+        )
 
     java_installations = query(
         f"""SELECT java_id, java_home, java_vendor, java_version,
@@ -472,7 +582,7 @@ def edit_server(server_id):
                            server=server,
                            instances=instances,
                            assignments=assignments,
-                           available_csis=available_csis,
+                           compatible_csis_by_line=compatible_csis_by_line,
                            licence_position=licence_position,
                            java_installations=java_installations,
                            se2_violations=se2_violations,

@@ -159,6 +159,11 @@
         <div class="d-flex align-items-center gap-2">
           <span class="badge bg-secondary">{{ row.licences_required }} required</span>
           <span class="badge bg-primary">{{ row.total_licensed }} licensed</span>
+          {% if row.remaining_capacity is not none %}
+            <span class="badge {% if row.remaining_capacity <= 0 %}bg-dark{% else %}bg-info text-dark{% endif %}">
+              {{ row.remaining_capacity }} CSI headroom left
+            </span>
+          {% endif %}
           {% if row.compliance_status == 'compliant' %}
             <span class="badge bg-success"><i class="bi bi-check-circle"></i> Compliant</span>
           {% else %}
@@ -223,16 +228,30 @@
         {% endif %}
 
         <!-- Inline: add another CSI to this line -->
+        {% set line_csis = compatible_csis_by_line.get(line_key, []) %}
+        {% set line_full = row.remaining_capacity is not none and row.remaining_capacity <= 0 %}
+        {% set line_locked = (not line_csis) or line_full %}
         <div class="border-top px-3 py-2 bg-light">
+          {% if not line_csis %}
+          <div class="small text-muted mb-2">
+            <i class="bi bi-info-circle"></i>
+            No active CSI contract covers this product/edition yet.
+          </div>
+          {% elif line_full %}
+          <div class="small text-muted mb-2">
+            <i class="bi bi-check-circle"></i>
+            This line already has its full {{ row.licences_required }} licence(s) assigned.
+          </div>
+          {% endif %}
           <form method="post" class="row g-2 align-items-end">
             <input type="hidden" name="action"         value="assign_csi">
             <input type="hidden" name="product_family" value="{{ row.product_family }}">
             <input type="hidden" name="product_detail" value="{{ row.product_detail or '' }}">
             <div class="col-md-5">
               <label class="form-label form-label-sm mb-1">Add CSI Contract</label>
-              <select name="csi_id" class="form-select form-select-sm" required>
+              <select name="csi_id" class="form-select form-select-sm" required {% if line_locked %}disabled{% endif %}>
                 <option value="">— select —</option>
-                {% for c in available_csis %}
+                {% for c in line_csis %}
                 <option value="{{ c.csi_id }}">
                   {{ c.csi_number or 'No CSI#' }} — {{ c.contract_name }}
                   {% if c.support_expiry %}(exp {{ c.support_expiry }}){% endif %}
@@ -242,16 +261,19 @@
             </div>
             <div class="col-md-3">
               <label class="form-label form-label-sm mb-1">Licences consumed</label>
-              <input type="number" step="0.5" min="0" name="licences_consumed"
+              <input type="number" step="0.5" min="0"
+                     {% if row.remaining_capacity is not none %}max="{{ row.remaining_capacity }}"{% endif %}
+                     name="licences_consumed"
                      class="form-control form-control-sm"
-                     placeholder="e.g. {{ row.licences_required }}">
+                     placeholder="max {{ row.remaining_capacity if row.remaining_capacity is not none else row.licences_required }}"
+                     {% if line_locked %}disabled{% endif %}>
             </div>
             <div class="col-md-3">
               <label class="form-label form-label-sm mb-1">Notes</label>
-              <input type="text" name="notes" class="form-control form-control-sm">
+              <input type="text" name="notes" class="form-control form-control-sm" {% if line_locked %}disabled{% endif %}>
             </div>
             <div class="col-auto">
-              <button type="submit" class="btn btn-success btn-sm">
+              <button type="submit" class="btn btn-success btn-sm" {% if line_locked %}disabled{% endif %}>
                 <i class="bi bi-plus-lg"></i>
               </button>
             </div>

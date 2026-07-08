@@ -116,10 +116,10 @@ BEGIN
     p_notes          => 'Base EE licence'
   );
 
-  -- Line 2: Diagnostic Pack (required for AWR, ADDM, ASH)
+  -- Line 2: Diagnostics Pack (required for AWR, ADDM, ASH)
   PERFORM shared.add_csi_line(
     p_csi_id         => v_csi,
-    p_product_name   => 'Oracle Diagnostic Pack',
+    p_product_name   => 'Oracle Diagnostics Pack',
     p_product_family => 'oracle_database',
     p_metric         => 'processor',
     p_quantity       => 100,
