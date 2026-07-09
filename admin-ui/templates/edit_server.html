@@ -166,10 +166,6 @@
           {% endif %}
           {% if row.compliance_status == 'compliant' %}
             <span class="badge bg-success"><i class="bi bi-check-circle"></i> Compliant</span>
-          {% else %}
-            <span class="badge bg-danger"><i class="bi bi-x-circle"></i>
-              {{ (row.licence_surplus_deficit | abs) }} short
-            </span>
           {% endif %}
         </div>
       </div>
