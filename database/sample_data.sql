@@ -16,7 +16,8 @@ DELETE FROM client_acme.oracle_options
       'db-dr-01','db-dr-02',
       'db-uat-01','db-uat-02',
       'db-dev-01','db-dev-02',
-      'db-legacy-01','db-reporting-01'
+      'db-legacy-01','db-reporting-01',
+      'db-multi-01','db-multi-02','db-multi-03','db-multi-04','db-multi-05'
     )
   );
 DELETE FROM client_acme.oracle_instances
@@ -27,7 +28,8 @@ DELETE FROM client_acme.oracle_instances
       'db-dr-01','db-dr-02',
       'db-uat-01','db-uat-02',
       'db-dev-01','db-dev-02',
-      'db-legacy-01','db-reporting-01'
+      'db-legacy-01','db-reporting-01',
+      'db-multi-01','db-multi-02','db-multi-03','db-multi-04','db-multi-05'
     )
   );
 DELETE FROM client_acme.oracle_processors
@@ -38,7 +40,8 @@ DELETE FROM client_acme.oracle_processors
       'db-dr-01','db-dr-02',
       'db-uat-01','db-uat-02',
       'db-dev-01','db-dev-02',
-      'db-legacy-01','db-reporting-01'
+      'db-legacy-01','db-reporting-01',
+      'db-multi-01','db-multi-02','db-multi-03','db-multi-04','db-multi-05'
     )
   );
 DELETE FROM client_acme.oracle_servers
@@ -75,7 +78,13 @@ VALUES
   -- Legacy 12c production (still in use, several options)
   ('db-legacy-01',   'db-legacy-01.acme.internal',   '10.0.5.11', 'Linux', 'Red Hat Enterprise Linux', '6.10', 'production',  'HIGH',    65536, 'LON-DC1', TRUE, NOW()),
   -- Reporting server — EE, heavy analytics options
-  ('db-reporting-01','db-reporting-01.acme.internal','10.0.1.21', 'Linux', 'Oracle Linux',             '8.8',  'production',  'MEDIUM', 131072, 'LON-DC1', TRUE, NOW());
+  ('db-reporting-01','db-reporting-01.acme.internal','10.0.1.21', 'Linux', 'Oracle Linux',             '8.8',  'production',  'MEDIUM', 131072, 'LON-DC1', TRUE, NOW()),
+  -- Multi-licence servers (EE + multiple options each)
+  ('db-multi-01',    'db-multi-01.acme.internal',    '10.0.6.11', 'Linux', 'Oracle Linux',             '8.8',  'production',  'HIGH',    65536, 'LON-DC1', TRUE, NOW()),
+  ('db-multi-02',    'db-multi-02.acme.internal',    '10.0.6.12', 'Linux', 'Red Hat Enterprise Linux', '8.9',  'production',  'HIGH',   131072, 'LON-DC1', TRUE, NOW()),
+  ('db-multi-03',    'db-multi-03.acme.internal',    '10.0.6.13', 'Linux', 'Oracle Linux',             '8.8',  'production',  'HIGH',    65536, 'LON-DC1', TRUE, NOW()),
+  ('db-multi-04',    'db-multi-04.acme.internal',    '10.0.6.14', 'Linux', 'Red Hat Enterprise Linux', '8.9',  'production',  'HIGH',   131072, 'LON-DC1', TRUE, NOW()),
+  ('db-multi-05',    'db-multi-05.acme.internal',    '10.0.6.15', 'Linux', 'Oracle Linux',             '8.8',  'production',  'MEDIUM',  65536, 'LON-DC1', TRUE, NOW());
 
 -- ---------------------------------------------------------------------------
 -- 2. Processors
@@ -105,7 +114,13 @@ FROM (VALUES
   -- Legacy physical (older CPUs, core factor 0.5)
   ('db-legacy-01',   'Intel Xeon E5-2690 v4',  2, 14, 'physical', FALSE, NULL),
   -- Reporting physical
-  ('db-reporting-01','Intel Xeon Gold 6338',   2, 32, 'physical', FALSE, NULL)
+  ('db-reporting-01','Intel Xeon Gold 6338',   2, 32, 'physical', FALSE, NULL),
+  -- Multi-licence servers
+  ('db-multi-01',    'Intel Xeon Gold 6338',   2, 16, 'vmware',   TRUE,  16),
+  ('db-multi-02',    'Intel Xeon Gold 6338',   2, 32, 'physical', FALSE, NULL),
+  ('db-multi-03',    'Intel Xeon Gold 6338',   2, 16, 'vmware',   TRUE,  16),
+  ('db-multi-04',    'Intel Xeon Gold 6338',   2, 32, 'physical', FALSE, NULL),
+  ('db-multi-05',    'Intel Xeon Silver 4314', 2, 16, 'vmware',   TRUE,  16)
 ) AS v(hostname, cpu_model, cpu_sockets, cores_per_socket, virt_type, is_vmware, vcpu_count)
 JOIN client_acme.oracle_servers s USING (hostname);
 
@@ -135,7 +150,13 @@ FROM (VALUES
   -- Legacy EE 12c
   ('db-legacy-01',   'LEGACYDB', 'LEGACYDB', '/u01/app/oracle/product/12.2.0/dbhome_1', 'Oracle Database 12c Enterprise Edition', '12.2.0.1.0'),
   -- Reporting EE 19c
-  ('db-reporting-01','RPTDB',    'RPTDB',    '/u01/app/oracle/product/19.0.0/dbhome_1', 'Oracle Database 19c Enterprise Edition', '19.3.0.0.0')
+  ('db-reporting-01','RPTDB',    'RPTDB',    '/u01/app/oracle/product/19.0.0/dbhome_1', 'Oracle Database 19c Enterprise Edition', '19.3.0.0.0'),
+  -- Multi-licence servers EE 19c
+  ('db-multi-01',    'APPDB',    'APPDB',    '/u01/app/oracle/product/19.0.0/dbhome_1', 'Oracle Database 19c Enterprise Edition', '19.3.0.0.0'),
+  ('db-multi-02',    'SUPPLYDB', 'SUPPLYDB', '/u01/app/oracle/product/19.0.0/dbhome_1', 'Oracle Database 19c Enterprise Edition', '19.3.0.0.0'),
+  ('db-multi-03',    'RISKDB',   'RISKDB',   '/u01/app/oracle/product/19.0.0/dbhome_1', 'Oracle Database 19c Enterprise Edition', '19.3.0.0.0'),
+  ('db-multi-04',    'WHDB',     'WHDB',     '/u01/app/oracle/product/19.0.0/dbhome_1', 'Oracle Database 19c Enterprise Edition', '19.3.0.0.0'),
+  ('db-multi-05',    'CUSTDB',   'CUSTDB',   '/u01/app/oracle/product/19.0.0/dbhome_1', 'Oracle Database 19c Enterprise Edition', '19.3.0.0.0')
 ) AS v(hostname, oracle_sid, db_name, oracle_home, edition, db_version)
 JOIN client_acme.oracle_servers s USING (hostname)
 ON CONFLICT (server_id, oracle_sid) DO NOTHING;
@@ -233,7 +254,47 @@ FROM (VALUES
   ('db-reporting-01','RPTDB','OLAP',                 '19.0.0.0.0', 'TRUE'),
   ('db-reporting-01','RPTDB','Spatial and Graph',    '19.0.0.0.0', 'TRUE'),
   ('db-reporting-01','RPTDB','Data Mining',          '19.0.0.0.0', 'TRUE'),
-  ('db-reporting-01','RPTDB','Advanced Security',    '19.0.0.0.0', 'FALSE')
+  ('db-reporting-01','RPTDB','Advanced Security',    '19.0.0.0.0', 'FALSE'),
+
+  -- ── db-multi-01 / APPDB  (EE + Diagnostics + Tuning) ─────────────────────
+  ('db-multi-01','APPDB', 'Partitioning',         '19.0.0.0.0', 'FALSE'),
+  ('db-multi-01','APPDB', 'Diagnostics Pack',     '19.0.0.0.0', 'TRUE'),
+  ('db-multi-01','APPDB', 'Tuning Pack',          '19.0.0.0.0', 'TRUE'),
+  ('db-multi-01','APPDB', 'Advanced Compression', '19.0.0.0.0', 'FALSE'),
+  ('db-multi-01','APPDB', 'Advanced Security',    '19.0.0.0.0', 'FALSE'),
+
+  -- ── db-multi-02 / SUPPLYDB  (EE + Partitioning + Diagnostics + Tuning + Compression) ──
+  ('db-multi-02','SUPPLYDB','Partitioning',        '19.0.0.0.0', 'TRUE'),
+  ('db-multi-02','SUPPLYDB','Diagnostics Pack',    '19.0.0.0.0', 'TRUE'),
+  ('db-multi-02','SUPPLYDB','Tuning Pack',         '19.0.0.0.0', 'TRUE'),
+  ('db-multi-02','SUPPLYDB','Advanced Compression','19.0.0.0.0', 'TRUE'),
+  ('db-multi-02','SUPPLYDB','Advanced Security',   '19.0.0.0.0', 'FALSE'),
+  ('db-multi-02','SUPPLYDB','Database Vault',      '19.0.0.0.0', 'FALSE'),
+
+  -- ── db-multi-03 / RISKDB  (EE + Advanced Security + Database Vault + Label Security) ──
+  ('db-multi-03','RISKDB', 'Partitioning',         '19.0.0.0.0', 'TRUE'),
+  ('db-multi-03','RISKDB', 'Advanced Security',    '19.0.0.0.0', 'TRUE'),
+  ('db-multi-03','RISKDB', 'Database Vault',       '19.0.0.0.0', 'TRUE'),
+  ('db-multi-03','RISKDB', 'Label Security',       '19.0.0.0.0', 'TRUE'),
+  ('db-multi-03','RISKDB', 'Diagnostics Pack',     '19.0.0.0.0', 'TRUE'),
+  ('db-multi-03','RISKDB', 'Tuning Pack',          '19.0.0.0.0', 'FALSE'),
+
+  -- ── db-multi-04 / WAREHOUSEDB  (EE + Partitioning + OLAP + Diagnostics + Data Mining) ──
+  ('db-multi-04','WHDB',  'Partitioning',          '19.0.0.0.0', 'TRUE'),
+  ('db-multi-04','WHDB',  'OLAP',                  '19.0.0.0.0', 'TRUE'),
+  ('db-multi-04','WHDB',  'Diagnostics Pack',      '19.0.0.0.0', 'TRUE'),
+  ('db-multi-04','WHDB',  'Tuning Pack',           '19.0.0.0.0', 'TRUE'),
+  ('db-multi-04','WHDB',  'Data Mining',           '19.0.0.0.0', 'TRUE'),
+  ('db-multi-04','WHDB',  'Advanced Compression',  '19.0.0.0.0', 'TRUE'),
+  ('db-multi-04','WHDB',  'Spatial and Graph',     '19.0.0.0.0', 'FALSE'),
+
+  -- ── db-multi-05 / CUSTDB  (EE + Partitioning + Diagnostics + Spatial + Advanced Security) ──
+  ('db-multi-05','CUSTDB','Partitioning',           '19.0.0.0.0', 'TRUE'),
+  ('db-multi-05','CUSTDB','Diagnostics Pack',       '19.0.0.0.0', 'TRUE'),
+  ('db-multi-05','CUSTDB','Tuning Pack',            '19.0.0.0.0', 'TRUE'),
+  ('db-multi-05','CUSTDB','Spatial and Graph',      '19.0.0.0.0', 'TRUE'),
+  ('db-multi-05','CUSTDB','Advanced Security',      '19.0.0.0.0', 'TRUE'),
+  ('db-multi-05','CUSTDB','Advanced Compression',   '19.0.0.0.0', 'FALSE')
 
 ) AS v(hostname, oracle_sid, option_name, option_version, status)
 JOIN client_acme.oracle_servers   s ON s.hostname    = v.hostname
