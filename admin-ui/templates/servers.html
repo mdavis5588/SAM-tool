@@ -58,23 +58,21 @@
             </td>
 
             <!-- Licence requirements broken down by product -->
-            <td>
+            <td style="min-width:220px">
               {% if s.licence_rows %}
                 {% for row in s.licence_rows %}
-                  <div class="d-flex align-items-baseline gap-2 {% if not loop.last %}mb-1{% endif %}">
-                    <span class="fw-bold">{{ row.licences_required }}</span>
-                    <small class="text-muted">
-                      {% if row.product_family == 'oracle_database' %}
-                        <i class="bi bi-database"></i>
-                      {% elif row.product_family == 'oracle_weblogic' %}
-                        <i class="bi bi-boxes"></i>
-                      {% endif %}
-                      {{ row.product_family | replace('oracle_','') | replace('_',' ') | title }}
+                <div class="{% if not loop.last %}mb-2 pb-2 border-bottom{% endif %}">
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-secondary">{{ row.licences_required }}</span>
+                    <span class="small fw-semibold">
                       {% if row.product_detail %}
-                        <span class="text-muted">({{ row.product_detail | truncate(25, true, '…') }})</span>
+                        {{ row.product_detail }}
+                      {% else %}
+                        {{ row.product_family | replace('oracle_','') | replace('_',' ') | title }}
                       {% endif %}
-                    </small>
+                    </span>
                   </div>
+                </div>
                 {% endfor %}
               {% else %}
                 <span class="text-muted">—</span>
