@@ -684,7 +684,16 @@ def contracts():
              ))
         for r in rows
     ]
-    return render_template("contracts.html", contracts=rows)
+
+    # Values for filter dropdowns
+    all_clients = query(
+        "SELECT client_code, client_name FROM sam_admin.clients WHERE is_active ORDER BY client_name"
+    )
+    sharing_policies = sorted({r["sharing_policy"] for r in rows})
+
+    return render_template("contracts.html", contracts=rows,
+                           all_clients=all_clients,
+                           sharing_policies=sharing_policies)
 
 
 @app.route("/contracts/<int:csi_id>")

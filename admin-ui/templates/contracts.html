@@ -3,17 +3,58 @@
 {% block content %}
 <div class="d-flex align-items-center mb-3">
   <h4 class="mb-0"><i class="bi bi-file-earmark-text"></i> CSI Contracts</h4>
-  <span class="badge bg-secondary ms-2">{{ contracts | length }}</span>
+  <span class="badge bg-secondary ms-2" id="visible-count">{{ contracts | length }}</span>
+</div>
+
+<!-- Filter bar -->
+<div class="card shadow-sm mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label form-label-sm mb-1">Owner</label>
+        <select id="filter-owner" class="form-select form-select-sm">
+          <option value="">All owners</option>
+          <option value="__unowned__">— No owner (unassigned)</option>
+          {% for c in all_clients %}
+          <option value="{{ c.client_code }}">{{ c.client_name }} ({{ c.client_code }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label form-label-sm mb-1">Sharing Policy</label>
+        <select id="filter-policy" class="form-select form-select-sm">
+          <option value="">All policies</option>
+          {% for p in sharing_policies %}
+          <option value="{{ p }}">{{ p | replace('_',' ') | title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label form-label-sm mb-1">Status</label>
+        <select id="filter-status" class="form-select form-select-sm">
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="expired">Expired</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-sm btn-outline-secondary" id="btn-clear-filters">
+          <i class="bi bi-x-circle"></i> Clear
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="card shadow-sm">
   <div class="card-body p-0">
     <div class="table-responsive">
-      <table class="table table-hover table-striped mb-0">
+      <table class="table table-hover table-striped mb-0" id="contracts-table">
         <thead class="table-dark">
           <tr>
             <th>CSI Number</th>
             <th>Contract Name</th>
+            <th>Owner</th>
             <th>Products</th>
             <th>Total Licences</th>
             <th>Consumed</th>
@@ -27,9 +68,18 @@
         </thead>
         <tbody>
           {% for c in contracts %}
-          <tr>
+          <tr data-owner="{{ c.owning_client or '' }}"
+              data-policy="{{ c.sharing_policy }}"
+              data-status="{{ c.status }}">
             <td><code>{{ c.csi_number or '—' }}</code></td>
             <td>{{ c.contract_name }}</td>
+            <td>
+              {% if c.owning_client %}
+                <span class="badge bg-primary">{{ c.owning_client }}</span>
+              {% else %}
+                <span class="text-muted small">—</span>
+              {% endif %}
+            </td>
             <td><small>{{ c.products or '—' }}</small></td>
             <td>{{ c.total_qty or '—' }}</td>
             <td>
@@ -66,7 +116,15 @@
                 {% endif %}
               {% else %}—{% endif %}
             </td>
-            <td><span class="badge bg-secondary">{{ c.sharing_policy | replace('_',' ') | title }}</span></td>
+            <td>
+              {% if c.sharing_policy == 'shareable' %}
+                <span class="badge bg-success">Shareable</span>
+              {% elif c.sharing_policy == 'client_locked' %}
+                <span class="badge bg-warning text-dark">Client Locked</span>
+              {% else %}
+                <span class="badge bg-secondary">{{ c.sharing_policy | replace('_',' ') | title }}</span>
+              {% endif %}
+            </td>
             <td>
               {% if c.status == 'active' %}
                 <span class="badge bg-success">Active</span>
@@ -84,7 +142,9 @@
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="11" class="text-center text-muted py-4">No contracts found.</td></tr>
+          <tr id="empty-row">
+            <td colspan="12" class="text-center text-muted py-4">No contracts found.</td>
+          </tr>
           {% endfor %}
         </tbody>
       </table>
@@ -96,5 +156,47 @@
 {% block scripts %}
 <script>
 const today = "{{ today }}";
+
+(function () {
+  const filterOwner  = document.getElementById('filter-owner');
+  const filterPolicy = document.getElementById('filter-policy');
+  const filterStatus = document.getElementById('filter-status');
+  const countBadge   = document.getElementById('visible-count');
+  const tbody        = document.querySelector('#contracts-table tbody');
+
+  function applyFilters() {
+    const owner  = filterOwner.value;
+    const policy = filterPolicy.value;
+    const status = filterStatus.value;
+    let visible = 0;
+
+    tbody.querySelectorAll('tr[data-owner]').forEach(row => {
+      const rowOwner  = row.dataset.owner;
+      const rowPolicy = row.dataset.policy;
+      const rowStatus = row.dataset.status;
+
+      const ownerMatch  = !owner  || (owner === '__unowned__' ? rowOwner === '' : rowOwner === owner);
+      const policyMatch = !policy || rowPolicy === policy;
+      const statusMatch = !status || rowStatus === status;
+
+      const show = ownerMatch && policyMatch && statusMatch;
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+
+    countBadge.textContent = visible;
+  }
+
+  filterOwner .addEventListener('change', applyFilters);
+  filterPolicy.addEventListener('change', applyFilters);
+  filterStatus.addEventListener('change', applyFilters);
+
+  document.getElementById('btn-clear-filters').addEventListener('click', () => {
+    filterOwner.value  = '';
+    filterPolicy.value = '';
+    filterStatus.value = '';
+    applyFilters();
+  });
+})();
 </script>
 {% endblock %}
