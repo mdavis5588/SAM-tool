@@ -142,7 +142,7 @@
           </td>
           <td class="text-end">
             {% if l.unit_price %}
-              {{ l.currency or c.currency or 'USD' }} {{ '{:,.2f}'.format(l.unit_price) }}
+              {{ c.currency or 'USD' }} {{ '{:,.2f}'.format(l.unit_price) }}
             {% else %}
               <span class="text-muted">—</span>
             {% endif %}

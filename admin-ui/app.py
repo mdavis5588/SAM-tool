@@ -726,7 +726,7 @@ def contracts():
         SELECT l.line_id, l.csi_id, l.product_name,
                l.product_family::TEXT AS product_family,
                l.license_metric::TEXT AS license_metric,
-               l.quantity, l.unit_price, l.currency
+               l.quantity, l.unit_price
         FROM shared.license_entitlement_lines l
         WHERE l.is_active
         ORDER BY l.csi_id, l.line_number
