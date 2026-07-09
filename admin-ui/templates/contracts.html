@@ -77,6 +77,7 @@
         {% for c in contracts %}
 
         {# ── CSI header row ── #}
+        <tr class="contract-spacer"><td colspan="9" style="padding:0;border:0;height:8px;background:#f8f9fa"></td></tr>
         <tr class="contract-group table-secondary"
             data-owner="{{ c.owning_client or '' }}"
             data-policy="{{ c.sharing_policy }}"
@@ -213,6 +214,9 @@ const today = "{{ today }}";
     let visible = 0;
 
     // Hide/show each CSI header row and its line rows together
+    const spacers = document.querySelectorAll('tr.contract-spacer');
+    spacers.forEach(s => s.style.display = 'none');
+
     document.querySelectorAll('tr.contract-group').forEach(hdr => {
       const rowOwner  = hdr.dataset.owner;
       const rowPolicy = hdr.dataset.policy;
@@ -223,6 +227,10 @@ const today = "{{ today }}";
                 && (!policy || rowPolicy === policy)
                 && (!status || rowStatus === status);
 
+      const spacer = hdr.previousElementSibling;
+      if (spacer && spacer.classList.contains('contract-spacer')) {
+        spacer.style.display = show ? '' : 'none';
+      }
       hdr.style.display = show ? '' : 'none';
       document.querySelectorAll(`tr.contract-line[data-csi="${csiId}"]`).forEach(lr => {
         lr.style.display = show ? '' : 'none';
