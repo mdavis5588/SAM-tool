@@ -437,6 +437,50 @@ def edit_server(server_id):
                         )
                         return redirect(url_for("edit_server", server_id=server_id))
 
+            # Check CSI capacity — total licences in the CSI vs already consumed
+            # across ALL client schemas (excluding the current assignment being replaced)
+            if consumed is not None:
+                csi_capacity = query(
+                    "SELECT COALESCE(SUM(quantity), 0) AS total_qty "
+                    "FROM shared.license_entitlement_lines "
+                    "WHERE csi_id = %s AND is_active",
+                    (csi_id,), fetchall=False
+                )["total_qty"]
+
+                if csi_capacity > 0:
+                    all_schemas = [
+                        r["schema_name"] for r in query(
+                            "SELECT schema_name FROM sam_admin.clients WHERE is_active"
+                        )
+                    ]
+                    # Sum consumed for this CSI across all schemas, excluding the row
+                    # we are about to replace (same server+csi+family+detail)
+                    already_consumed = 0
+                    for s in all_schemas:
+                        try:
+                            row = query(
+                                f"SELECT COALESCE(SUM(licences_consumed), 0) AS total "
+                                f"FROM {s}.server_csi_map "
+                                f"WHERE csi_id = %s "
+                                f"AND NOT (server_id = %s AND product_family = %s "
+                                f"         AND product_detail IS NOT DISTINCT FROM %s)",
+                                (csi_id, server_id, family, product_detail),
+                                fetchall=False
+                            )
+                            already_consumed += row["total"] or 0
+                        except Exception:
+                            pass
+
+                    if already_consumed + consumed > csi_capacity:
+                        remaining = max(csi_capacity - already_consumed, 0)
+                        flash(
+                            f"This CSI only has {csi_capacity} licences in total — "
+                            f"{already_consumed} are already assigned to other servers, "
+                            f"leaving {remaining} available. You entered {consumed}.",
+                            "danger"
+                        )
+                        return redirect(url_for("edit_server", server_id=server_id))
+
             # Remove any existing assignment for this server+csi+family+detail first
             execute(f"""
                 DELETE FROM {schema}.server_csi_map
