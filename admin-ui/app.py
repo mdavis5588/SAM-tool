@@ -343,6 +343,16 @@ def servers():
         ORDER BY s.hostname
     """)
 
+    # Tag each row with the client name/code for the Owner column
+    client_info = query(
+        "SELECT client_name, client_code FROM sam_admin.clients WHERE schema_name = %s",
+        (schema,), fetchall=False
+    ) or {}
+    rows = [dict(r,
+                 _client_name=client_info.get("client_name", schema),
+                 _client_code=client_info.get("client_code", schema))
+            for r in rows]
+
     # SE2 violations for badge count in header
     try:
         se2_count = len(query(f"SELECT 1 FROM {schema}.se2_violations"))
