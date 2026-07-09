@@ -46,111 +46,120 @@
   </div>
 </div>
 
-<div class="card shadow-sm">
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-hover table-striped mb-0" id="contracts-table">
-        <thead class="table-dark">
-          <tr>
-            <th>CSI Number</th>
-            <th>Contract Name</th>
-            <th>Owner</th>
-            <th>Products</th>
-            <th>Total Licences</th>
-            <th>Consumed</th>
-            <th>Available</th>
-            <th>Total Value</th>
-            <th>Support Expiry</th>
-            <th>Policy</th>
-            <th>Status</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for c in contracts %}
-          <tr data-owner="{{ c.owning_client or '' }}"
-              data-policy="{{ c.sharing_policy }}"
-              data-status="{{ c.status }}">
-            <td><code>{{ c.csi_number or '—' }}</code></td>
-            <td>{{ c.contract_name }}</td>
-            <td>
-              {% if c.owning_client %}
-                <span class="badge bg-primary">{{ c.owning_client }}</span>
-              {% else %}
-                <span class="text-muted small">—</span>
-              {% endif %}
-            </td>
-            <td><small>{{ c.products or '—' }}</small></td>
-            <td>{{ c.total_qty or '—' }}</td>
-            <td>
-              {% if c.total_consumed %}
-                <span class="fw-semibold">{{ c.total_consumed }}</span>
-              {% else %}
-                <span class="text-muted">0</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if c.total_qty %}
-                {% if c.total_available == 0 %}
-                  <span class="badge bg-danger">0</span>
-                {% elif c.total_available * 5 < c.total_qty %}
-                  <span class="badge bg-warning text-dark">{{ c.total_available }}</span>
-                {% else %}
-                  <span class="badge bg-success">{{ c.total_available }}</span>
-                {% endif %}
-              {% else %}—{% endif %}
-            </td>
-            <td>
-              {% if c.total_value %}
-                {{ c.currency or 'USD' }} {{ '{:,.0f}'.format(c.total_value) }}
-              {% else %}—{% endif %}
-            </td>
-            <td>
-              {% if c.support_expiry %}
-                {% if c.support_expiry.strftime('%Y-%m-%d') < today %}
-                  <span class="text-danger fw-bold">{{ c.support_expiry }}</span>
-                {% elif (c.support_expiry - today_date).days < 90 %}
-                  <span class="text-warning fw-bold">{{ c.support_expiry }}</span>
-                {% else %}
-                  {{ c.support_expiry }}
-                {% endif %}
-              {% else %}—{% endif %}
-            </td>
-            <td>
-              {% if c.sharing_policy == 'shareable' %}
-                <span class="badge bg-success">Shareable</span>
-              {% elif c.sharing_policy == 'client_locked' %}
-                <span class="badge bg-warning text-dark">Client Locked</span>
-              {% else %}
-                <span class="badge bg-secondary">{{ c.sharing_policy | replace('_',' ') | title }}</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if c.status == 'active' %}
-                <span class="badge bg-success">Active</span>
-              {% elif c.status == 'expired' %}
-                <span class="badge bg-danger">Expired</span>
-              {% else %}
-                <span class="badge bg-secondary">{{ c.status | title }}</span>
-              {% endif %}
-            </td>
-            <td>
-              <a href="{{ url_for('contract_detail', csi_id=c.csi_id) }}"
-                 class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-eye"></i> View
-              </a>
-            </td>
-          </tr>
+{% for c in contracts %}
+<div class="card shadow-sm mb-3 contract-card"
+     data-owner="{{ c.owning_client or '' }}"
+     data-policy="{{ c.sharing_policy }}"
+     data-status="{{ c.status }}">
+
+  <!-- CSI header -->
+  <div class="card-header d-flex align-items-center justify-content-between py-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <code class="fw-bold">{{ c.csi_number or '—' }}</code>
+      {% if c.owning_client %}
+        <span class="badge bg-primary">{{ c.owning_client }}</span>
+      {% endif %}
+      {% if c.sharing_policy == 'shareable' %}
+        <span class="badge bg-success">Shareable</span>
+      {% elif c.sharing_policy == 'client_locked' %}
+        <span class="badge bg-warning text-dark">Client Locked</span>
+      {% else %}
+        <span class="badge bg-secondary">{{ c.sharing_policy | replace('_',' ') | title }}</span>
+      {% endif %}
+      {% if c.status == 'active' %}
+        <span class="badge bg-success">Active</span>
+      {% elif c.status == 'expired' %}
+        <span class="badge bg-danger">Expired</span>
+      {% else %}
+        <span class="badge bg-secondary">{{ c.status | title }}</span>
+      {% endif %}
+      {% if c.support_expiry %}
+        <small class="text-muted ms-1">
+          <i class="bi bi-calendar3"></i>
+          expires
+          {% if c.support_expiry.strftime('%Y-%m-%d') < today %}
+            <span class="text-danger fw-bold">{{ c.support_expiry }}</span>
+          {% elif (c.support_expiry - today_date).days < 90 %}
+            <span class="text-warning fw-bold">{{ c.support_expiry }}</span>
           {% else %}
-          <tr id="empty-row">
-            <td colspan="12" class="text-center text-muted py-4">No contracts found.</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+            {{ c.support_expiry }}
+          {% endif %}
+        </small>
+      {% endif %}
     </div>
+    <a href="{{ url_for('contract_detail', csi_id=c.csi_id) }}"
+       class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-eye"></i> View
+    </a>
   </div>
+
+  <!-- Entitlement lines -->
+  {% if c.lines %}
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Product</th>
+          <th>Metric</th>
+          <th class="text-end">Quantity</th>
+          <th class="text-end">Consumed</th>
+          <th class="text-end">Available</th>
+          <th class="text-end">Price / Seat</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in c.lines %}
+        <tr>
+          <td>{{ l.product_name }}</td>
+          <td>
+            {% if l.license_metric == 'processor' or l.license_metric == 'processor_perpetual' %}
+              <span class="badge bg-secondary">Processor Perpetual</span>
+            {% elif l.license_metric == 'named_user_plus' %}
+              <span class="badge bg-info text-dark">Named User Plus</span>
+            {% else %}
+              <span class="badge bg-light text-dark border">{{ l.license_metric | replace('_',' ') | title }}</span>
+            {% endif %}
+          </td>
+          <td class="text-end">{{ l.quantity or '—' }}</td>
+          <td class="text-end">
+            {% if l.consumed %}
+              <span class="fw-semibold">{{ l.consumed }}</span>
+            {% else %}
+              <span class="text-muted">0</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            {% set qty = l.quantity or 0 %}
+            {% if qty %}
+              {% if l.available == 0 %}
+                <span class="badge bg-danger">0</span>
+              {% elif l.available * 5 < qty %}
+                <span class="badge bg-warning text-dark">{{ l.available }}</span>
+              {% else %}
+                <span class="badge bg-success">{{ l.available }}</span>
+              {% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-end">
+            {% if l.unit_price %}
+              {{ l.currency or c.currency or 'USD' }} {{ '{:,.2f}'.format(l.unit_price) }}
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body text-muted small py-2">No entitlement lines.</div>
+  {% endif %}
+
 </div>
+{% else %}
+<div class="text-center text-muted py-5">No contracts found.</div>
+{% endfor %}
 {% endblock %}
 
 {% block scripts %}
@@ -162,7 +171,6 @@ const today = "{{ today }}";
   const filterPolicy = document.getElementById('filter-policy');
   const filterStatus = document.getElementById('filter-status');
   const countBadge   = document.getElementById('visible-count');
-  const tbody        = document.querySelector('#contracts-table tbody');
 
   function applyFilters() {
     const owner  = filterOwner.value;
@@ -170,17 +178,17 @@ const today = "{{ today }}";
     const status = filterStatus.value;
     let visible = 0;
 
-    tbody.querySelectorAll('tr[data-owner]').forEach(row => {
-      const rowOwner  = row.dataset.owner;
-      const rowPolicy = row.dataset.policy;
-      const rowStatus = row.dataset.status;
+    document.querySelectorAll('.contract-card').forEach(card => {
+      const rowOwner  = card.dataset.owner;
+      const rowPolicy = card.dataset.policy;
+      const rowStatus = card.dataset.status;
 
       const ownerMatch  = !owner  || (owner === '__unowned__' ? rowOwner === '' : rowOwner === owner);
       const policyMatch = !policy || rowPolicy === policy;
       const statusMatch = !status || rowStatus === status;
 
       const show = ownerMatch && policyMatch && statusMatch;
-      row.style.display = show ? '' : 'none';
+      card.style.display = show ? '' : 'none';
       if (show) visible++;
     });
 

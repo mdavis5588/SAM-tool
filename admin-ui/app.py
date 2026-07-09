@@ -711,59 +711,66 @@ def acknowledge_change(server_id, change_id):
 @app.route("/contracts")
 @login_required
 def contracts():
-    rows = query("""
-        SELECT cs.csi_id, cs.csi_number, cs.contract_name, cs.vendor_reference,
-               cs.purchase_date, cs.support_expiry, cs.is_ula, cs.ula_expiry,
-               cs.sharing_policy, cs.status, cs.currency,
-               oc.client_code AS owning_client,
-               COUNT(DISTINCT l.line_id)  AS line_count,
-               SUM(l.quantity)            AS total_qty,
-               SUM(l.total_price)         AS total_value,
-               STRING_AGG(DISTINCT l.product_name, ' | ' ORDER BY l.product_name) AS products
+    # One row per CSI header
+    csi_rows = query("""
+        SELECT cs.csi_id, cs.csi_number, cs.contract_name,
+               cs.support_expiry, cs.sharing_policy, cs.status, cs.currency,
+               oc.client_code AS owning_client
         FROM shared.csi_contracts cs
-        LEFT JOIN shared.license_entitlement_lines l  ON l.csi_id = cs.csi_id AND l.is_active
-        LEFT JOIN sam_admin.clients                oc ON oc.client_id = cs.owning_client_id
-        GROUP BY cs.csi_id, cs.csi_number, cs.contract_name, cs.vendor_reference,
-                 cs.purchase_date, cs.support_expiry, cs.is_ula, cs.ula_expiry,
-                 cs.sharing_policy, cs.status, cs.currency, oc.client_code
+        LEFT JOIN sam_admin.clients oc ON oc.client_id = cs.owning_client_id
         ORDER BY cs.csi_number
     """)
 
-    # Sum licences_consumed per CSI across all active client schemas
+    # All active entitlement lines
+    line_rows = query("""
+        SELECT l.line_id, l.csi_id, l.product_name,
+               l.product_family::TEXT AS product_family,
+               l.license_metric::TEXT AS license_metric,
+               l.quantity, l.unit_price, l.currency
+        FROM shared.license_entitlement_lines l
+        WHERE l.is_active
+        ORDER BY l.csi_id, l.line_number
+    """)
+
+    # Sum licences_consumed per (csi_id, product_family) across all active schemas
     active_schemas = [
         r["schema_name"] for r in query(
             "SELECT schema_name FROM sam_admin.clients WHERE is_active ORDER BY schema_name"
         )
     ]
-    consumed_by_csi = {}
+    consumed_by_csi_family = {}
     if active_schemas:
         union_sql = " UNION ALL ".join(
-            f"SELECT csi_id, COALESCE(SUM(licences_consumed), 0) AS consumed "
-            f"FROM {s}.server_csi_map GROUP BY csi_id"
+            f"SELECT csi_id, product_family::TEXT, "
+            f"COALESCE(SUM(licences_consumed), 0) AS consumed "
+            f"FROM {s}.server_csi_map GROUP BY csi_id, product_family"
             for s in active_schemas
         )
-        consumed_rows = query(
-            f"SELECT csi_id, SUM(consumed) AS total FROM ({union_sql}) t GROUP BY csi_id"
-        )
-        consumed_by_csi = {r["csi_id"]: r["total"] for r in consumed_rows}
+        for r in query(
+            f"SELECT csi_id, product_family, SUM(consumed) AS total "
+            f"FROM ({union_sql}) t GROUP BY csi_id, product_family"
+        ):
+            consumed_by_csi_family[(r["csi_id"], r["product_family"])] = r["total"]
 
-    # Attach consumed/available to each contract row
-    rows = [
-        dict(r,
-             total_consumed=consumed_by_csi.get(r["csi_id"], 0),
-             total_available=max(
-                 (r["total_qty"] or 0) - consumed_by_csi.get(r["csi_id"], 0), 0
-             ))
-        for r in rows
-    ]
+    # Group lines under each CSI, attaching consumed/available per line
+    lines_by_csi = {}
+    for l in line_rows:
+        consumed = consumed_by_csi_family.get((l["csi_id"], l["product_family"]), 0)
+        qty = l["quantity"] or 0
+        line = dict(l,
+                    consumed=consumed,
+                    available=max(qty - consumed, 0))
+        lines_by_csi.setdefault(l["csi_id"], []).append(line)
+
+    contracts = [dict(r, lines=lines_by_csi.get(r["csi_id"], [])) for r in csi_rows]
 
     # Values for filter dropdowns
     all_clients = query(
         "SELECT client_code, client_name FROM sam_admin.clients WHERE is_active ORDER BY client_name"
     )
-    sharing_policies = sorted({r["sharing_policy"] for r in rows})
+    sharing_policies = sorted({r["sharing_policy"] for r in csi_rows})
 
-    return render_template("contracts.html", contracts=rows,
+    return render_template("contracts.html", contracts=contracts,
                            all_clients=all_clients,
                            sharing_policies=sharing_policies)
 
