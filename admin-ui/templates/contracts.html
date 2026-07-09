@@ -50,14 +50,15 @@
   <div class="table-responsive">
     <table class="table table-sm mb-0" id="contracts-table">
       <colgroup>
-        <col style="width:13%">  {# CSI Number #}
-        <col style="width:28%">  {# Product #}
-        <col style="width:16%">  {# Metric #}
-        <col style="width:7%">   {# Quantity #}
-        <col style="width:7%">   {# Consumed #}
-        <col style="width:7%">   {# Available #}
-        <col style="width:10%">  {# Price/Seat #}
-        <col style="width:12%">  {# Expiry / badges #}
+        <col style="width:12%">  {# CSI Number #}
+        <col style="width:24%">  {# Product #}
+        <col style="width:14%">  {# Metric #}
+        <col style="width:6%">   {# Quantity #}
+        <col style="width:6%">   {# Consumed #}
+        <col style="width:6%">   {# Available #}
+        <col style="width:12%">  {# Total Cost #}
+        <col style="width:12%">  {# Price per Seat #}
+        <col style="width:8%">   {# Actions #}
       </colgroup>
       <thead class="table-dark">
         <tr>
@@ -67,7 +68,8 @@
           <th class="text-end">Quantity</th>
           <th class="text-end">Consumed</th>
           <th class="text-end">Available</th>
-          <th class="text-end">Price / Seat</th>
+          <th class="text-end">Total Cost</th>
+          <th class="text-end">Price per Seat</th>
           <th></th>
         </tr>
       </thead>
@@ -83,7 +85,7 @@
           <td class="fw-bold">
             <code>{{ c.csi_number or '—' }}</code>
           </td>
-          <td colspan="5">
+          <td colspan="7">
             {% if c.owning_client %}
               <span class="badge bg-primary me-1">{{ c.owning_client }}</span>
             {% endif %}
@@ -159,7 +161,16 @@
             {% else %}—{% endif %}
           </td>
           <td class="text-end">
-            {% if l.unit_price %}
+            {% if l.total_price %}
+              <small>{{ c.currency or 'USD' }} {{ '{:,.2f}'.format(l.total_price) }}</small>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            {% if l.total_price and l.quantity %}
+              <small>{{ c.currency or 'USD' }} {{ '{:,.2f}'.format(l.total_price / l.quantity) }}</small>
+            {% elif l.unit_price %}
               <small>{{ c.currency or 'USD' }} {{ '{:,.2f}'.format(l.unit_price) }}</small>
             {% else %}
               <span class="text-muted">—</span>
@@ -170,13 +181,13 @@
         {% else %}
         <tr class="contract-line" data-csi="{{ c.csi_id }}">
           <td></td>
-          <td colspan="7" class="text-muted small fst-italic">No entitlement lines.</td>
+          <td colspan="8" class="text-muted small fst-italic">No entitlement lines.</td>
         </tr>
         {% endfor %}
 
         {% else %}
         <tr>
-          <td colspan="8" class="text-center text-muted py-4">No contracts found.</td>
+          <td colspan="9" class="text-center text-muted py-4">No contracts found.</td>
         </tr>
         {% endfor %}
       </tbody>
