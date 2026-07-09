@@ -514,7 +514,7 @@ def edit_server(server_id):
 
     entitlement_lines = query("""
         SELECT l.csi_id, l.product_name, l.product_family::TEXT AS product_family,
-               cs.csi_number, cs.contract_name, cs.support_expiry
+               l.quantity, cs.csi_number, cs.contract_name, cs.support_expiry
         FROM shared.csi_contracts cs
         JOIN shared.license_entitlement_lines l ON l.csi_id = cs.csi_id AND l.is_active
         WHERE cs.status = 'active'
@@ -533,6 +533,27 @@ def edit_server(server_id):
             key = (a["product_family"], a["product_detail"])
             consumed_by_line[key] = consumed_by_line.get(key, 0) + a["licences_consumed"]
 
+    # Total quantity per CSI (sum across all entitlement lines)
+    csi_total_qty = {}
+    for l in entitlement_lines:
+        csi_total_qty[l["csi_id"]] = csi_total_qty.get(l["csi_id"], 0) + (l.get("quantity") or 0)
+
+    # Total consumed per CSI across ALL active client schemas
+    active_schemas = [
+        r["schema_name"] for r in query(
+            "SELECT schema_name FROM sam_admin.clients WHERE is_active ORDER BY schema_name"
+        )
+    ]
+    csi_consumed_global = {}
+    if active_schemas:
+        union_sql = " UNION ALL ".join(
+            f"SELECT csi_id, COALESCE(SUM(licences_consumed), 0) AS consumed "
+            f"FROM {s}.server_csi_map GROUP BY csi_id"
+            for s in active_schemas
+        )
+        for r in query(f"SELECT csi_id, SUM(consumed) AS total FROM ({union_sql}) t GROUP BY csi_id"):
+            csi_consumed_global[r["csi_id"]] = r["total"]
+
     compatible_csis_by_line = {}
     for row in licence_position:
         key = f"{row['product_family']}|{row['product_detail'] or ''}"
@@ -540,7 +561,14 @@ def edit_server(server_id):
         for l in entitlement_lines:
             if _is_compatible_product(row["product_family"], row["product_detail"],
                                        l["product_family"], l["product_name"]):
-                matches.setdefault(l["csi_id"], l)
+                if l["csi_id"] not in matches:
+                    total = csi_total_qty.get(l["csi_id"], 0)
+                    consumed = csi_consumed_global.get(l["csi_id"], 0)
+                    matches[l["csi_id"]] = dict(l,
+                        csi_total_qty=total,
+                        csi_consumed=consumed,
+                        csi_available=max(total - consumed, 0)
+                    )
         compatible_csis_by_line[key] = list(matches.values())
 
         already = consumed_by_line.get((row["product_family"], row["product_detail"]), 0)

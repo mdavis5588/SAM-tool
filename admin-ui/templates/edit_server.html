@@ -252,9 +252,14 @@
               <select name="csi_id" class="form-select form-select-sm" required {% if line_locked %}disabled{% endif %}>
                 <option value="">— select —</option>
                 {% for c in line_csis %}
-                <option value="{{ c.csi_id }}">
+                <option value="{{ c.csi_id }}"
+                  {% if c.csi_available is defined and c.csi_available == 0 %}disabled{% endif %}>
                   {{ c.csi_number or 'No CSI#' }} — {{ c.contract_name }}
-                  {% if c.support_expiry %}(exp {{ c.support_expiry }}){% endif %}
+                  {% if c.csi_available is defined %}
+                    ({{ c.csi_available }} of {{ c.csi_total_qty }} available)
+                  {% elif c.support_expiry %}
+                    (exp {{ c.support_expiry }})
+                  {% endif %}
                 </option>
                 {% endfor %}
               </select>
