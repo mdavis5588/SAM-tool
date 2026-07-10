@@ -28,32 +28,6 @@
     }
   }
 
-  /* ── Grand total strip ── */
-  .page-kpi-row {
-    display: flex;
-    gap: 1.25rem;
-    flex-wrap: wrap;
-    margin-bottom: 2rem;
-    padding-bottom: 1.5rem;
-    border-bottom: 1px solid var(--gridline);
-  }
-  .page-kpi { display: flex; flex-direction: column; }
-  .page-kpi-label {
-    font-size: .68rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: .07em;
-    color: var(--text-muted); margin-bottom: .15rem;
-  }
-  .page-kpi-value {
-    font-size: 1.6rem; font-weight: 700;
-    color: var(--text-pri); line-height: 1;
-    font-variant-numeric: tabular-nums;
-  }
-  .page-kpi-value.purple { color: var(--s1); }
-  .page-kpi-divider {
-    width: 1px; background: var(--gridline);
-    align-self: stretch; margin: .1rem 0;
-  }
-
   /* ── Section label ── */
   .section-label {
     font-size: .68rem; font-weight: 700;
@@ -159,35 +133,6 @@
 
 <div class="d-flex align-items-baseline gap-3 mb-4">
   <h4 class="mb-0"><i class="bi bi-bar-chart-line me-1"></i>Licence Summary</h4>
-</div>
-
-{% set total_client_licences = 0 %}
-{% set total_shared_licences = 0 %}
-{% for c in clients %}{% for l in c.lines %}{% set total_client_licences = total_client_licences + (l.total_qty | int) %}{% endfor %}{% endfor %}
-{% for l in shared_lines %}{% set total_shared_licences = total_shared_licences + (l.total_qty | int) %}{% endfor %}
-{% set grand_total = total_client_licences + total_shared_licences %}
-
-<!-- ── Grand totals ── -->
-<div class="page-kpi-row">
-  <div class="page-kpi">
-    <span class="page-kpi-label">Total Licences</span>
-    <span class="page-kpi-value purple">{{ "{:,}".format(grand_total) }}</span>
-  </div>
-  <div class="page-kpi-divider"></div>
-  <div class="page-kpi">
-    <span class="page-kpi-label">Client-Locked</span>
-    <span class="page-kpi-value">{{ "{:,}".format(total_client_licences) }}</span>
-  </div>
-  <div class="page-kpi-divider"></div>
-  <div class="page-kpi">
-    <span class="page-kpi-label">Shared Pool</span>
-    <span class="page-kpi-value">{{ "{:,}".format(total_shared_licences) }}</span>
-  </div>
-  <div class="page-kpi-divider"></div>
-  <div class="page-kpi">
-    <span class="page-kpi-label">Clients</span>
-    <span class="page-kpi-value">{{ clients | length }}</span>
-  </div>
 </div>
 
 <!-- ── Client-locked section ── -->
