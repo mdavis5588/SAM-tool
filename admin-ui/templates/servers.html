@@ -21,8 +21,9 @@
             <th>Hostname</th>
             <th>Environment</th>
             <th>Licence Metric</th>
-            <th>Licences Required</th>
-            <th>CSI Assignments</th>
+            <th>Licence Type</th>
+            <th class="text-center">Required</th>
+            <th class="text-center">Assigned</th>
             <th>Compliance</th>
             <th>Last Seen</th>
             <th></th>
@@ -30,7 +31,7 @@
         </thead>
         <tbody>
           {% for s in servers %}
-          <tr><td colspan="9" style="padding:0;border:0;height:6px;background:#f8f9fa"></td></tr>
+          <tr><td colspan="10" style="padding:0;border:0;height:6px;background:#f8f9fa"></td></tr>
           <tr>
             <td>
               <span class="badge bg-primary">{{ s._client_code }}</span>
@@ -58,21 +59,16 @@
               {% endif %}
             </td>
 
-            <!-- Licence requirements broken down by product -->
-            <td style="min-width:220px">
+            <!-- Licence type breakdown -->
+            <td style="min-width:200px">
               {% if s.licence_rows %}
                 {% for row in s.licence_rows %}
-                <div class="{% if not loop.last %}mb-2 pb-2 border-bottom{% endif %}">
-                  <div class="d-flex align-items-center gap-2">
-                    <span class="badge bg-secondary">{{ row.licences_required }}</span>
-                    <span class="small fw-semibold">
-                      {% if row.product_detail %}
-                        {{ row.product_detail }}
-                      {% else %}
-                        {{ row.product_family | replace('oracle_','') | replace('_',' ') | title }}
-                      {% endif %}
-                    </span>
-                  </div>
+                <div class="{% if not loop.last %}mb-2 pb-2 border-bottom{% endif %} small fw-semibold">
+                  {% if row.product_detail %}
+                    {{ row.product_detail }}
+                  {% else %}
+                    {{ row.product_family | replace('oracle_','') | replace('_',' ') | title }}
+                  {% endif %}
                 </div>
                 {% endfor %}
               {% else %}
@@ -80,23 +76,53 @@
               {% endif %}
             </td>
 
-            <td>
-              {% if s.csi_count > 0 %}
-                <span class="badge bg-success">{{ s.csi_count }} assigned</span>
+            <!-- Required per licence type -->
+            <td class="text-center">
+              {% if s.licence_rows %}
+                {% for row in s.licence_rows %}
+                <div class="{% if not loop.last %}mb-2 pb-2 border-bottom{% endif %}">
+                  <span class="badge bg-secondary">{{ row.licences_required }}</span>
+                </div>
+                {% endfor %}
               {% else %}
-                <span class="badge bg-warning text-dark">None</span>
+                <span class="text-muted">—</span>
               {% endif %}
             </td>
 
-            <td>
-              {% if s.licence_rows is none %}
-                <span class="text-muted">—</span>
-              {% elif s.any_under_licensed %}
-                <span class="badge bg-danger"><i class="bi bi-x-circle"></i> Under-licensed</span>
-              {% elif s.csi_count == 0 %}
-                <span class="badge bg-warning text-dark"><i class="bi bi-question-circle"></i> Unassigned</span>
+            <!-- Assigned per licence type -->
+            <td class="text-center">
+              {% if s.licence_rows %}
+                {% for row in s.licence_rows %}
+                <div class="{% if not loop.last %}mb-2 pb-2 border-bottom{% endif %}">
+                  {% set assigned = row.total_licensed | int %}
+                  {% if assigned >= row.licences_required %}
+                    <span class="badge bg-success">{{ assigned }}</span>
+                  {% elif assigned > 0 %}
+                    <span class="badge bg-warning text-dark">{{ assigned }}</span>
+                  {% else %}
+                    <span class="badge bg-danger">0</span>
+                  {% endif %}
+                </div>
+                {% endfor %}
               {% else %}
-                <span class="badge bg-success"><i class="bi bi-check-circle"></i> Compliant</span>
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+
+            <!-- Compliance per licence type -->
+            <td>
+              {% if s.licence_rows %}
+                {% for row in s.licence_rows %}
+                <div class="{% if not loop.last %}mb-2 pb-2 border-bottom{% endif %}">
+                  {% if row.compliance_status == 'compliant' %}
+                    <span class="badge bg-success"><i class="bi bi-check-circle"></i> Compliant</span>
+                  {% else %}
+                    <span class="badge bg-danger"><i class="bi bi-x-circle"></i> Under-licensed</span>
+                  {% endif %}
+                </div>
+                {% endfor %}
+              {% else %}
+                <span class="text-muted">—</span>
               {% endif %}
             </td>
 
@@ -111,7 +137,7 @@
           </tr>
           {% else %}
           <tr>
-            <td colspan="9" class="text-center text-muted py-4">No servers discovered yet.</td>
+            <td colspan="10" class="text-center text-muted py-4">No servers discovered yet.</td>
           </tr>
           {% endfor %}
         </tbody>

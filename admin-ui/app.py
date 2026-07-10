@@ -244,6 +244,7 @@ def servers():
                                 'product_family',    product_family,
                                 'product_detail',    product_detail,
                                 'licences_required', licences_required,
+                                'total_licensed',    total_licensed,
                                 'compliance_status', compliance_status
                             ) ORDER BY product_family) AS licence_rows,
                             SUM(licences_required)                        AS total_licences_required,
@@ -299,6 +300,7 @@ def servers():
                         'product_family',    product_family,
                         'product_detail',    product_detail,
                         'licences_required', licences_required,
+                        'total_licensed',    total_licensed,
                         'compliance_status', compliance_status
                     ) ORDER BY product_family
                 ) AS licence_rows,
