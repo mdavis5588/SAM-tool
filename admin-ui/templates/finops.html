@@ -185,21 +185,27 @@
 
 <div class="kpi-strip">
   <div class="kpi-card blue">
-    <div class="kpi-label">Licence Cost</div>
-    <div class="kpi-value">${{ "{:,.0f}".format(client.total_licence) }}</div>
-    <div class="kpi-sub">{{ client.lines | length }} product{{ 's' if client.lines | length != 1 }}</div>
+    <div class="kpi-label">Total Client Cost</div>
+    <div class="kpi-value">${{ "{:,.0f}".format(client.total_client_cost) }}</div>
+    <div class="kpi-sub">Annual support + shared pool in use</div>
   </div>
   <div class="kpi-card">
     <div class="kpi-label">Annual Support</div>
     <div class="kpi-value">${{ "{:,.0f}".format(client.total_support) }}</div>
+    <div class="kpi-sub">Client-locked licences</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Shared Pool (In Use)</div>
+    <div class="kpi-value">${{ "{:,.0f}".format(client.total_shared_inuse) }}</div>
+    <div class="kpi-sub">Cost drawn from shared pool</div>
   </div>
   <div class="kpi-card green">
-    <div class="kpi-label">Cost in Use</div>
+    <div class="kpi-label">All Licences in Use</div>
     <div class="kpi-value">${{ "{:,.0f}".format(client.total_assigned) }}</div>
     <div class="kpi-sub">{{ util_pct }}% utilised</div>
   </div>
   <div class="kpi-card {% if waste_pct > 40 %}red{% elif waste_pct > 20 %}amber{% else %}blue{% endif %}">
-    <div class="kpi-label">Unused Cost</div>
+    <div class="kpi-label">Unused (Client-Locked)</div>
     <div class="kpi-value">${{ "{:,.0f}".format(client.total_unassigned) }}</div>
     <div class="kpi-sub">{{ waste_pct }}% idle</div>
   </div>
@@ -257,7 +263,6 @@
           <tr>
             <th>Product</th>
             <th>Qty</th>
-            <th>Licence Cost</th>
             <th>Annual Support</th>
             <th>Cost in Use</th>
             <th>Unused Cost</th>
@@ -273,7 +278,7 @@
           {% if line.source != ns.last_source %}
           {% set ns.last_source = line.source %}
           <tr class="tbl-group-row {% if line.source == 'shareable' %}shared{% endif %}">
-            <td colspan="7">
+            <td colspan="6">
               {% if line.source == 'client_locked' %}
               <i class="bi bi-lock-fill me-1"></i>Client-Locked Licences
               {% else %}
@@ -290,7 +295,6 @@
             <td>{{ line.assigned_qty if line.source == 'shareable' else total_q }}</td>
             {% if line.source == 'shareable' %}
             <td><span class="text-muted">—</span></td>
-            <td><span class="text-muted">—</span></td>
             <td>
               {% if line.assigned_cost > 0 %}
               <span style="color:var(--green);font-weight:600">${{ "{:,.0f}".format(line.assigned_cost) }}</span>
@@ -300,7 +304,6 @@
             <td><span class="text-muted">—</span></td>
             <td><span class="text-muted small fst-italic">From shared pool</span></td>
             {% else %}
-            <td>{% if line.licence_cost | float > 0 %}${{ "{:,.0f}".format(line.licence_cost | float) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
             <td>{% if line.support_cost | float > 0 %}${{ "{:,.0f}".format(line.support_cost | float) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
             <td>
               {% if line.assigned_cost > 0 %}
@@ -333,7 +336,6 @@
         <tfoot>
           <tr>
             <td colspan="2">Total</td>
-            <td>${{ "{:,.0f}".format(client.total_licence) }}</td>
             <td>${{ "{:,.0f}".format(client.total_support) }}</td>
             <td style="color:var(--green)">${{ "{:,.0f}".format(client.total_assigned) }}</td>
             <td>${{ "{:,.0f}".format(client.total_unassigned) }}</td>

@@ -1158,27 +1158,28 @@ def _build_client_finops(client_id):
         ln["assigned_cost"]     = round(assigned   * unit, 2)
         ln["unassigned_cost"]   = round(unassigned * unit, 2)
 
-    total_licence    = sum(ln["licence_cost"]   for ln in lines)
-    total_support    = sum(ln["support_cost"]   for ln in lines)
-    total_assigned   = sum(ln["assigned_cost"]  for ln in lines)
-    total_unassigned = sum(ln["unassigned_cost"] for ln in lines)
+    # Support cost only applies to client-locked lines; shared pool rows contribute their in-use cost
+    total_support        = sum(ln["support_cost"]   for ln in lines if ln["source"] == "client_locked")
+    total_shared_inuse   = sum(ln["assigned_cost"]  for ln in lines if ln["source"] == "shareable")
+    total_assigned       = sum(ln["assigned_cost"]  for ln in lines)
+    total_unassigned     = sum(ln["unassigned_cost"] for ln in lines if ln["source"] == "client_locked")
+    total_client_cost    = total_support + total_shared_inuse
 
     # Pie chart: in-use cost per product (assigned_cost), palette matches table rows
     pie_items = [{"label": ln["product_name"], "value": ln["assigned_cost"], "colour": ln["colour"]}
                  for ln in lines if ln["assigned_cost"] > 0]
     pie_slices = _pie_slices(pie_items)
-    # Apply the same palette colours used in the table so legend dots match
     for sl, item in zip(pie_slices, pie_items):
         sl["colour"] = item["colour"]
 
     return {
-        "lines": lines,
-        "total_licence":    total_licence,
-        "total_support":    total_support,
-        "total_tco":        total_licence + total_support,
-        "total_assigned":   total_assigned,
-        "total_unassigned": total_unassigned,
-        "pie_slices":       pie_slices,
+        "lines":              lines,
+        "total_support":      total_support,
+        "total_shared_inuse": total_shared_inuse,
+        "total_client_cost":  total_client_cost,
+        "total_assigned":     total_assigned,
+        "total_unassigned":   total_unassigned,
+        "pie_slices":         pie_slices,
     }
 
 
@@ -1194,12 +1195,12 @@ def finops():
         data = _build_client_finops(c["client_id"])
         if data:
             summary.append({
-                "client_code": c["client_code"],
-                "client_name": c["client_name"] or c["client_code"],
-                "total_licence": data["total_licence"],
-                "total_support": data["total_support"],
-                "total_tco": data["total_tco"],
-                "product_count": len(data["lines"]),
+                "client_code":       c["client_code"],
+                "client_name":       c["client_name"] or c["client_code"],
+                "total_support":     data["total_support"],
+                "total_shared_inuse": data["total_shared_inuse"],
+                "total_client_cost": data["total_client_cost"],
+                "product_count":     len(data["lines"]),
             })
     return render_template("finops_summary.html", summary=summary)
 

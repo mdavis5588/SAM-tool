@@ -30,16 +30,16 @@
 
           <div class="row g-2 text-center">
             <div class="col-4">
-              <div class="small text-muted">Licence Cost</div>
-              <div class="fw-bold text-dark">${{ "{:,.0f}".format(c.total_licence) }}</div>
-            </div>
-            <div class="col-4">
               <div class="small text-muted">Annual Support</div>
               <div class="fw-bold text-dark">${{ "{:,.0f}".format(c.total_support) }}</div>
             </div>
             <div class="col-4">
-              <div class="small text-muted">Annual Support</div>
-              <div class="fw-bold text-dark">${{ "{:,.0f}".format(c.total_support) }}</div>
+              <div class="small text-muted">Shared Pool (In Use)</div>
+              <div class="fw-bold text-dark">${{ "{:,.0f}".format(c.total_shared_inuse) }}</div>
+            </div>
+            <div class="col-4">
+              <div class="small text-muted">Total Cost</div>
+              <div class="fw-bold" style="color:#2a78d6">${{ "{:,.0f}".format(c.total_client_cost) }}</div>
             </div>
           </div>
 
