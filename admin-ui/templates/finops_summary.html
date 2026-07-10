@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}FinOps — Oracle SAM{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center mb-4">
+  <h4 class="mb-0"><i class="bi bi-currency-dollar"></i> FinOps — Cost Summary</h4>
+</div>
+
+{% if not summary %}
+<div class="alert alert-info">No cost data found. Ensure CSI entitlement lines have unit prices set.</div>
+{% endif %}
+
+<div class="row g-3">
+  {% for c in summary %}
+  <div class="col-md-6 col-xl-4">
+    <a href="{{ url_for('finops_client', client_code=c.client_code) }}" class="text-decoration-none">
+      <div class="card shadow-sm h-100"
+           style="cursor:pointer;transition:box-shadow .15s;border-top:3px solid #2a78d6"
+           onmouseover="this.style.boxShadow='0 4px 18px rgba(0,0,0,.14)'"
+           onmouseout="this.style.boxShadow=''">
+        <div class="card-body">
+
+          <div class="d-flex align-items-center gap-2 mb-3">
+            <i class="bi bi-building fs-5 text-primary"></i>
+            <h5 class="mb-0 text-dark">{{ c.client_name }}</h5>
+            <span class="badge bg-light text-muted ms-auto border">
+              {{ c.product_count }} product{{ 's' if c.product_count != 1 }}
+            </span>
+          </div>
+
+          <div class="row g-2 text-center">
+            <div class="col-4">
+              <div class="small text-muted">Licence Cost</div>
+              <div class="fw-bold text-dark">${{ "{:,.0f}".format(c.total_licence) }}</div>
+            </div>
+            <div class="col-4">
+              <div class="small text-muted">Annual Support</div>
+              <div class="fw-bold text-dark">${{ "{:,.0f}".format(c.total_support) }}</div>
+            </div>
+            <div class="col-4">
+              <div class="small text-muted">Total TCO</div>
+              <div class="fw-bold" style="color:#2a78d6">${{ "{:,.0f}".format(c.total_tco) }}</div>
+            </div>
+          </div>
+
+        </div>
+        <div class="card-footer bg-transparent text-end py-2">
+          <small class="text-muted"><i class="bi bi-arrow-right-circle me-1"></i>View detail</small>
+        </div>
+      </div>
+    </a>
+  </div>
+  {% endfor %}
+</div>
+
+{% endblock %}

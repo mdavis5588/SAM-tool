@@ -1038,104 +1038,114 @@ def licence_summary_shared():
                            back_url=url_for("licence_summary"))
 
 
+import math as _math
+
+_FINOPS_PALETTE = ["#2a78d6","#1baf7a","#eda100","#008300",
+                   "#4a3aa7","#e34948","#e87ba4","#eb6834"]
+
+def _finops_line_sort(name):
+    n = (name or "").lower()
+    if "enterprise" in n or "standard" in n:
+        return (0, n)
+    if "diagnostic" in n:
+        return (1, n)
+    if "tuning" in n:
+        return (2, n)
+    return (3, n)
+
+def _pie_slices(items, cx=100, cy=100, r=80, gap_deg=1.5):
+    total = sum(i["value"] for i in items)
+    if total == 0:
+        return []
+    slices, angle = [], 0.0
+    for i, item in enumerate(items):
+        sweep = item["value"] / total * 360
+        a0 = _math.radians(angle + gap_deg / 2)
+        a1 = _math.radians(angle + sweep - gap_deg / 2)
+        x1, y1 = cx + r * _math.cos(a0), cy + r * _math.sin(a0)
+        x2, y2 = cx + r * _math.cos(a1), cy + r * _math.sin(a1)
+        slices.append({
+            "path": (f"M {cx} {cy} L {x1:.2f} {y1:.2f} "
+                     f"A {r} {r} 0 {1 if sweep >= 180 else 0} 1 {x2:.2f} {y2:.2f} Z"),
+            "colour": _FINOPS_PALETTE[i % len(_FINOPS_PALETTE)],
+            "label": item["label"],
+            "value": item["value"],
+            "pct": round(item["value"] / total * 100, 1),
+        })
+        angle += sweep
+    return slices
+
+def _build_client_finops(client_id):
+    rows = query("""
+        SELECT l.product_name,
+               l.product_family::TEXT AS product_family,
+               COALESCE(SUM(l.quantity), 0)            AS qty,
+               COALESCE(SUM(l.total_price), 0)         AS licence_cost,
+               COALESCE(SUM(l.annual_support_cost), 0) AS support_cost
+        FROM shared.csi_contracts cs
+        JOIN shared.license_entitlement_lines l
+             ON l.csi_id = cs.csi_id AND l.is_active
+        WHERE cs.status = 'active'
+          AND cs.owning_client_id = %s
+        GROUP BY l.product_name, l.product_family
+    """, (client_id,))
+    if not rows:
+        return None
+    lines = sorted(rows, key=lambda r: _finops_line_sort(r["product_name"]))
+    for i, ln in enumerate(lines):
+        ln["colour"] = _FINOPS_PALETTE[i % len(_FINOPS_PALETTE)]
+    total_licence = sum(float(r["licence_cost"] or 0) for r in lines)
+    total_support = sum(float(r["support_cost"] or 0) for r in lines)
+    pie_items = [{"label": r["product_name"], "value": float(r["licence_cost"] or 0)}
+                 for r in lines if float(r["licence_cost"] or 0) > 0]
+    return {
+        "lines": lines,
+        "total_licence": total_licence,
+        "total_support": total_support,
+        "total_tco": total_licence + total_support,
+        "pie_slices": _pie_slices(pie_items),
+    }
+
+
 @app.route("/finops")
 @login_required
 def finops():
-    import math
-
-    # Validated CVD-safe categorical palette (light / dark pairs)
-    PALETTE_LIGHT = ["#2a78d6","#1baf7a","#eda100","#008300",
-                     "#4a3aa7","#e34948","#e87ba4","#eb6834"]
-
-    def _line_sort(name):
-        n = (name or "").lower()
-        if "enterprise" in n or "standard" in n:
-            return (0, n)
-        if "diagnostic" in n:
-            return (1, n)
-        if "tuning" in n:
-            return (2, n)
-        return (3, n)
-
-    def _pie_slices(items, cx=100, cy=100, r=80, gap_deg=1.5):
-        """Pre-compute SVG path strings for each pie slice."""
-        total = sum(i["value"] for i in items)
-        if total == 0:
-            return []
-        slices = []
-        angle = 0.0
-        for i, item in enumerate(items):
-            sweep = item["value"] / total * 360
-            a_start = math.radians(angle + gap_deg / 2)
-            a_end   = math.radians(angle + sweep - gap_deg / 2)
-            x1 = cx + r * math.cos(a_start)
-            y1 = cy + r * math.sin(a_start)
-            x2 = cx + r * math.cos(a_end)
-            y2 = cy + r * math.sin(a_end)
-            large = 1 if sweep >= 180 else 0
-            path = (f"M {cx} {cy} "
-                    f"L {x1:.2f} {y1:.2f} "
-                    f"A {r} {r} 0 {large} 1 {x2:.2f} {y2:.2f} Z")
-            pct = item["value"] / total * 100
-            slices.append({
-                "path": path,
-                "colour": PALETTE_LIGHT[i % len(PALETTE_LIGHT)],
-                "label": item["label"],
-                "value": item["value"],
-                "pct": round(pct, 1),
-            })
-            angle += sweep
-        return slices
-
     clients_list = query(
         "SELECT client_id, client_code, client_name FROM sam_admin.clients "
         "WHERE is_active ORDER BY client_name, client_code"
     )
+    summary = []
+    for c in clients_list:
+        data = _build_client_finops(c["client_id"])
+        if data:
+            summary.append({
+                "client_code": c["client_code"],
+                "client_name": c["client_name"] or c["client_code"],
+                "total_licence": data["total_licence"],
+                "total_support": data["total_support"],
+                "total_tco": data["total_tco"],
+                "product_count": len(data["lines"]),
+            })
+    return render_template("finops_summary.html", summary=summary)
 
-    client_data = []
-    for client in clients_list:
-        rows = query("""
-            SELECT l.product_name,
-                   l.product_family::TEXT AS product_family,
-                   COALESCE(SUM(l.quantity), 0)            AS qty,
-                   COALESCE(SUM(l.total_price), 0)         AS licence_cost,
-                   COALESCE(SUM(l.annual_support_cost), 0) AS support_cost
-            FROM shared.csi_contracts cs
-            JOIN shared.license_entitlement_lines l
-                 ON l.csi_id = cs.csi_id AND l.is_active
-            WHERE cs.status = 'active'
-              AND cs.owning_client_id = %s
-            GROUP BY l.product_name, l.product_family
-        """, (client["client_id"],))
 
-        if not rows:
-            continue
-
-        lines = sorted(rows, key=lambda r: _line_sort(r["product_name"]))
-        # Attach palette colour to each line (same order as pie slices)
-        for i, ln in enumerate(lines):
-            ln["colour"] = PALETTE_LIGHT[i % len(PALETTE_LIGHT)]
-
-        total_licence = sum(float(r["licence_cost"] or 0) for r in lines)
-        total_support = sum(float(r["support_cost"] or 0) for r in lines)
-
-        pie_items = [
-            {"label": r["product_name"], "value": float(r["licence_cost"] or 0)}
-            for r in lines if float(r["licence_cost"] or 0) > 0
-        ]
-        slices = _pie_slices(pie_items)
-
-        client_data.append({
-            "client_code": client["client_code"],
-            "client_name": client["client_name"] or client["client_code"],
-            "lines": lines,
-            "total_licence": total_licence,
-            "total_support": total_support,
-            "total_tco": total_licence + total_support,
-            "pie_slices": slices,
-        })
-
-    return render_template("finops.html", client_data=client_data)
+@app.route("/finops/<client_code>")
+@login_required
+def finops_client(client_code):
+    client = query(
+        "SELECT client_id, client_code, client_name FROM sam_admin.clients "
+        "WHERE client_code = %s", (client_code,), fetchall=False
+    )
+    if not client:
+        flash("Client not found.", "danger")
+        return redirect(url_for("finops"))
+    data = _build_client_finops(client["client_id"])
+    if not data:
+        flash("No cost data found for this client.", "warning")
+        return redirect(url_for("finops"))
+    data["client_code"] = client["client_code"]
+    data["client_name"] = client["client_name"] or client["client_code"]
+    return render_template("finops.html", client=data)
 
 
 @app.route("/contracts")

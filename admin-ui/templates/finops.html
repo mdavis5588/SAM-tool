@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}FinOps — Oracle SAM{% endblock %}
+{% block title %}{{ client.client_name }} — FinOps — Oracle SAM{% endblock %}
 
 {% block content %}
 <style>
@@ -22,23 +22,6 @@
     }
   }
 
-  .finops-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: hidden;
-  }
-  .finops-header {
-    background: #2a78d6;
-    color: #fff;
-    padding: .75rem 1rem;
-    display: flex;
-    align-items: center;
-    gap: .6rem;
-    font-weight: 600;
-  }
-
-  /* Cost table */
   .cost-table { width:100%; border-collapse:collapse; font-size:.83rem; }
   .cost-table th {
     color: var(--text-muted);
@@ -77,7 +60,6 @@
     flex-shrink: 0;
   }
 
-  /* Stat tiles */
   .stat-tile {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -88,135 +70,116 @@
   .stat-tile .lbl { font-size: .68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing:.05em; }
   .stat-tile .val { font-size: 1.25rem; font-weight: 700; color: var(--text-pri); line-height: 1.2; }
 
-  /* Pie legend */
   .pie-legend { font-size:.76rem; color: var(--text-sec); display:flex; flex-direction:column; gap:.3rem; }
   .pie-legend-row { display:flex; align-items:center; gap:.4rem; }
   .pie-legend-pct { margin-left:auto; font-weight:600; color:var(--text-pri); white-space:nowrap; padding-left:.5rem; }
 </style>
 
-<div class="d-flex align-items-center mb-4">
-  <h4 class="mb-0"><i class="bi bi-currency-dollar"></i> FinOps — Licence Cost Summary</h4>
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('finops') }}">FinOps</a></li>
+    <li class="breadcrumb-item active">{{ client.client_name }}</li>
+  </ol>
+</nav>
+
+<div class="d-flex align-items-center gap-2 mb-4">
+  <h4 class="mb-0"><i class="bi bi-building me-1"></i>{{ client.client_name }}</h4>
+  <span class="text-muted">— Licence Cost Detail</span>
 </div>
 
-{% if not client_data %}
-<div class="alert alert-info">
-  No cost data found. Ensure CSI entitlement lines have unit prices set.
-</div>
-{% endif %}
+<div class="row g-3 align-items-start">
 
-{% for client in client_data %}
-<div class="finops-card shadow-sm mb-4">
-
-  <div class="finops-header">
-    <i class="bi bi-building"></i>
-    {{ client.client_name }}
-    <span class="ms-auto badge bg-white fw-semibold" style="color:#2a78d6">
-      Total TCO: ${{ "{:,.0f}".format(client.total_tco) }}
-    </span>
-  </div>
-
-  <div class="p-3">
-    <div class="row g-3 align-items-start">
-
-      <!-- Left: stat row + cost table -->
-      <div class="col-lg-7">
-
-        <!-- Three stat tiles -->
-        <div class="row g-2 mb-3">
-          <div class="col-4">
-            <div class="stat-tile">
-              <div class="lbl">Licence Cost</div>
-              <div class="val">${{ "{:,.0f}".format(client.total_licence) }}</div>
-            </div>
-          </div>
-          <div class="col-4">
-            <div class="stat-tile">
-              <div class="lbl">Annual Support</div>
-              <div class="val">${{ "{:,.0f}".format(client.total_support) }}</div>
-            </div>
-          </div>
-          <div class="col-4">
-            <div class="stat-tile">
-              <div class="lbl">Total TCO</div>
-              <div class="val">${{ "{:,.0f}".format(client.total_tco) }}</div>
-            </div>
-          </div>
+  <!-- Left: stat tiles + table -->
+  <div class="col-lg-7">
+    <div class="row g-2 mb-3">
+      <div class="col-4">
+        <div class="stat-tile">
+          <div class="lbl">Licence Cost</div>
+          <div class="val">${{ "{:,.0f}".format(client.total_licence) }}</div>
         </div>
-
-        <!-- Cost breakdown table -->
-        <table class="cost-table">
-          <thead>
-            <tr>
-              <th>Product</th>
-              <th>Qty</th>
-              <th>Licence Cost</th>
-              <th>Annual Support</th>
-              <th>Total TCO</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for line in client.lines %}
-            {% set tco = (line.licence_cost | float) + (line.support_cost | float) %}
-            <tr>
-              <td>
-                <span class="swatch" style="background:{{ line.colour }}"></span>
-                {{ line.product_name }}
-              </td>
-              <td>{{ line.qty | int }}</td>
-              <td>{% if line.licence_cost | float > 0 %}${{ "{:,.0f}".format(line.licence_cost | float) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-              <td>{% if line.support_cost | float > 0 %}${{ "{:,.0f}".format(line.support_cost | float) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-              <td>{% if tco > 0 %}${{ "{:,.0f}".format(tco) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colspan="2"><strong>Total</strong></td>
-              <td><strong>${{ "{:,.0f}".format(client.total_licence) }}</strong></td>
-              <td><strong>${{ "{:,.0f}".format(client.total_support) }}</strong></td>
-              <td><strong>${{ "{:,.0f}".format(client.total_tco) }}</strong></td>
-            </tr>
-          </tfoot>
-        </table>
       </div>
-
-      <!-- Right: pie chart + legend -->
-      <div class="col-lg-5 d-flex flex-column align-items-center gap-3 pt-2">
-        {% if client.pie_slices %}
-        <svg viewBox="-10 -10 220 220" width="200" height="200"
-             aria-label="Licence cost breakdown for {{ client.client_name }}" role="img"
-             style="overflow:visible">
-          {% for sl in client.pie_slices %}
-          <path d="{{ sl.path }}" fill="{{ sl.colour }}"
-                stroke="var(--surface)" stroke-width="2"
-                style="transition:opacity .15s"
-                onmouseover="this.style.opacity='.8'"
-                onmouseout="this.style.opacity='1'">
-            <title>{{ sl.label }}: ${{ "{:,.0f}".format(sl.value) }} ({{ sl.pct }}%)</title>
-          </path>
-          {% endfor %}
-        </svg>
-
-        <div class="pie-legend w-100 px-2">
-          {% for sl in client.pie_slices %}
-          <div class="pie-legend-row">
-            <span class="swatch" style="background:{{ sl.colour }};width:12px;height:12px;border-radius:2px;display:inline-block;flex-shrink:0"></span>
-            <span>{{ sl.label }}</span>
-            <span class="pie-legend-pct">{{ sl.pct }}%</span>
-          </div>
-          {% endfor %}
+      <div class="col-4">
+        <div class="stat-tile">
+          <div class="lbl">Annual Support</div>
+          <div class="val">${{ "{:,.0f}".format(client.total_support) }}</div>
         </div>
-
-        {% else %}
-        <p class="text-muted small text-center mt-3">
-          <i class="bi bi-info-circle me-1"></i>No pricing data — add unit prices to CSI lines.
-        </p>
-        {% endif %}
       </div>
-
+      <div class="col-4">
+        <div class="stat-tile">
+          <div class="lbl">Total TCO</div>
+          <div class="val" style="color:#2a78d6">${{ "{:,.0f}".format(client.total_tco) }}</div>
+        </div>
+      </div>
     </div>
-  </div>
-</div>
-{% endfor %}
 
+    <table class="cost-table">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Qty</th>
+          <th>Licence Cost</th>
+          <th>Annual Support</th>
+          <th>Total TCO</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in client.lines %}
+        {% set tco = (line.licence_cost | float) + (line.support_cost | float) %}
+        <tr>
+          <td>
+            <span class="swatch" style="background:{{ line.colour }}"></span>
+            {{ line.product_name }}
+          </td>
+          <td>{{ line.qty | int }}</td>
+          <td>{% if line.licence_cost | float > 0 %}${{ "{:,.0f}".format(line.licence_cost | float) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          <td>{% if line.support_cost | float > 0 %}${{ "{:,.0f}".format(line.support_cost | float) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          <td>{% if tco > 0 %}${{ "{:,.0f}".format(tco) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2"><strong>Total</strong></td>
+          <td><strong>${{ "{:,.0f}".format(client.total_licence) }}</strong></td>
+          <td><strong>${{ "{:,.0f}".format(client.total_support) }}</strong></td>
+          <td><strong>${{ "{:,.0f}".format(client.total_tco) }}</strong></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <!-- Right: pie chart + legend -->
+  <div class="col-lg-5 d-flex flex-column align-items-center gap-3 pt-2">
+    {% if client.pie_slices %}
+    <svg viewBox="-10 -10 220 220" width="200" height="200"
+         aria-label="Licence cost breakdown for {{ client.client_name }}" role="img"
+         style="overflow:visible">
+      {% for sl in client.pie_slices %}
+      <path d="{{ sl.path }}" fill="{{ sl.colour }}"
+            stroke="var(--surface)" stroke-width="2"
+            style="transition:opacity .15s"
+            onmouseover="this.style.opacity='.75'"
+            onmouseout="this.style.opacity='1'">
+        <title>{{ sl.label }}: ${{ "{:,.0f}".format(sl.value) }} ({{ sl.pct }}%)</title>
+      </path>
+      {% endfor %}
+    </svg>
+
+    <div class="pie-legend w-100 px-2">
+      {% for sl in client.pie_slices %}
+      <div class="pie-legend-row">
+        <span class="swatch" style="background:{{ sl.colour }};width:12px;height:12px;border-radius:2px;display:inline-block;flex-shrink:0"></span>
+        <span>{{ sl.label }}</span>
+        <span class="pie-legend-pct">{{ sl.pct }}%</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-muted small text-center mt-3">
+      <i class="bi bi-info-circle me-1"></i>No pricing data — add unit prices to CSI lines.
+    </p>
+    {% endif %}
+  </div>
+
+</div>
 {% endblock %}
