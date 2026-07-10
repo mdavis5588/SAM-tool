@@ -4,8 +4,10 @@
 
 <style>
   .viz-root {
-    --s1:         #6d28d9;   /* client-locked — dark purple */
-    --s2:         #6da7ec;   /* shared pool   — light blue  */
+    --s1:         #6d28d9;   /* oracle database / client-locked — dark purple */
+    --s2:         #6da7ec;   /* weblogic / middleware — light blue */
+    --s3:         #1baf7a;   /* java / coherence — green */
+    --s4:         #eda100;   /* other — amber */
     --text-pri:   #0b0b0b;
     --text-sec:   #52514e;
     --text-muted: #898781;
@@ -16,15 +18,10 @@
   }
   @media (prefers-color-scheme: dark) {
     .viz-root {
-      --s1:         #7c3aed;
-      --s2:         #86b6ef;
-      --text-pri:   #ffffff;
-      --text-sec:   #c3c2b7;
-      --text-muted: #898781;
-      --gridline:   #2c2c2a;
-      --border:     rgba(255,255,255,0.10);
-      --surface:    #1a1a19;
-      --track:      #2c2c2a;
+      --s1: #7c3aed; --s2: #86b6ef; --s3: #23c48e; --s4: #f0b429;
+      --text-pri: #fff; --text-sec: #c3c2b7; --text-muted: #898781;
+      --gridline: #2c2c2a; --border: rgba(255,255,255,0.10);
+      --surface: #1a1a19; --track: #2c2c2a;
     }
   }
 
@@ -43,39 +40,27 @@
   /* ── Legend ── */
   .legend-row {
     display: flex; align-items: center; gap: 1.25rem;
-    margin-bottom: 1.25rem;
+    margin-bottom: 1.25rem; flex-wrap: wrap;
   }
   .legend-item { display: flex; align-items: center; gap: .4rem; font-size: .78rem; color: var(--text-sec); }
   .legend-swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
 
-  /* ── Client / shared rows ── */
+  /* ── Entity rows ── */
   .entity-list { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 2rem; }
 
   .entity-row {
     display: grid;
-    grid-template-columns: 200px 1fr 110px;
+    grid-template-columns: 180px 1fr 110px;
     align-items: center;
     gap: 1.25rem;
     padding: 1rem 1.1rem;
     border-radius: 8px;
     border: 1px solid var(--gridline);
-    border-left-width: 4px;
-    border-right-width: 4px;
     text-decoration: none;
     color: inherit;
     transition: background .12s;
   }
   .entity-row:hover { background: rgba(109,40,217,.04); }
-
-  /* Alternating left-border accent colours */
-  .entity-row:nth-child(1) { border-left-color: #6d28d9; border-right-color: #6d28d9; }
-  .entity-row:nth-child(2) { border-left-color: #2a78d6; border-right-color: #2a78d6; }
-  .entity-row:nth-child(3) { border-left-color: #1baf7a; border-right-color: #1baf7a; }
-  .entity-row:nth-child(4) { border-left-color: #eda100; border-right-color: #eda100; }
-  .entity-row:nth-child(5) { border-left-color: #e34948; border-right-color: #e34948; }
-  .entity-row:nth-child(6) { border-left-color: #eb6834; border-right-color: #eb6834; }
-  .entity-row:nth-child(7) { border-left-color: #6d28d9; border-right-color: #6d28d9; }
-  .entity-row:nth-child(8) { border-left-color: #2a78d6; border-right-color: #2a78d6; }
 
   .entity-name {
     display: flex; align-items: center; gap: .6rem;
@@ -90,41 +75,40 @@
     padding: .1rem .45rem; white-space: nowrap; flex-shrink: 0;
   }
 
-  /* ── Product mini-list inside row ── */
-  .product-chips {
-    display: flex; flex-wrap: wrap; gap: .3rem;
+  /* ── Stacked bar ── */
+  .bar-wrap { display: flex; flex-direction: column; gap: .35rem; }
+  .bar-track {
+    height: 8px; border-radius: 4px;
+    background: var(--track); overflow: hidden; display: flex;
   }
-  .product-chip {
-    font-size: .71rem; color: var(--text-sec);
-    background: var(--surface); border: 1px solid var(--gridline);
-    border-radius: 4px; padding: .15rem .45rem;
-    display: flex; align-items: center; gap: .3rem;
+  .bar-seg { height: 100%; transition: opacity .15s; }
+  .bar-seg:first-child { border-radius: 4px 0 0 4px; }
+  .bar-seg:last-child  { border-radius: 0 4px 4px 0; }
+  .bar-seg:only-child  { border-radius: 4px; }
+  .bar-seg:hover { opacity: .75; }
+  .bar-labels {
+    display: flex; gap: .75rem; flex-wrap: wrap;
+    font-size: .72rem; color: var(--text-muted);
     font-variant-numeric: tabular-nums;
   }
-  .chip-qty {
-    font-weight: 700; color: var(--text-pri);
-  }
+  .bar-label-item { display: flex; align-items: center; gap: .3rem; }
+  .bar-label-dot  { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 
-  /* ── CTA ── */
-  .entity-cta {
-    text-align: right;
-    font-size: .8rem; color: var(--text-muted);
+  /* ── Right col ── */
+  .entity-total { text-align: right; }
+  .entity-total-value {
+    font-size: 1.15rem; font-weight: 700;
+    color: var(--s1); font-variant-numeric: tabular-nums; line-height: 1;
   }
-  .entity-cta-count {
-    font-size: 1.1rem; font-weight: 700;
-    color: var(--s1); font-variant-numeric: tabular-nums;
-    line-height: 1; margin-bottom: .25rem;
-  }
+  .entity-total-label { font-size: .68rem; color: var(--text-muted); margin-top: .2rem; }
+  .entity-arrow { font-size: .8rem; color: var(--text-muted); margin-top: .35rem; }
 
-  /* ── Column header ── */
+  /* ── Col header ── */
   .col-header {
-    display: grid;
-    grid-template-columns: 200px 1fr 110px;
-    gap: 1.25rem;
-    padding: .2rem 1.1rem .5rem;
+    display: grid; grid-template-columns: 180px 1fr 110px;
+    gap: 1.25rem; padding: .2rem 1.1rem .5rem;
     font-size: .67rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: .07em;
-    color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted);
   }
   .col-header span:last-child { text-align: right; }
 </style>
@@ -138,6 +122,15 @@
   </a>
 </div>
 
+<!-- ── Legend ── -->
+<div class="legend-row">
+  <span class="text-muted small fw-semibold me-1">Product family:</span>
+  <div class="legend-item"><span class="legend-swatch" style="background:var(--s1)"></span>Database</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:var(--s2)"></span>WebLogic / Middleware</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:var(--s3)"></span>Java / Coherence</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:var(--s4)"></span>Other</div>
+</div>
+
 <!-- ── Client-locked section ── -->
 {% if clients %}
 <div class="section-label">
@@ -146,13 +139,30 @@
 
 <div class="col-header">
   <span>Client</span>
-  <span>Products</span>
+  <span>Quantity by Product Family</span>
   <span>Total Qty</span>
 </div>
 
 <div class="entity-list">
   {% for client in clients %}
-  {% set client_total = client.lines | sum(attribute='total_qty') | int %}
+  {% set ns = namespace(db=0, wl=0, java=0, other=0, total=0) %}
+  {% for l in client.lines %}
+    {% set ns.total = ns.total + l.total_qty %}
+    {% if l.product_family == 'oracle_database' %}
+      {% set ns.db = ns.db + l.total_qty %}
+    {% elif l.product_family in ('oracle_weblogic', 'oracle_middleware') %}
+      {% set ns.wl = ns.wl + l.total_qty %}
+    {% elif l.product_family in ('oracle_java', 'oracle_coherence') %}
+      {% set ns.java = ns.java + l.total_qty %}
+    {% else %}
+      {% set ns.other = ns.other + l.total_qty %}
+    {% endif %}
+  {% endfor %}
+  {% set db_w    = ((ns.db    / ns.total * 100) | round(1)) if ns.total > 0 else 0 %}
+  {% set wl_w    = ((ns.wl    / ns.total * 100) | round(1)) if ns.total > 0 else 0 %}
+  {% set java_w  = ((ns.java  / ns.total * 100) | round(1)) if ns.total > 0 else 0 %}
+  {% set other_w = ((ns.other / ns.total * 100) | round(1)) if ns.total > 0 else 0 %}
+
   <a href="{{ url_for('licence_summary_client', client_code=client.client_code) }}" class="entity-row">
 
     <div class="entity-name">
@@ -161,26 +171,33 @@
       <span class="entity-badge">{{ client.lines | length }}p</span>
     </div>
 
-    <div class="product-chips">
-      {% for line in client.lines %}
-      {% set n = line.product_name.lower() %}
-      <span class="product-chip">
-        {% if 'enterprise' in n %}<i class="bi bi-database-fill" style="color:var(--s1)"></i>
-        {% elif 'standard' in n %}<i class="bi bi-database text-secondary"></i>
-        {% elif 'diagnostic' in n %}<i class="bi bi-activity text-info"></i>
-        {% elif 'tuning' in n %}<i class="bi bi-sliders text-warning"></i>
-        {% elif 'partition' in n %}<i class="bi bi-layout-split text-success"></i>
-        {% elif 'security' in n %}<i class="bi bi-shield-lock text-danger"></i>
-        {% else %}<i class="bi bi-puzzle text-muted"></i>{% endif %}
-        {{ line.product_name }}
-        <span class="chip-qty">{{ line.total_qty | int }}</span>
-      </span>
-      {% endfor %}
+    <div class="bar-wrap">
+      <div class="bar-track">
+        {% if db_w > 0 %}<div class="bar-seg" style="width:{{ db_w }}%;background:var(--s1)"
+          title="Database: {{ ns.db | int }} licences"></div>{% endif %}
+        {% if wl_w > 0 %}<div class="bar-seg" style="width:{{ wl_w }}%;background:var(--s2)"
+          title="WebLogic/Middleware: {{ ns.wl | int }} licences"></div>{% endif %}
+        {% if java_w > 0 %}<div class="bar-seg" style="width:{{ java_w }}%;background:var(--s3)"
+          title="Java/Coherence: {{ ns.java | int }} licences"></div>{% endif %}
+        {% if other_w > 0 %}<div class="bar-seg" style="width:{{ other_w }}%;background:var(--s4)"
+          title="Other: {{ ns.other | int }} licences"></div>{% endif %}
+      </div>
+      <div class="bar-labels">
+        {% if ns.db > 0 %}<div class="bar-label-item">
+          <span class="bar-label-dot" style="background:var(--s1)"></span>{{ ns.db | int }} DB</div>{% endif %}
+        {% if ns.wl > 0 %}<div class="bar-label-item">
+          <span class="bar-label-dot" style="background:var(--s2)"></span>{{ ns.wl | int }} WL</div>{% endif %}
+        {% if ns.java > 0 %}<div class="bar-label-item">
+          <span class="bar-label-dot" style="background:var(--s3)"></span>{{ ns.java | int }} Java</div>{% endif %}
+        {% if ns.other > 0 %}<div class="bar-label-item">
+          <span class="bar-label-dot" style="background:var(--s4)"></span>{{ ns.other | int }} Other</div>{% endif %}
+      </div>
     </div>
 
-    <div class="entity-cta">
-      <div class="entity-cta-count">{{ "{:,}".format(client_total) }}</div>
-      <div><i class="bi bi-arrow-right-circle"></i> View detail</div>
+    <div class="entity-total">
+      <div class="entity-total-value">{{ "{:,}".format(ns.total | int) }}</div>
+      <div class="entity-total-label">licences</div>
+      <div class="entity-arrow"><i class="bi bi-arrow-right-circle"></i> View detail</div>
     </div>
 
   </a>
@@ -196,11 +213,27 @@
 </div>
 
 {% if shared_lines %}
-{% set shared_total = shared_lines | sum(attribute='total_qty') | int %}
+{% set ns = namespace(db=0, wl=0, java=0, other=0, total=0) %}
+{% for l in shared_lines %}
+  {% set ns.total = ns.total + l.total_qty %}
+  {% if l.product_family == 'oracle_database' %}
+    {% set ns.db = ns.db + l.total_qty %}
+  {% elif l.product_family in ('oracle_weblogic', 'oracle_middleware') %}
+    {% set ns.wl = ns.wl + l.total_qty %}
+  {% elif l.product_family in ('oracle_java', 'oracle_coherence') %}
+    {% set ns.java = ns.java + l.total_qty %}
+  {% else %}
+    {% set ns.other = ns.other + l.total_qty %}
+  {% endif %}
+{% endfor %}
+{% set db_w    = ((ns.db    / ns.total * 100) | round(1)) if ns.total > 0 else 0 %}
+{% set wl_w    = ((ns.wl    / ns.total * 100) | round(1)) if ns.total > 0 else 0 %}
+{% set java_w  = ((ns.java  / ns.total * 100) | round(1)) if ns.total > 0 else 0 %}
+{% set other_w = ((ns.other / ns.total * 100) | round(1)) if ns.total > 0 else 0 %}
 
 <div class="col-header">
   <span>Pool</span>
-  <span>Products</span>
+  <span>Quantity by Product Family</span>
   <span>Total Qty</span>
 </div>
 
@@ -213,26 +246,33 @@
       <span class="entity-badge">{{ shared_lines | length }}p</span>
     </div>
 
-    <div class="product-chips">
-      {% for line in shared_lines %}
-      {% set n = line.product_name.lower() %}
-      <span class="product-chip">
-        {% if 'enterprise' in n %}<i class="bi bi-database-fill" style="color:var(--s2)"></i>
-        {% elif 'standard' in n %}<i class="bi bi-database text-secondary"></i>
-        {% elif 'diagnostic' in n %}<i class="bi bi-activity text-info"></i>
-        {% elif 'tuning' in n %}<i class="bi bi-sliders text-warning"></i>
-        {% elif 'partition' in n %}<i class="bi bi-layout-split text-success"></i>
-        {% elif 'security' in n %}<i class="bi bi-shield-lock text-danger"></i>
-        {% else %}<i class="bi bi-puzzle text-muted"></i>{% endif %}
-        {{ line.product_name }}
-        <span class="chip-qty">{{ line.total_qty | int }}</span>
-      </span>
-      {% endfor %}
+    <div class="bar-wrap">
+      <div class="bar-track">
+        {% if db_w > 0 %}<div class="bar-seg" style="width:{{ db_w }}%;background:var(--s1)"
+          title="Database: {{ ns.db | int }} licences"></div>{% endif %}
+        {% if wl_w > 0 %}<div class="bar-seg" style="width:{{ wl_w }}%;background:var(--s2)"
+          title="WebLogic/Middleware: {{ ns.wl | int }} licences"></div>{% endif %}
+        {% if java_w > 0 %}<div class="bar-seg" style="width:{{ java_w }}%;background:var(--s3)"
+          title="Java/Coherence: {{ ns.java | int }} licences"></div>{% endif %}
+        {% if other_w > 0 %}<div class="bar-seg" style="width:{{ other_w }}%;background:var(--s4)"
+          title="Other: {{ ns.other | int }} licences"></div>{% endif %}
+      </div>
+      <div class="bar-labels">
+        {% if ns.db > 0 %}<div class="bar-label-item">
+          <span class="bar-label-dot" style="background:var(--s1)"></span>{{ ns.db | int }} DB</div>{% endif %}
+        {% if ns.wl > 0 %}<div class="bar-label-item">
+          <span class="bar-label-dot" style="background:var(--s2)"></span>{{ ns.wl | int }} WL</div>{% endif %}
+        {% if ns.java > 0 %}<div class="bar-label-item">
+          <span class="bar-label-dot" style="background:var(--s3)"></span>{{ ns.java | int }} Java</div>{% endif %}
+        {% if ns.other > 0 %}<div class="bar-label-item">
+          <span class="bar-label-dot" style="background:var(--s4)"></span>{{ ns.other | int }} Other</div>{% endif %}
+      </div>
     </div>
 
-    <div class="entity-cta">
-      <div class="entity-cta-count" style="color:var(--s2)">{{ "{:,}".format(shared_total) }}</div>
-      <div><i class="bi bi-arrow-right-circle"></i> View detail</div>
+    <div class="entity-total">
+      <div class="entity-total-value" style="color:var(--s2)">{{ "{:,}".format(ns.total | int) }}</div>
+      <div class="entity-total-label">licences</div>
+      <div class="entity-arrow"><i class="bi bi-arrow-right-circle"></i> View detail</div>
     </div>
 
   </a>
