@@ -915,6 +915,19 @@ def licence_summary_server_costs():
         "FROM sam_admin.clients WHERE is_active ORDER BY client_name"
     )
 
+    # Build a lookup: (csi_id, product_name) -> line data, for fallback when
+    # server_csi_map.line_id is NULL but product_detail is set.
+    line_lookup_rows = query("""
+        SELECT csi_id, product_name, unit_price, quantity, annual_support_cost
+        FROM shared.license_entitlement_lines
+        WHERE is_active
+    """)
+    # key: (csi_id, lowercase product_name)
+    line_lookup = {}
+    for lr in line_lookup_rows:
+        key = (lr["csi_id"], (lr["product_name"] or "").lower())
+        line_lookup[key] = lr
+
     servers = []
     for c in active_clients:
         s = c["schema_name"]
@@ -934,29 +947,16 @@ def licence_summary_server_costs():
                     cs.sharing_policy::TEXT AS sharing_policy,
                     l.product_name,
                     l.unit_price,
-                    l.annual_support_cost,
-                    COALESCE(l.unit_price, 0) * COALESCE(scm.licences_consumed, 0) AS line_licence_cost,
-                    COALESCE(l.annual_support_cost, 0)
-                        / NULLIF(l.quantity, 0)
-                        * COALESCE(scm.licences_consumed, 0) AS line_support_cost
+                    l.quantity       AS line_quantity,
+                    l.annual_support_cost
                 FROM {s}.server_csi_map scm
                 JOIN {s}.oracle_servers sv ON sv.server_id = scm.server_id
                 JOIN shared.csi_contracts cs ON cs.csi_id = scm.csi_id
-                LEFT JOIN LATERAL (
-                    SELECT line_id, product_name, unit_price, quantity, annual_support_cost
-                    FROM shared.license_entitlement_lines
-                    WHERE line_id = scm.line_id
-                       OR (scm.line_id IS NULL
-                           AND csi_id = scm.csi_id
-                           AND is_active
-                           AND scm.product_detail IS NOT NULL
-                           AND product_name ILIKE '%' || scm.product_detail || '%')
-                    ORDER BY (line_id = scm.line_id) DESC NULLS LAST
-                    LIMIT 1
-                ) l ON TRUE
+                LEFT JOIN shared.license_entitlement_lines l ON l.line_id = scm.line_id
                 ORDER BY sv.hostname, scm.product_family, l.product_name
             """)
-        except Exception:
+        except Exception as e:
+            app.logger.error("server_costs query failed for schema %s: %s", s, e)
             rows = []
 
         # Group by server
@@ -974,17 +974,32 @@ def licence_summary_server_costs():
                     "total_support_cost": 0.0,
                 }
             sv = server_map[key]
-            line_lic  = float(r["line_licence_cost"] or 0)
-            line_supp = float(r["line_support_cost"]  or 0)
+            # If the direct line join returned nothing, try the lookup by product_detail
+            fallback = None
+            if not r["product_name"] and r["product_detail"]:
+                fallback = line_lookup.get((r["csi_id"], r["product_detail"].lower()))
+            consumed  = float(r["licences_consumed"])
+            if fallback:
+                qty      = float(fallback["quantity"] or 0)
+                unit_p   = float(fallback["unit_price"] or 0)
+                ann_supp = float(fallback["annual_support_cost"] or 0)
+                pname    = fallback["product_name"]
+            else:
+                qty      = float(r["line_quantity"] or 0)
+                unit_p   = float(r["unit_price"] or 0)
+                ann_supp = float(r["annual_support_cost"] or 0)
+                pname    = r["product_name"] or r["product_detail"] or r["product_family"]
+            line_lic  = unit_p * consumed
+            line_supp = (ann_supp / qty * consumed) if qty else 0
             sv["assignments"].append({
-                "product_name":      r["product_name"] or r["product_detail"] or r["product_family"],
+                "product_name":      pname,
                 "product_family":    r["product_family"],
                 "csi_id":            r["csi_id"],
                 "csi_number":        r["csi_number"],
                 "contract_name":     r["contract_name"],
                 "sharing_policy":    r["sharing_policy"],
-                "licences_consumed": float(r["licences_consumed"]),
-                "unit_price":        float(r["unit_price"] or 0),
+                "licences_consumed": consumed,
+                "unit_price":        unit_p,
                 "line_licence_cost": line_lic,
                 "line_support_cost": line_supp,
             })
