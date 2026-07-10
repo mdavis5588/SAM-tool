@@ -906,6 +906,116 @@ def licence_summary():
                            shared_lines=shared_lines)
 
 
+def _build_licence_detail(entitlement_rows):
+    """Return list of dicts with total_qty, assigned_qty, unassigned_qty for each product."""
+    # Aggregate consumed across all active client schemas
+    active_schemas = [
+        r["schema_name"] for r in query(
+            "SELECT schema_name FROM sam_admin.clients WHERE is_active ORDER BY schema_name"
+        )
+    ]
+    consumed_by_csi_product = {}   # (csi_id, product_detail) -> total consumed
+    if active_schemas:
+        union_sql = " UNION ALL ".join(
+            f"SELECT csi_id, COALESCE(product_detail,'') AS product_detail, "
+            f"COALESCE(SUM(licences_consumed), 0) AS consumed "
+            f"FROM {s}.server_csi_map GROUP BY csi_id, product_detail"
+            for s in active_schemas
+        )
+        for r in query(
+            f"SELECT csi_id, product_detail, SUM(consumed) AS total "
+            f"FROM ({union_sql}) t GROUP BY csi_id, product_detail"
+        ):
+            key = (r["csi_id"], r["product_detail"])
+            consumed_by_csi_product[key] = consumed_by_csi_product.get(key, 0) + r["total"]
+
+    # Group consumed by csi_id for lookup
+    consumed_entries_by_csi = {}
+    for (csi_id, detail), amt in consumed_by_csi_product.items():
+        consumed_entries_by_csi.setdefault(csi_id, []).append((detail, amt))
+
+    def _line_sort(name):
+        n = (name or "").lower()
+        if "enterprise" in n or "standard" in n:
+            return (0, n)
+        if "diagnostic" in n:
+            return (1, n)
+        if "tuning" in n:
+            return (2, n)
+        return (3, n)
+
+    # Roll up by product_name across all CSIs in the set
+    product_totals = {}   # product_name -> {total, assigned, family}
+    for r in entitlement_rows:
+        pname = r["product_name"]
+        if pname not in product_totals:
+            product_totals[pname] = {"product_name": pname,
+                                     "product_family": r["product_family"],
+                                     "total_qty": 0, "assigned_qty": 0}
+        product_totals[pname]["total_qty"] += int(r["quantity"] or 0)
+        # Sum consumed for this CSI line using compatible matching
+        consumed = sum(
+            amt for det, amt in consumed_entries_by_csi.get(r["csi_id"], [])
+            if _is_compatible_product(r["product_family"], det or None,
+                                      r["product_family"], r["product_name"])
+        )
+        product_totals[pname]["assigned_qty"] += consumed
+
+    lines = sorted(product_totals.values(), key=lambda x: _line_sort(x["product_name"]))
+    for ln in lines:
+        ln["unassigned_qty"] = max(ln["total_qty"] - ln["assigned_qty"], 0)
+    return lines
+
+
+@app.route("/licence-summary/client/<client_code>")
+@login_required
+def licence_summary_client(client_code):
+    client = query(
+        "SELECT client_id, client_code, client_name FROM sam_admin.clients WHERE client_code = %s",
+        (client_code,), fetchall=False
+    )
+    if not client:
+        flash("Client not found.", "danger")
+        return redirect(url_for("licence_summary"))
+
+    entitlement_rows = query("""
+        SELECT l.csi_id, l.product_name, l.product_family::TEXT AS product_family,
+               COALESCE(l.quantity, 0) AS quantity
+        FROM shared.csi_contracts cs
+        JOIN shared.license_entitlement_lines l ON l.csi_id = cs.csi_id AND l.is_active
+        WHERE cs.status = 'active'
+          AND cs.sharing_policy = 'client_locked'
+          AND cs.owning_client_id = %s
+    """, (client["client_id"],))
+
+    lines = _build_licence_detail(entitlement_rows)
+    return render_template("licence_summary_detail.html",
+                           title=f"{client['client_name'] or client_code} — Locked Licences",
+                           subtitle="Client-locked CSIs only",
+                           lines=lines,
+                           back_url=url_for("licence_summary"))
+
+
+@app.route("/licence-summary/shared")
+@login_required
+def licence_summary_shared():
+    entitlement_rows = query("""
+        SELECT l.csi_id, l.product_name, l.product_family::TEXT AS product_family,
+               COALESCE(l.quantity, 0) AS quantity
+        FROM shared.csi_contracts cs
+        JOIN shared.license_entitlement_lines l ON l.csi_id = cs.csi_id AND l.is_active
+        WHERE cs.status = 'active'
+          AND cs.sharing_policy != 'client_locked'
+    """)
+
+    lines = _build_licence_detail(entitlement_rows)
+    return render_template("licence_summary_detail.html",
+                           title="Shared Pool — Licences",
+                           subtitle="Pooled / shared CSIs",
+                           lines=lines,
+                           back_url=url_for("licence_summary"))
+
+
 @app.route("/contracts")
 @login_required
 def contracts():

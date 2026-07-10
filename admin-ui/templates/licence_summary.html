@@ -14,11 +14,17 @@
 <div class="row g-3 mb-4">
   {% for client in clients %}
   <div class="col-md-6 col-xl-4">
-    <div class="card shadow-sm h-100">
+    <a href="{{ url_for('licence_summary_client', client_code=client.client_code) }}"
+       class="text-decoration-none">
+    <div class="card shadow-sm h-100" style="cursor:pointer; transition:box-shadow .15s"
+         onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.15)'"
+         onmouseout="this.style.boxShadow=''">
       <div class="card-header bg-primary text-white d-flex align-items-center gap-2">
         <i class="bi bi-building"></i>
         <strong>{{ client.client_name or client.client_code }}</strong>
-        <span class="badge bg-white text-primary ms-auto">{{ client.lines | length }} product{{ 's' if client.lines|length != 1 }}</span>
+        <span class="badge bg-white text-primary ms-auto">
+          <i class="bi bi-arrow-right-circle me-1"></i>{{ client.lines | length }} product{{ 's' if client.lines|length != 1 }}
+        </span>
       </div>
       <ul class="list-group list-group-flush">
         {% for line in client.lines %}
@@ -47,6 +53,7 @@
         {% endfor %}
       </ul>
     </div>
+    </a>
   </div>
   {% endfor %}
 </div>
@@ -61,11 +68,16 @@
 {% if shared_lines %}
 <div class="row g-3">
   <div class="col-md-6 col-xl-4">
-    <div class="card shadow-sm h-100">
+    <a href="{{ url_for('licence_summary_shared') }}" class="text-decoration-none">
+    <div class="card shadow-sm h-100" style="cursor:pointer; transition:box-shadow .15s"
+         onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.15)'"
+         onmouseout="this.style.boxShadow=''">
       <div class="card-header bg-secondary text-white d-flex align-items-center gap-2">
         <i class="bi bi-people-fill"></i>
         <strong>Shared Pool</strong>
-        <span class="badge bg-white text-secondary ms-auto">{{ shared_lines | length }} product{{ 's' if shared_lines|length != 1 }}</span>
+        <span class="badge bg-white text-secondary ms-auto">
+          <i class="bi bi-arrow-right-circle me-1"></i>{{ shared_lines | length }} product{{ 's' if shared_lines|length != 1 }}
+        </span>
       </div>
       <ul class="list-group list-group-flush">
         {% for line in shared_lines %}
@@ -94,6 +106,7 @@
         {% endfor %}
       </ul>
     </div>
+    </a>
   </div>
 </div>
 {% else %}

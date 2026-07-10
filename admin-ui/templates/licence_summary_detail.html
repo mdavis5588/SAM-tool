@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} — Oracle SAM{% endblock %}
+{% block content %}
+
+<style>
+  .viz-root {
+    --assigned:     #2a78d6;
+    --unassigned:   #e1e0d9;
+    --text-pri:     #0b0b0b;
+    --text-sec:     #52514e;
+    --text-muted:   #898781;
+    --surface:      #fcfcfb;
+    --border:       rgba(11,11,11,0.10);
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      --assigned:   #3987e5;
+      --unassigned: #2c2c2a;
+      --text-pri:   #ffffff;
+      --text-sec:   #c3c2b7;
+      --text-muted: #898781;
+      --surface:    #1a1a19;
+      --border:     rgba(255,255,255,0.10);
+    }
+  }
+
+  .product-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .75rem;
+  }
+  .product-card .prod-name {
+    font-size: .85rem;
+    font-weight: 600;
+    color: var(--text-pri);
+    text-align: center;
+  }
+  .donut-wrap {
+    position: relative;
+    width: 120px;
+    height: 120px;
+  }
+  .donut-wrap svg { overflow: visible; }
+  .donut-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .donut-pct {
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text-pri);
+  }
+  .donut-label {
+    font-size: .65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .stat-row {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    font-size: .8rem;
+    color: var(--text-sec);
+    padding: .15rem 0;
+    border-top: 1px solid var(--border);
+  }
+  .stat-row:first-of-type { border-top: none; }
+  .stat-row .val { font-weight: 600; color: var(--text-pri); }
+  .stat-row .val.assigned  { color: var(--assigned); }
+  .stat-row .val.free      { color: var(--text-muted); }
+</style>
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ back_url }}">Licence Summary</a></li>
+    <li class="breadcrumb-item active">{{ title }}</li>
+  </ol>
+</nav>
+
+<div class="d-flex align-items-baseline gap-2 mb-1">
+  <h4 class="mb-0"><i class="bi bi-bar-chart-line"></i> {{ title }}</h4>
+</div>
+<p class="text-muted small mb-4">{{ subtitle }}</p>
+
+{% if lines %}
+<div class="viz-root row g-3">
+  {% for line in lines %}
+  {% set total    = line.total_qty | int %}
+  {% set assigned = [line.assigned_qty | int, total] | min %}
+  {% set free     = line.unassigned_qty | int %}
+  {% set pct      = ((assigned / total * 100) | round(0) | int) if total > 0 else 0 %}
+  {# Donut: circumference of r=46 circle = 2π×46 ≈ 289.0 #}
+  {% set circ = 289.0 %}
+  {% set dash = (assigned / total * circ) | round(2) if total > 0 else 0 %}
+
+  <div class="col-6 col-md-4 col-lg-3">
+    <div class="product-card shadow-sm h-100">
+
+      <!-- Product name -->
+      <div class="prod-name">
+        {% set n = line.product_name.lower() %}
+        {% if 'enterprise' in n %}
+          <i class="bi bi-database-fill text-primary me-1"></i>
+        {% elif 'standard' in n %}
+          <i class="bi bi-database text-secondary me-1"></i>
+        {% elif 'diagnostic' in n %}
+          <i class="bi bi-activity text-info me-1"></i>
+        {% elif 'tuning' in n %}
+          <i class="bi bi-sliders text-warning me-1"></i>
+        {% elif 'partition' in n %}
+          <i class="bi bi-layout-split text-success me-1"></i>
+        {% elif 'security' in n %}
+          <i class="bi bi-shield-lock text-danger me-1"></i>
+        {% elif 'compression' in n %}
+          <i class="bi bi-file-zip text-secondary me-1"></i>
+        {% elif 'vault' in n %}
+          <i class="bi bi-lock text-danger me-1"></i>
+        {% else %}
+          <i class="bi bi-puzzle text-muted me-1"></i>
+        {% endif %}
+        {{ line.product_name }}
+      </div>
+
+      <!-- Donut chart -->
+      <div class="donut-wrap">
+        <svg viewBox="0 0 100 100" width="120" height="120" aria-hidden="true">
+          <!-- Track (unassigned) -->
+          <circle cx="50" cy="50" r="38"
+                  fill="none"
+                  stroke="var(--unassigned)"
+                  stroke-width="14"
+                  stroke-linecap="butt"/>
+          <!-- Assigned arc -->
+          {% if assigned > 0 and total > 0 %}
+          {# circ for r=38: 2π×38 ≈ 238.8 #}
+          {% set circ38 = 238.8 %}
+          {% set dash38 = (assigned / total * circ38) | round(3) %}
+          <circle cx="50" cy="50" r="38"
+                  fill="none"
+                  stroke="var(--assigned)"
+                  stroke-width="14"
+                  stroke-linecap="butt"
+                  stroke-dasharray="{{ dash38 }} {{ circ38 }}"
+                  transform="rotate(-90 50 50)"/>
+          {% endif %}
+          <!-- 2px surface gap ring (inner edge) -->
+          <circle cx="50" cy="50" r="31" fill="none" stroke="var(--surface)" stroke-width="2"/>
+          <!-- 2px surface gap ring (outer edge) -->
+          <circle cx="50" cy="50" r="45" fill="none" stroke="var(--surface)" stroke-width="2"/>
+        </svg>
+        <div class="donut-center">
+          <span class="donut-pct">{{ pct }}%</span>
+          <span class="donut-label">used</span>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="w-100">
+        <div class="stat-row">
+          <span>Total</span>
+          <span class="val">{{ total }}</span>
+        </div>
+        <div class="stat-row">
+          <span>Assigned</span>
+          <span class="val assigned">{{ assigned }}</span>
+        </div>
+        <div class="stat-row">
+          <span>Unassigned</span>
+          <span class="val free">{{ free }}</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Accessible table view -->
+<div class="mt-4">
+  <details>
+    <summary class="text-muted small" style="cursor:pointer">Show as table</summary>
+    <div class="table-responsive mt-2">
+      <table class="table table-sm table-bordered">
+        <thead class="table-dark">
+          <tr>
+            <th>Product</th>
+            <th class="text-end">Total</th>
+            <th class="text-end">Assigned</th>
+            <th class="text-end">Unassigned</th>
+            <th class="text-end">% Used</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in lines %}
+          {% set total    = line.total_qty | int %}
+          {% set assigned = [line.assigned_qty | int, total] | min %}
+          {% set pct      = ((assigned / total * 100) | round(1)) if total > 0 else 0 %}
+          <tr>
+            <td>{{ line.product_name }}</td>
+            <td class="text-end">{{ total }}</td>
+            <td class="text-end">{{ assigned }}</td>
+            <td class="text-end">{{ line.unassigned_qty | int }}</td>
+            <td class="text-end">{{ pct }}%</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+</div>
+
+{% else %}
+<p class="text-muted">No licence data found.</p>
+{% endif %}
+
+{% endblock %}
