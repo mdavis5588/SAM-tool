@@ -774,7 +774,7 @@ SELECT
         (COALESCE(l.total_price, 0) + COALESCE(l.annual_support_cost, 0))
         / l.quantity, 2)
     ELSE NULL
-  END                                   AS price_per_seat,
+  END                                   AS cost_per_license_incl_support,
   l.notes                               AS line_notes,
   l.is_active
 FROM   shared.license_entitlement_lines  l
