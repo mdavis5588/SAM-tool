@@ -372,6 +372,25 @@ def servers():
 @login_required
 def edit_server(server_id):
     schema = get_schema()
+
+    # When viewing all clients, resolve the actual schema for this server
+    if schema == "__all__":
+        active_clients = query(
+            "SELECT schema_name FROM sam_admin.clients WHERE is_active ORDER BY schema_name"
+        )
+        for c in active_clients:
+            s = c["schema_name"]
+            row = query(
+                f"SELECT 1 FROM {s}.oracle_servers WHERE server_id = %s",
+                (server_id,), fetchall=False
+            )
+            if row:
+                schema = s
+                break
+        if schema == "__all__":
+            flash("Server not found.", "danger")
+            return redirect(url_for("servers"))
+
     if request.method == "POST":
         action = request.form.get("action")
 
