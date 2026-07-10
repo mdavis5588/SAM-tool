@@ -656,6 +656,18 @@ def edit_server(server_id):
         f"SELECT * FROM {schema}.license_position WHERE server_id = %s", (server_id,)
     )
 
+    def _licence_sort_key(row):
+        d = (row.get("product_detail") or "").lower()
+        if "enterprise" in d or "standard" in d:
+            return (0, d)
+        if "diagnostic" in d:
+            return (1, d)
+        if "tuning" in d:
+            return (2, d)
+        return (3, d)
+
+    licence_position = sorted(licence_position, key=_licence_sort_key)
+
     # Per-line: which active CSIs actually cover this product/edition, and how
     # much licence headroom is left once existing assignments are subtracted.
     consumed_by_line = {}
