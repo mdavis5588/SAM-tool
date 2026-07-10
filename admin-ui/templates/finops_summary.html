@@ -88,7 +88,7 @@
   .client-list {
     display: flex;
     flex-direction: column;
-    gap: 0;
+    gap: .5rem;
   }
   .client-row {
     display: grid;
@@ -100,9 +100,8 @@
     text-decoration: none;
     color: inherit;
     transition: background .12s;
-    border-bottom: 1px solid var(--gridline);
+    border: 1px solid var(--gridline);
   }
-  .client-row:last-child { border-bottom: none; }
   .client-row:hover { background: rgba(42,120,214,.04); }
 
   .client-name {
