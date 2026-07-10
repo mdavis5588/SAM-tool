@@ -553,6 +553,30 @@ def edit_server(server_id):
             execute(f"DELETE FROM {schema}.server_csi_map WHERE map_id = %s", (map_id,))
             flash("CSI assignment removed.", "success")
 
+        elif action == "save_contacts":
+            client_row = query(
+                "SELECT client_id FROM sam_admin.clients WHERE schema_name = %s",
+                (schema,), fetchall=False
+            )
+            if client_row:
+                client_id = client_row["client_id"]
+                execute(
+                    "DELETE FROM shared.client_contacts WHERE client_id = %s",
+                    (client_id,)
+                )
+                for i in range(1, 4):
+                    name  = (request.form.get(f"contact_name_{i}") or "").strip()
+                    email = (request.form.get(f"contact_email_{i}") or "").strip()
+                    phone = (request.form.get(f"contact_phone_{i}") or "").strip()
+                    if name or email or phone:
+                        execute(
+                            """INSERT INTO shared.client_contacts
+                               (client_id, full_name, email, phone, sort_order)
+                               VALUES (%s, %s, %s, %s, %s)""",
+                            (client_id, name, email, phone, i)
+                        )
+                flash("Client contacts saved.", "success")
+
         elif action == "set_java_exempt":
             java_id = request.form.get("java_id")
             exempt  = request.form.get("exempt") == "1"
@@ -737,6 +761,22 @@ def edit_server(server_id):
     except Exception:
         cpu_validation = None
 
+    # Client contacts
+    client_row = query(
+        "SELECT client_id FROM sam_admin.clients WHERE schema_name = %s",
+        (schema,), fetchall=False
+    )
+    client_contacts = []
+    if client_row:
+        try:
+            client_contacts = query(
+                "SELECT full_name, email, phone FROM shared.client_contacts "
+                "WHERE client_id = %s ORDER BY sort_order",
+                (client_row["client_id"],)
+            )
+        except Exception:
+            client_contacts = []
+
     return render_template("edit_server.html",
                            server=server,
                            instances=instances,
@@ -745,7 +785,8 @@ def edit_server(server_id):
                            licence_position=licence_position,
                            java_installations=java_installations,
                            se2_violations=se2_violations,
-                           cpu_validation=cpu_validation)
+                           cpu_validation=cpu_validation,
+                           client_contacts=client_contacts)
 
 
 # ---------------------------------------------------------------------------

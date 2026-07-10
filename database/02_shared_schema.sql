@@ -1322,3 +1322,20 @@ $$;
 -- Refresh the convenience view (needed because the function was replaced)
 CREATE OR REPLACE VIEW shared.compliance_alerts AS
 SELECT * FROM shared.get_compliance_alerts();
+
+-- ---------------------------------------------------------------------------
+-- Client contacts — up to N named contacts per client (name, email, phone).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS shared.client_contacts (
+  contact_id   SERIAL PRIMARY KEY,
+  client_id    INTEGER NOT NULL REFERENCES sam_admin.clients (client_id) ON DELETE CASCADE,
+  full_name    TEXT NOT NULL DEFAULT '',
+  email        TEXT NOT NULL DEFAULT '',
+  phone        TEXT NOT NULL DEFAULT '',
+  sort_order   INTEGER NOT NULL DEFAULT 0,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_client_contacts_client
+  ON shared.client_contacts (client_id, sort_order);
