@@ -216,7 +216,7 @@
 
   <!-- LEFT: In-use cost pie chart -->
   <div class="col-lg-3">
-    <div class="section-head"><i class="bi bi-pie-chart-fill me-1"></i>Cost in Use by Product</div>
+    <div class="section-head"><i class="bi bi-pie-chart-fill me-1"></i>Total Client Cost by Product</div>
 
     {% if client.pie_slices %}
     <svg viewBox="-10 -10 220 220" width="100%" style="max-width:200px;display:block;margin:0 auto .9rem"
@@ -243,8 +243,8 @@
       {% endfor %}
       <div class="pie-legend-row" style="margin-top:.4rem;border-top:2px solid var(--card-border);padding-top:.4rem">
         <span class="dot" style="background:transparent"></span>
-        <span class="pie-legend-name fw-semibold" style="color:var(--text)">Total in use</span>
-        <span class="pie-legend-cost" style="color:var(--green)">${{ "{:,.0f}".format(client.total_assigned) }}</span>
+        <span class="pie-legend-name fw-semibold" style="color:var(--text)">Total client cost</span>
+        <span class="pie-legend-cost" style="color:var(--blue)">${{ "{:,.0f}".format(client.total_client_cost) }}</span>
         <span class="pie-legend-pct"></span>
       </div>
     </div>

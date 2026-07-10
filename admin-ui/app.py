@@ -1165,9 +1165,12 @@ def _build_client_finops(client_id):
     total_unassigned     = sum(ln["unassigned_cost"] for ln in lines if ln["source"] == "client_locked")
     total_client_cost    = total_support + total_shared_inuse
 
-    # Pie chart: in-use cost per product (assigned_cost), palette matches table rows
-    pie_items = [{"label": ln["product_name"], "value": ln["assigned_cost"], "colour": ln["colour"]}
-                 for ln in lines if ln["assigned_cost"] > 0]
+    # Pie chart: mirrors Total Client Cost — support cost for locked lines, in-use cost for shared
+    pie_items = []
+    for ln in lines:
+        value = ln["support_cost"] if ln["source"] == "client_locked" else ln["assigned_cost"]
+        if value > 0:
+            pie_items.append({"label": ln["product_name"], "value": value, "colour": ln["colour"]})
     pie_slices = _pie_slices(pie_items)
     for sl, item in zip(pie_slices, pie_items):
         sl["colour"] = item["colour"]
