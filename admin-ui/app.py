@@ -441,6 +441,28 @@ def edit_server(server_id):
                       "pick a contract that matches.", "danger")
                 return redirect(url_for("edit_server", server_id=server_id))
 
+            # Enforce client_locked CSIs — cannot be assigned to a different client's server
+            csi_policy = query(
+                """SELECT cs.sharing_policy, c.client_code AS owning_client
+                   FROM shared.csi_contracts cs
+                   LEFT JOIN sam_admin.clients c ON c.client_id = cs.owning_client_id
+                   WHERE cs.csi_id = %s""",
+                (csi_id,), fetchall=False
+            )
+            if csi_policy and csi_policy["sharing_policy"] == "client_locked":
+                server_client = query(
+                    "SELECT client_code FROM sam_admin.clients WHERE schema_name = %s",
+                    (schema,), fetchall=False
+                )
+                server_code = server_client["client_code"] if server_client else None
+                if csi_policy["owning_client"] != server_code:
+                    flash(
+                        f"CSI is locked to {csi_policy['owning_client']} and cannot be "
+                        f"assigned to a {server_code} server.",
+                        "danger"
+                    )
+                    return redirect(url_for("edit_server", server_id=server_id))
+
             consumed = None
             if consumed_raw:
                 try:
@@ -587,14 +609,24 @@ def edit_server(server_id):
         ORDER BY m.product_family, m.product_detail, cs.csi_number
     """, (server_id,))
 
+    # Fetch the client code for this server so we can filter out locked CSIs
+    server_client_row = query(
+        "SELECT client_code FROM sam_admin.clients WHERE schema_name = %s",
+        (schema,), fetchall=False
+    )
+    server_client_code = server_client_row["client_code"] if server_client_row else None
+
     entitlement_lines = query("""
         SELECT l.csi_id, l.product_name, l.product_family::TEXT AS product_family,
-               l.quantity, cs.csi_number, cs.contract_name, cs.support_expiry
+               l.quantity, cs.csi_number, cs.contract_name, cs.support_expiry,
+               cs.sharing_policy, c.client_code AS owning_client
         FROM shared.csi_contracts cs
         JOIN shared.license_entitlement_lines l ON l.csi_id = cs.csi_id AND l.is_active
+        LEFT JOIN sam_admin.clients c ON c.client_id = cs.owning_client_id
         WHERE cs.status = 'active'
+          AND (cs.sharing_policy != 'client_locked' OR c.client_code = %s)
         ORDER BY cs.csi_number
-    """)
+    """, (server_client_code,))
 
     licence_position = query(
         f"SELECT * FROM {schema}.license_position WHERE server_id = %s", (server_id,)
