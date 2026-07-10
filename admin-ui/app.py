@@ -907,32 +907,36 @@ def licence_summary():
 
 
 def _build_licence_detail(entitlement_rows):
-    """Return list of dicts with total_qty, assigned_qty, unassigned_qty for each product."""
-    # Aggregate consumed across all active client schemas
+    """Return list of dicts with total_qty, assigned_qty, unassigned_qty, servers per product."""
     active_schemas = [
         r["schema_name"] for r in query(
             "SELECT schema_name FROM sam_admin.clients WHERE is_active ORDER BY schema_name"
         )
     ]
-    consumed_by_csi_product = {}   # (csi_id, product_detail) -> total consumed
+
+    # Per-server assignments: (csi_id, product_detail) -> [{hostname, licences_consumed}]
+    server_assignments = {}   # (csi_id, product_detail) -> list of {hostname, consumed}
     if active_schemas:
         union_sql = " UNION ALL ".join(
-            f"SELECT csi_id, COALESCE(product_detail,'') AS product_detail, "
-            f"COALESCE(SUM(licences_consumed), 0) AS consumed "
-            f"FROM {s}.server_csi_map GROUP BY csi_id, product_detail"
+            f"SELECT m.csi_id, COALESCE(m.product_detail,'') AS product_detail, "
+            f"s.hostname, COALESCE(m.licences_consumed, 0) AS consumed "
+            f"FROM {s}.server_csi_map m "
+            f"JOIN {s}.oracle_servers s ON s.server_id = m.server_id"
             for s in active_schemas
         )
-        for r in query(
-            f"SELECT csi_id, product_detail, SUM(consumed) AS total "
-            f"FROM ({union_sql}) t GROUP BY csi_id, product_detail"
-        ):
+        for r in query(f"SELECT csi_id, product_detail, hostname, SUM(consumed) AS consumed "
+                       f"FROM ({union_sql}) t GROUP BY csi_id, product_detail, hostname "
+                       f"ORDER BY hostname"):
             key = (r["csi_id"], r["product_detail"])
-            consumed_by_csi_product[key] = consumed_by_csi_product.get(key, 0) + r["total"]
+            server_assignments.setdefault(key, []).append(
+                {"hostname": r["hostname"], "consumed": int(r["consumed"])}
+            )
 
-    # Group consumed by csi_id for lookup
+    # Aggregated consumed by csi_id for totals
     consumed_entries_by_csi = {}
-    for (csi_id, detail), amt in consumed_by_csi_product.items():
-        consumed_entries_by_csi.setdefault(csi_id, []).append((detail, amt))
+    for (csi_id, detail), entries in server_assignments.items():
+        total = sum(e["consumed"] for e in entries)
+        consumed_entries_by_csi.setdefault(csi_id, []).append((detail, total))
 
     def _line_sort(name):
         n = (name or "").lower()
@@ -945,15 +949,28 @@ def _build_licence_detail(entitlement_rows):
         return (3, n)
 
     # Roll up by product_name across all CSIs in the set
-    product_totals = {}   # product_name -> {total, assigned, family}
+    product_totals = {}   # product_name -> {total, assigned, servers, family}
     for r in entitlement_rows:
         pname = r["product_name"]
         if pname not in product_totals:
             product_totals[pname] = {"product_name": pname,
                                      "product_family": r["product_family"],
-                                     "total_qty": 0, "assigned_qty": 0}
+                                     "total_qty": 0, "assigned_qty": 0,
+                                     "servers": {}}   # hostname -> consumed
         product_totals[pname]["total_qty"] += int(r["quantity"] or 0)
-        # Sum consumed for this CSI line using compatible matching
+
+        # Match server assignments for this CSI line
+        for (csi_id, detail), entries in server_assignments.items():
+            if csi_id != r["csi_id"]:
+                continue
+            if _is_compatible_product(r["product_family"], detail or None,
+                                      r["product_family"], r["product_name"]):
+                for e in entries:
+                    h = e["hostname"]
+                    product_totals[pname]["servers"][h] = (
+                        product_totals[pname]["servers"].get(h, 0) + e["consumed"]
+                    )
+
         consumed = sum(
             amt for det, amt in consumed_entries_by_csi.get(r["csi_id"], [])
             if _is_compatible_product(r["product_family"], det or None,
@@ -964,6 +981,11 @@ def _build_licence_detail(entitlement_rows):
     lines = sorted(product_totals.values(), key=lambda x: _line_sort(x["product_name"]))
     for ln in lines:
         ln["unassigned_qty"] = max(ln["total_qty"] - ln["assigned_qty"], 0)
+        # Convert servers dict to sorted list
+        ln["servers"] = sorted(
+            [{"hostname": h, "consumed": c} for h, c in ln["servers"].items()],
+            key=lambda x: x["hostname"]
+        )
     return lines
 
 
