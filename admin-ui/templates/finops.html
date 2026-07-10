@@ -185,11 +185,6 @@
 
 <div class="kpi-strip">
   <div class="kpi-card blue">
-    <div class="kpi-label">Total TCO</div>
-    <div class="kpi-value">${{ "{:,.0f}".format(client.total_tco) }}</div>
-    <div class="kpi-sub">Licence + Annual Support</div>
-  </div>
-  <div class="kpi-card">
     <div class="kpi-label">Licence Cost</div>
     <div class="kpi-value">${{ "{:,.0f}".format(client.total_licence) }}</div>
     <div class="kpi-sub">{{ client.lines | length }} product{{ 's' if client.lines | length != 1 }}</div>
@@ -263,8 +258,7 @@
             <th>Product</th>
             <th>Qty</th>
             <th>Licence Cost</th>
-            <th>Support</th>
-            <th>TCO</th>
+            <th>Annual Support</th>
             <th>Cost in Use</th>
             <th>Unused Cost</th>
             <th>Utilisation</th>
@@ -273,14 +267,13 @@
         <tbody>
           {% set ns = namespace(last_source=none) %}
           {% for line in client.lines %}
-          {% set tco = (line.licence_cost | float) + (line.support_cost | float) %}
           {% set total_q = line.qty | int %}
           {% set used_pct_line = ((line.assigned_qty / total_q * 100) | round(0) | int) if total_q > 0 else 0 %}
           {% set idle_pct = 100 - used_pct_line %}
           {% if line.source != ns.last_source %}
           {% set ns.last_source = line.source %}
           <tr class="tbl-group-row {% if line.source == 'shareable' %}shared{% endif %}">
-            <td colspan="8">
+            <td colspan="7">
               {% if line.source == 'client_locked' %}
               <i class="bi bi-lock-fill me-1"></i>Client-Locked Licences
               {% else %}
@@ -298,7 +291,6 @@
             {% if line.source == 'shareable' %}
             <td><span class="text-muted">—</span></td>
             <td><span class="text-muted">—</span></td>
-            <td><span class="text-muted">—</span></td>
             <td>
               {% if line.assigned_cost > 0 %}
               <span style="color:var(--green);font-weight:600">${{ "{:,.0f}".format(line.assigned_cost) }}</span>
@@ -310,7 +302,6 @@
             {% else %}
             <td>{% if line.licence_cost | float > 0 %}${{ "{:,.0f}".format(line.licence_cost | float) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
             <td>{% if line.support_cost | float > 0 %}${{ "{:,.0f}".format(line.support_cost | float) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-            <td>{% if tco > 0 %}<strong style="color:var(--blue)">${{ "{:,.0f}".format(tco) }}</strong>{% else %}<span class="text-muted">—</span>{% endif %}</td>
             <td>
               {% if line.assigned_cost > 0 %}
               <span style="color:var(--green);font-weight:600">${{ "{:,.0f}".format(line.assigned_cost) }}</span>
@@ -344,7 +335,6 @@
             <td colspan="2">Total</td>
             <td>${{ "{:,.0f}".format(client.total_licence) }}</td>
             <td>${{ "{:,.0f}".format(client.total_support) }}</td>
-            <td style="color:var(--blue)">${{ "{:,.0f}".format(client.total_tco) }}</td>
             <td style="color:var(--green)">${{ "{:,.0f}".format(client.total_assigned) }}</td>
             <td>${{ "{:,.0f}".format(client.total_unassigned) }}</td>
             <td></td>
