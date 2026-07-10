@@ -219,6 +219,8 @@
          href="{{ url_for('contracts') }}"><i class="bi bi-file-earmark-text"></i><span>Contracts</span></a>
       <a class="sidebar-link {% if request.endpoint == 'licence_summary' %}active{% endif %}"
          href="{{ url_for('licence_summary') }}"><i class="bi bi-bar-chart-line"></i><span>Licence Summary</span></a>
+      <a class="sidebar-link {% if request.endpoint == 'finops' %}active{% endif %}"
+         href="{{ url_for('finops') }}"><i class="bi bi-currency-dollar"></i><span>FinOps</span></a>
       <a class="sidebar-link {% if request.endpoint == 'alerts' %}active{% endif %}"
          href="{{ url_for('alerts') }}"><i class="bi bi-exclamation-triangle"></i><span>Alerts</span></a>
 
