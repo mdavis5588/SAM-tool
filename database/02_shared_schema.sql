@@ -252,7 +252,8 @@ INSERT INTO shared.oracle_licensed_options (option_name, display_name, notes) VA
   ('Multitenant',               'Oracle Multitenant',               'Required when >1 PDB per CDB'),
   ('Database In-Memory',        'Oracle Database In-Memory',        NULL),
   ('Spatial and Graph',         'Oracle Spatial and Graph',         NULL),
-  ('OLAP',                      'Oracle OLAP',                      NULL)
+  ('OLAP',                      'Oracle OLAP',                      NULL),
+  ('Data Mining',               'Oracle Data Mining',               'In-database machine learning (OAA)')
 ON CONFLICT (option_name) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
