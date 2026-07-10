@@ -671,6 +671,14 @@ def edit_server(server_id):
     for (csi_id, detail), amt in consumed_by_csi_detail.items():
         consumed_entries_by_csi.setdefault(csi_id, []).append((detail, amt))
 
+    # DEBUG — remove after diagnosis
+    print("DEBUG licence_position rows:")
+    for row in licence_position:
+        print(f"  LP row: family={row['product_family']!r} detail={row['product_detail']!r}")
+    print("DEBUG entitlement_lines:")
+    for l in entitlement_lines:
+        print(f"  EL line: csi_id={l['csi_id']} family={l['product_family']!r} name={l['product_name']!r} qty={l.get('quantity')}")
+
     compatible_csis_by_line = {}
     for row in licence_position:
         key = f"{row['product_family']}|{row['product_detail'] or ''}"
