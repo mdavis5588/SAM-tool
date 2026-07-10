@@ -25,7 +25,7 @@
   }
 
   /* ── KPI strip ── */
-  .kpi-strip { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+  .kpi-strip { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.75rem; }
   .kpi-card {
     flex: 1 1 140px;
     background: var(--card-bg);
@@ -62,11 +62,7 @@
   .kpi-card.blue  .kpi-value { color: var(--blue); }
   .kpi-card.green .kpi-value { color: var(--green); }
   .kpi-card.red   .kpi-value { color: var(--red); }
-  .kpi-sub {
-    font-size: .75rem;
-    color: var(--muted);
-    margin-top: .2rem;
-  }
+  .kpi-sub { font-size: .75rem; color: var(--muted); margin-top: .2rem; }
 
   /* ── Section heading ── */
   .section-head {
@@ -75,31 +71,49 @@
     text-transform: uppercase;
     letter-spacing: .07em;
     color: var(--muted);
-    margin-bottom: .6rem;
-    padding-bottom: .35rem;
-    border-bottom: 1px solid var(--card-border);
+    margin-bottom: .75rem;
   }
 
-  /* ── Data table ── */
+  /* ── Pie legend ── */
+  .pie-legend { font-size: .78rem; color: var(--muted); }
+  .pie-legend-row {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .25rem 0;
+    border-bottom: 1px solid var(--card-border);
+  }
+  .pie-legend-row:last-child { border-bottom: none; }
+  .dot {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .pie-legend-name { flex: 1; }
+  .pie-legend-cost { font-weight: 600; color: var(--text); white-space: nowrap; }
+  .pie-legend-pct  { color: var(--muted); font-size: .72rem; white-space: nowrap; min-width: 2.8rem; text-align: right; }
+
+  /* ── Combined table ── */
   .data-tbl {
     width: 100%;
     border-collapse: collapse;
-    font-size: .84rem;
+    font-size: .82rem;
   }
   .data-tbl th {
-    font-size: .68rem;
+    font-size: .67rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: .05em;
     color: var(--muted);
-    padding: .4rem .6rem;
+    padding: .4rem .55rem;
     border-bottom: 2px solid var(--card-border);
     text-align: right;
     white-space: nowrap;
   }
   .data-tbl th:first-child { text-align: left; }
   .data-tbl td {
-    padding: .5rem .6rem;
+    padding: .5rem .55rem;
     border-bottom: 1px solid var(--card-border);
     text-align: right;
     vertical-align: middle;
@@ -114,44 +128,20 @@
     padding-top: .55rem;
     border-bottom: none;
   }
-  .data-tbl tbody tr:hover td { background: rgba(0,0,0,.02); }
+  .data-tbl tbody tr:hover td { background: rgba(0,0,0,.018); }
 
-  /* ── Product dot ── */
-  .dot {
-    display: inline-block;
-    width: 9px; height: 9px;
-    border-radius: 50%;
-    margin-right: 6px;
-    flex-shrink: 0;
-    vertical-align: middle;
-  }
+  /* ── Util bar ── */
+  .util-wrap { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+  .util-bar  { width: 56px; height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; flex-shrink: 0; }
+  .util-fill { height: 100%; border-radius: 3px; background: var(--green); }
 
-  /* ── Utilisation bar ── */
-  .util-wrap {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    justify-content: flex-end;
+  .waste-badge {
+    font-size: .7rem; font-weight: 600;
+    padding: .1rem .38rem; border-radius: 20px; white-space: nowrap;
   }
-  .util-bar {
-    width: 72px; height: 7px;
-    border-radius: 4px;
-    background: var(--track);
-    overflow: hidden;
-    flex-shrink: 0;
-  }
-  .util-fill { height: 100%; border-radius: 4px; background: var(--blue); }
-
-  /* ── Waste badge ── */
-  .waste-pct {
-    font-size: .72rem;
-    font-weight: 600;
-    padding: .1rem .4rem;
-    border-radius: 20px;
-  }
-  .waste-high { background: #fde8e8; color: var(--red); }
-  .waste-mid  { background: #fef3cd; color: #856404; }
-  .waste-low  { background: #d1f2e8; color: #0a6847; }
+  .w-high { background: #fde8e8; color: var(--red); }
+  .w-mid  { background: #fef3cd; color: #856404; }
+  .w-low  { background: #d1f2e8; color: #0a6847; }
 </style>
 
 <nav aria-label="breadcrumb" class="mb-3">
@@ -167,8 +157,8 @@
 </div>
 
 <!-- ── KPI Strip ── -->
-{% set util_pct = ((client.total_assigned / (client.total_assigned + client.total_unassigned) * 100) | round(1)) if (client.total_assigned + client.total_unassigned) > 0 else 0 %}
-{% set waste_pct = (100 - util_pct) | round(1) %}
+{% set util_pct   = ((client.total_assigned / (client.total_assigned + client.total_unassigned) * 100) | round(1)) if (client.total_assigned + client.total_unassigned) > 0 else 0 %}
+{% set waste_pct  = (100 - util_pct) | round(1) %}
 
 <div class="kpi-strip">
   <div class="kpi-card blue">
@@ -184,7 +174,6 @@
   <div class="kpi-card">
     <div class="kpi-label">Annual Support</div>
     <div class="kpi-value">${{ "{:,.0f}".format(client.total_support) }}</div>
-    <div class="kpi-sub">22% of licence cost</div>
   </div>
   <div class="kpi-card green">
     <div class="kpi-label">Cost in Use</div>
@@ -194,116 +183,125 @@
   <div class="kpi-card {% if waste_pct > 40 %}red{% elif waste_pct > 20 %}amber{% else %}blue{% endif %}">
     <div class="kpi-label">Unused Cost</div>
     <div class="kpi-value">${{ "{:,.0f}".format(client.total_unassigned) }}</div>
-    <div class="kpi-sub">{{ waste_pct }}% of licences idle</div>
+    <div class="kpi-sub">{{ waste_pct }}% idle</div>
   </div>
 </div>
 
-<!-- ── Two columns ── -->
-<div class="row g-4">
+<!-- ── Main body: pie left, table right ── -->
+<div class="row g-4 align-items-start">
 
-  <!-- LEFT: Cost breakdown table -->
-  <div class="col-lg-6">
-    <div class="section-head"><i class="bi bi-receipt me-1"></i>Licence Cost Breakdown</div>
-    <table class="data-tbl">
-      <thead>
-        <tr>
-          <th>Product</th>
-          <th>Qty</th>
-          <th>Licence</th>
-          <th>Support</th>
-          <th>TCO</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for line in client.lines %}
-        {% set tco = (line.licence_cost | float) + (line.support_cost | float) %}
-        <tr>
-          <td>
-            <span class="dot" style="background:{{ line.colour }}"></span>
-            {{ line.product_name }}
-          </td>
-          <td>{{ line.qty | int }}</td>
-          <td>{% if line.licence_cost | float > 0 %}${{ "{:,.0f}".format(line.licence_cost | float) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-          <td>{% if line.support_cost | float > 0 %}${{ "{:,.0f}".format(line.support_cost | float) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-          <td>
-            {% if tco > 0 %}
-            <strong style="color:var(--blue)">${{ "{:,.0f}".format(tco) }}</strong>
-            {% else %}<span class="text-muted">—</span>{% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-      <tfoot>
-        <tr>
-          <td colspan="2">Total</td>
-          <td>${{ "{:,.0f}".format(client.total_licence) }}</td>
-          <td>${{ "{:,.0f}".format(client.total_support) }}</td>
-          <td style="color:var(--blue)">${{ "{:,.0f}".format(client.total_tco) }}</td>
-        </tr>
-      </tfoot>
-    </table>
+  <!-- LEFT: In-use cost pie chart -->
+  <div class="col-lg-3">
+    <div class="section-head"><i class="bi bi-pie-chart-fill me-1"></i>Cost in Use by Product</div>
+
+    {% if client.pie_slices %}
+    <svg viewBox="-10 -10 220 220" width="100%" style="max-width:200px;display:block;margin:0 auto .9rem"
+         aria-label="In-use licence cost by product" role="img">
+      {% for sl in client.pie_slices %}
+      <path d="{{ sl.path }}" fill="{{ sl.colour }}"
+            stroke="var(--card-bg)" stroke-width="2.5"
+            style="transition:opacity .15s"
+            onmouseover="this.style.opacity='.7'"
+            onmouseout="this.style.opacity='1'">
+        <title>{{ sl.label }}: ${{ "{:,.0f}".format(sl.value) }} ({{ sl.pct }}%)</title>
+      </path>
+      {% endfor %}
+    </svg>
+
+    <div class="pie-legend">
+      {% for sl in client.pie_slices %}
+      <div class="pie-legend-row">
+        <span class="dot" style="background:{{ sl.colour }}"></span>
+        <span class="pie-legend-name">{{ sl.label }}</span>
+        <span class="pie-legend-cost">${{ "{:,.0f}".format(sl.value) }}</span>
+        <span class="pie-legend-pct">{{ sl.pct }}%</span>
+      </div>
+      {% endfor %}
+      <div class="pie-legend-row" style="margin-top:.4rem;border-top:2px solid var(--card-border);padding-top:.4rem">
+        <span class="dot" style="background:transparent"></span>
+        <span class="pie-legend-name fw-semibold" style="color:var(--text)">Total in use</span>
+        <span class="pie-legend-cost" style="color:var(--green)">${{ "{:,.0f}".format(client.total_assigned) }}</span>
+        <span class="pie-legend-pct"></span>
+      </div>
+    </div>
+
+    {% else %}
+    <p class="text-muted small">No in-use cost data.</p>
+    {% endif %}
   </div>
 
-  <!-- RIGHT: Utilisation table -->
-  <div class="col-lg-6">
-    <div class="section-head"><i class="bi bi-pie-chart me-1"></i>Cost of Used vs Unused Licences</div>
-    <table class="data-tbl">
-      <thead>
-        <tr>
-          <th>Product</th>
-          <th>In Use</th>
-          <th>Unused</th>
-          <th>Utilisation</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for line in client.lines %}
-        {% set total_q = line.qty | int %}
-        {% set used_pct_line = ((line.assigned_qty / total_q * 100) | round(0) | int) if total_q > 0 else 0 %}
-        {% set idle_pct = 100 - used_pct_line %}
-        <tr>
-          <td>
-            <span class="dot" style="background:{{ line.colour }}"></span>
-            {{ line.product_name }}
-          </td>
-          <td>
-            {% if line.assigned_cost > 0 %}
-            <span style="color:var(--green);font-weight:600">${{ "{:,.0f}".format(line.assigned_cost) }}</span>
-            <span class="text-muted small ms-1">({{ line.assigned_qty }})</span>
-            {% else %}<span class="text-muted">—</span>{% endif %}
-          </td>
-          <td>
-            {% if line.unassigned_cost > 0 %}
-            <span class="text-muted">${{ "{:,.0f}".format(line.unassigned_cost) }}</span>
-            <span class="text-muted small ms-1">({{ line.unassigned_qty }})</span>
-            {% else %}<span class="text-muted">—</span>{% endif %}
-          </td>
-          <td>
-            <div class="util-wrap">
-              <div class="util-bar">
-                <div class="util-fill" style="width:{{ used_pct_line }}%"></div>
+  <!-- RIGHT: Combined table -->
+  <div class="col-lg-9">
+    <div class="section-head"><i class="bi bi-table me-1"></i>Licence Cost &amp; Utilisation</div>
+    <div class="table-responsive">
+      <table class="data-tbl">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Qty</th>
+            <th>Licence Cost</th>
+            <th>Support</th>
+            <th>TCO</th>
+            <th>Cost in Use</th>
+            <th>Unused Cost</th>
+            <th>Utilisation</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in client.lines %}
+          {% set tco = (line.licence_cost | float) + (line.support_cost | float) %}
+          {% set total_q = line.qty | int %}
+          {% set used_pct_line = ((line.assigned_qty / total_q * 100) | round(0) | int) if total_q > 0 else 0 %}
+          {% set idle_pct = 100 - used_pct_line %}
+          <tr>
+            <td>
+              <span class="dot" style="background:{{ line.colour }}"></span>
+              {{ line.product_name }}
+            </td>
+            <td>{{ total_q }}</td>
+            <td>{% if line.licence_cost | float > 0 %}${{ "{:,.0f}".format(line.licence_cost | float) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            <td>{% if line.support_cost | float > 0 %}${{ "{:,.0f}".format(line.support_cost | float) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            <td>{% if tco > 0 %}<strong style="color:var(--blue)">${{ "{:,.0f}".format(tco) }}</strong>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            <td>
+              {% if line.assigned_cost > 0 %}
+              <span style="color:var(--green);font-weight:600">${{ "{:,.0f}".format(line.assigned_cost) }}</span>
+              <span class="text-muted small">({{ line.assigned_qty }})</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td>
+              {% if line.unassigned_cost > 0 %}
+              ${{ "{:,.0f}".format(line.unassigned_cost) }}
+              <span class="text-muted small">({{ line.unassigned_qty }})</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td>
+              <div class="util-wrap">
+                <div class="util-bar"><div class="util-fill" style="width:{{ used_pct_line }}%"></div></div>
+                {% if idle_pct >= 50 %}
+                <span class="waste-badge w-high">{{ idle_pct }}% idle</span>
+                {% elif idle_pct >= 20 %}
+                <span class="waste-badge w-mid">{{ idle_pct }}% idle</span>
+                {% else %}
+                <span class="waste-badge w-low">{{ used_pct_line }}% used</span>
+                {% endif %}
               </div>
-              {% if idle_pct >= 50 %}
-              <span class="waste-pct waste-high">{{ idle_pct }}% idle</span>
-              {% elif idle_pct >= 20 %}
-              <span class="waste-pct waste-mid">{{ idle_pct }}% idle</span>
-              {% else %}
-              <span class="waste-pct waste-low">{{ used_pct_line }}% used</span>
-              {% endif %}
-            </div>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-      <tfoot>
-        <tr>
-          <td>Total</td>
-          <td style="color:var(--green)">${{ "{:,.0f}".format(client.total_assigned) }}</td>
-          <td class="text-muted">${{ "{:,.0f}".format(client.total_unassigned) }}</td>
-          <td></td>
-        </tr>
-      </tfoot>
-    </table>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2">Total</td>
+            <td>${{ "{:,.0f}".format(client.total_licence) }}</td>
+            <td>${{ "{:,.0f}".format(client.total_support) }}</td>
+            <td style="color:var(--blue)">${{ "{:,.0f}".format(client.total_tco) }}</td>
+            <td style="color:var(--green)">${{ "{:,.0f}".format(client.total_assigned) }}</td>
+            <td>${{ "{:,.0f}".format(client.total_unassigned) }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
   </div>
 
 </div>

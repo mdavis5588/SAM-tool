@@ -1155,20 +1155,13 @@ def _build_client_finops(client_id):
     total_assigned   = sum(ln["assigned_cost"]  for ln in lines)
     total_unassigned = sum(ln["unassigned_cost"] for ln in lines)
 
-    pie_items = [{"label": r["product_name"], "value": r["licence_cost"]}
-                 for r in lines if r["licence_cost"] > 0]
-
-    # Utilisation donut: assigned cost vs unassigned cost
-    util_slices = _pie_slices(
-        [{"label": "Assigned (in use)",  "value": total_assigned},
-         {"label": "Unassigned (waste)", "value": total_unassigned}],
-        cx=100, cy=100, r=70, gap_deg=2
-    )
-    # Override colours: blue for assigned, grey for unassigned
-    if len(util_slices) >= 1:
-        util_slices[0]["colour"] = "#2a78d6"
-    if len(util_slices) >= 2:
-        util_slices[1]["colour"] = "#c3c2b7"
+    # Pie chart: in-use cost per product (assigned_cost), palette matches table rows
+    pie_items = [{"label": ln["product_name"], "value": ln["assigned_cost"], "colour": ln["colour"]}
+                 for ln in lines if ln["assigned_cost"] > 0]
+    pie_slices = _pie_slices(pie_items)
+    # Apply the same palette colours used in the table so legend dots match
+    for sl, item in zip(pie_slices, pie_items):
+        sl["colour"] = item["colour"]
 
     return {
         "lines": lines,
@@ -1177,8 +1170,7 @@ def _build_client_finops(client_id):
         "total_tco":        total_licence + total_support,
         "total_assigned":   total_assigned,
         "total_unassigned": total_unassigned,
-        "pie_slices":       _pie_slices(pie_items),
-        "util_slices":      util_slices,
+        "pie_slices":       pie_slices,
     }
 
 
