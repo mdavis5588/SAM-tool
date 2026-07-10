@@ -764,7 +764,7 @@ SELECT
   l.license_metric,
   l.quantity,
   l.unit_price,
-  l.total_price                         AS contract_amount,
+  l.total_price,
   l.annual_support_cost,
   COALESCE(l.total_price, 0)
     + COALESCE(l.annual_support_cost, 0)  AS total_line_cost,
