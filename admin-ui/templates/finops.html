@@ -294,7 +294,20 @@
               <span class="dot" style="background:{{ line.colour }}"></span>
               {{ line.product_name }}
             </td>
-            <td>{{ total_q }}</td>
+            <td>{{ line.assigned_qty if line.source == 'shareable' else total_q }}</td>
+            {% if line.source == 'shareable' %}
+            <td><span class="text-muted">—</span></td>
+            <td><span class="text-muted">—</span></td>
+            <td><span class="text-muted">—</span></td>
+            <td>
+              {% if line.assigned_cost > 0 %}
+              <span style="color:var(--green);font-weight:600">${{ "{:,.0f}".format(line.assigned_cost) }}</span>
+              <span class="text-muted small">({{ line.assigned_qty }})</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td><span class="text-muted">—</span></td>
+            <td><span class="text-muted small fst-italic">From shared pool</span></td>
+            {% else %}
             <td>{% if line.licence_cost | float > 0 %}${{ "{:,.0f}".format(line.licence_cost | float) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
             <td>{% if line.support_cost | float > 0 %}${{ "{:,.0f}".format(line.support_cost | float) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
             <td>{% if tco > 0 %}<strong style="color:var(--blue)">${{ "{:,.0f}".format(tco) }}</strong>{% else %}<span class="text-muted">—</span>{% endif %}</td>
@@ -322,6 +335,7 @@
                 {% endif %}
               </div>
             </td>
+            {% endif %}
           </tr>
           {% endfor %}
         </tbody>
