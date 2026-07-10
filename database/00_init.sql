@@ -98,7 +98,7 @@ BEGIN
     p_vendor_ref     => 'ORD-2023-0001',
     p_purchase_date  => '2023-01-01',
     p_support_start  => '2023-01-01',
-    p_support_expiry => '2026-01-01',
+    p_support_expiry => '2029-01-01',
     p_currency       => 'USD',
     p_policy         => 'shareable',
     p_notes          => 'Group EE pool shared across Acme (60) and Globex (40)'
@@ -170,7 +170,7 @@ BEGIN
     p_vendor_ref     => 'ORD-2023-0002',
     p_purchase_date  => '2023-06-01',
     p_support_start  => '2023-06-01',
-    p_support_expiry => '2026-06-01',
+    p_support_expiry => '2029-06-01',
     p_currency       => 'USD',
     p_policy         => 'shareable',
     p_notes          => 'WLS pool — Acme currently using full allocation'
@@ -218,7 +218,7 @@ BEGIN
     p_vendor_ref     => 'ORD-2022-0099',
     p_purchase_date  => '2022-01-01',
     p_support_start  => '2022-01-01',
-    p_support_expiry => '2025-01-01',
+    p_support_expiry => '2028-01-01',
     p_currency       => 'USD',
     p_locked_to      => 'globex',       -- client_locked, auto-assigns to globex
     p_notes          => 'Purchased under Globex legal entity — cannot be shared'
