@@ -182,4 +182,117 @@
   </div>
 
 </div>
+
+<!-- ── Licence utilisation section ─────────────────────────────────── -->
+<hr class="my-4">
+<h5 class="mb-3"><i class="bi bi-pie-chart me-1"></i> Licence Utilisation — Cost of Used vs Unused</h5>
+
+<div class="row g-3 align-items-start">
+
+  <!-- Utilisation donut -->
+  <div class="col-lg-4 d-flex flex-column align-items-center gap-3">
+    {% if client.util_slices %}
+    {% set used_pct = ((client.total_assigned / (client.total_assigned + client.total_unassigned) * 100) | round(1)) if (client.total_assigned + client.total_unassigned) > 0 else 0 %}
+    <div style="position:relative;width:180px;height:180px">
+      <svg viewBox="-10 -10 220 220" width="180" height="180"
+           aria-label="Licence cost utilisation" role="img" style="overflow:visible">
+        {% for sl in client.util_slices %}
+        <path d="{{ sl.path }}" fill="{{ sl.colour }}"
+              stroke="var(--surface)" stroke-width="3"
+              style="transition:opacity .15s"
+              onmouseover="this.style.opacity='.75'"
+              onmouseout="this.style.opacity='1'">
+          <title>{{ sl.label }}: ${{ "{:,.0f}".format(sl.value) }} ({{ sl.pct }}%)</title>
+        </path>
+        {% endfor %}
+        <!-- Centre label -->
+        <text x="100" y="95" text-anchor="middle" font-size="22" font-weight="700"
+              fill="var(--text-pri)">{{ used_pct }}%</text>
+        <text x="100" y="113" text-anchor="middle" font-size="11"
+              fill="var(--text-muted)">utilised</text>
+      </svg>
+    </div>
+
+    <div class="d-flex gap-3 text-center">
+      <div>
+        <div class="small text-muted">Used</div>
+        <div class="fw-bold" style="color:#2a78d6">${{ "{:,.0f}".format(client.total_assigned) }}</div>
+      </div>
+      <div>
+        <div class="small text-muted">Unused</div>
+        <div class="fw-bold text-secondary">${{ "{:,.0f}".format(client.total_unassigned) }}</div>
+      </div>
+    </div>
+    {% else %}
+    <p class="text-muted small text-center mt-3">No utilisation data available.</p>
+    {% endif %}
+  </div>
+
+  <!-- Per-product utilisation table -->
+  <div class="col-lg-8">
+    <table class="cost-table">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th class="text-end">Assigned Qty</th>
+          <th class="text-end">Assigned Cost</th>
+          <th class="text-end">Unassigned Qty</th>
+          <th class="text-end">Unassigned Cost</th>
+          <th class="text-end">% Used</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in client.lines %}
+        {% set total_q = line.qty | int %}
+        {% set used_pct_line = ((line.assigned_qty / total_q * 100) | round(0) | int) if total_q > 0 else 0 %}
+        <tr>
+          <td>
+            <span class="swatch" style="background:{{ line.colour }}"></span>
+            {{ line.product_name }}
+          </td>
+          <td class="text-end">
+            <span class="badge bg-primary">{{ line.assigned_qty }}</span>
+          </td>
+          <td class="text-end">
+            {% if line.assigned_cost > 0 %}
+              <span style="color:#2a78d6;font-weight:600">${{ "{:,.0f}".format(line.assigned_cost) }}</span>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            <span class="badge bg-secondary">{{ line.unassigned_qty }}</span>
+          </td>
+          <td class="text-end">
+            {% if line.unassigned_cost > 0 %}
+              <span class="text-muted">${{ "{:,.0f}".format(line.unassigned_cost) }}</span>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+              <div style="width:60px;height:6px;border-radius:3px;background:var(--gridline);overflow:hidden">
+                <div style="width:{{ used_pct_line }}%;height:100%;background:#2a78d6;border-radius:3px"></div>
+              </div>
+              <span class="small text-muted">{{ used_pct_line }}%</span>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td><strong>Total</strong></td>
+          <td></td>
+          <td class="text-end"><strong style="color:#2a78d6">${{ "{:,.0f}".format(client.total_assigned) }}</strong></td>
+          <td></td>
+          <td class="text-end"><strong class="text-muted">${{ "{:,.0f}".format(client.total_unassigned) }}</strong></td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
 {% endblock %}

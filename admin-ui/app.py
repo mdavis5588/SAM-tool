@@ -1077,33 +1077,108 @@ def _pie_slices(items, cx=100, cy=100, r=80, gap_deg=1.5):
 
 def _build_client_finops(client_id):
     rows = query("""
-        SELECT l.product_name,
+        SELECT l.csi_id,
+               l.product_name,
                l.product_family::TEXT AS product_family,
                COALESCE(SUM(l.quantity), 0)            AS qty,
                COALESCE(SUM(l.total_price), 0)         AS licence_cost,
-               COALESCE(SUM(l.annual_support_cost), 0) AS support_cost
+               COALESCE(SUM(l.annual_support_cost), 0) AS support_cost,
+               -- unit cost per single licence (avg across lines if multiple)
+               CASE WHEN SUM(l.quantity) > 0
+                    THEN SUM(l.total_price) / SUM(l.quantity)
+                    ELSE 0 END                          AS unit_cost
         FROM shared.csi_contracts cs
         JOIN shared.license_entitlement_lines l
              ON l.csi_id = cs.csi_id AND l.is_active
         WHERE cs.status = 'active'
           AND cs.owning_client_id = %s
-        GROUP BY l.product_name, l.product_family
+        GROUP BY l.csi_id, l.product_name, l.product_family
     """, (client_id,))
     if not rows:
         return None
-    lines = sorted(rows, key=lambda r: _finops_line_sort(r["product_name"]))
+
+    # Consumed quantities per (csi_id, product_detail) across all schemas
+    active_schemas = [r["schema_name"] for r in query(
+        "SELECT schema_name FROM sam_admin.clients WHERE is_active ORDER BY schema_name"
+    )]
+    consumed_entries_by_csi = {}
+    if active_schemas:
+        union_sql = " UNION ALL ".join(
+            f"SELECT csi_id, COALESCE(product_detail,'') AS product_detail, "
+            f"COALESCE(SUM(licences_consumed),0) AS consumed "
+            f"FROM {s}.server_csi_map GROUP BY csi_id, product_detail"
+            for s in active_schemas
+        )
+        for r in query(f"SELECT csi_id, product_detail, SUM(consumed) AS total "
+                       f"FROM ({union_sql}) t GROUP BY csi_id, product_detail"):
+            consumed_entries_by_csi.setdefault(r["csi_id"], []).append(
+                (r["product_detail"], float(r["total"]))
+            )
+
+    # Roll up by product_name (a CSI may have multiple lines for same product)
+    product_map = {}
+    for r in rows:
+        pname = r["product_name"]
+        if pname not in product_map:
+            product_map[pname] = {
+                "product_name": pname,
+                "product_family": r["product_family"],
+                "qty": 0, "licence_cost": 0.0,
+                "support_cost": 0.0, "unit_cost": float(r["unit_cost"] or 0),
+                "assigned_qty": 0,
+            }
+        product_map[pname]["qty"]          += int(r["qty"] or 0)
+        product_map[pname]["licence_cost"] += float(r["licence_cost"] or 0)
+        product_map[pname]["support_cost"] += float(r["support_cost"] or 0)
+
+        consumed = sum(
+            amt for det, amt in consumed_entries_by_csi.get(r["csi_id"], [])
+            if _is_compatible_product(r["product_family"], det or None,
+                                      r["product_family"], r["product_name"])
+        )
+        product_map[pname]["assigned_qty"] += consumed
+
+    lines = sorted(product_map.values(), key=lambda r: _finops_line_sort(r["product_name"]))
     for i, ln in enumerate(lines):
         ln["colour"] = _FINOPS_PALETTE[i % len(_FINOPS_PALETTE)]
-    total_licence = sum(float(r["licence_cost"] or 0) for r in lines)
-    total_support = sum(float(r["support_cost"] or 0) for r in lines)
-    pie_items = [{"label": r["product_name"], "value": float(r["licence_cost"] or 0)}
-                 for r in lines if float(r["licence_cost"] or 0) > 0]
+        qty   = ln["qty"]
+        unit  = ln["unit_cost"]
+        assigned = min(int(ln["assigned_qty"]), qty)
+        unassigned = max(qty - assigned, 0)
+        ln["assigned_qty"]      = assigned
+        ln["unassigned_qty"]    = unassigned
+        ln["assigned_cost"]     = round(assigned   * unit, 2)
+        ln["unassigned_cost"]   = round(unassigned * unit, 2)
+
+    total_licence    = sum(ln["licence_cost"]   for ln in lines)
+    total_support    = sum(ln["support_cost"]   for ln in lines)
+    total_assigned   = sum(ln["assigned_cost"]  for ln in lines)
+    total_unassigned = sum(ln["unassigned_cost"] for ln in lines)
+
+    pie_items = [{"label": r["product_name"], "value": r["licence_cost"]}
+                 for r in lines if r["licence_cost"] > 0]
+
+    # Utilisation donut: assigned cost vs unassigned cost
+    util_slices = _pie_slices(
+        [{"label": "Assigned (in use)",  "value": total_assigned},
+         {"label": "Unassigned (waste)", "value": total_unassigned}],
+        cx=100, cy=100, r=70, gap_deg=2
+    )
+    # Override colours: blue for assigned, grey for unassigned
+    if len(util_slices) >= 1:
+        util_slices[0]["colour"] = "#2a78d6"
+    if len(util_slices) >= 2:
+        util_slices[1]["colour"] = "#c3c2b7"
+
     return {
         "lines": lines,
-        "total_licence": total_licence,
-        "total_support": total_support,
-        "total_tco": total_licence + total_support,
-        "pie_slices": _pie_slices(pie_items),
+        "total_licence":    total_licence,
+        "total_support":    total_support,
+        "total_tco":        total_licence + total_support,
+        "total_assigned":   total_assigned,
+        "total_unassigned": total_unassigned,
+        "pie_slices":       _pie_slices(pie_items),
+        "util_slices":      util_slices,
     }
 
 
