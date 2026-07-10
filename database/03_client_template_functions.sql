@@ -91,10 +91,10 @@ BEGIN
     -- One row per server+licensed option (EE only — options don't apply to SE/SE2).
     -- Licence requirement = same cores × core_factor metric as base EE.
     option_required AS (
-      SELECT DISTINCT ON (s.server_id, olo.option_name)
+      SELECT DISTINCT ON (s.server_id, olo.display_name)
         s.server_id, s.hostname, s.environment::TEXT,
         'oracle_database'::TEXT  AS product_family,
-        olo.option_name          AS product_detail,
+        olo.display_name         AS product_detail,
         cf.cpu_sockets, cf.total_physical_cores, cf.cpu_model,
         cf.core_factor, cf.virt_type::TEXT, cf.is_vmware,
         ROUND(cf.total_physical_cores * cf.core_factor, 2) AS licences_required
@@ -108,7 +108,7 @@ BEGIN
                                               AND olo.is_active
       JOIN core_factor cf ON cf.server_id = s.server_id
       WHERE s.is_active
-      ORDER BY s.server_id, olo.option_name
+      ORDER BY s.server_id, olo.display_name
     ),
 
     all_required AS (
