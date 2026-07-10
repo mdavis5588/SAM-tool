@@ -2,115 +2,284 @@
 {% block title %}Licence Summary — Oracle SAM{% endblock %}
 {% block content %}
 
-<div class="d-flex align-items-center mb-4">
-  <h4 class="mb-0"><i class="bi bi-bar-chart-line"></i> Licence Summary</h4>
+<style>
+  .viz-root {
+    --s1:         #6d28d9;   /* client-locked — dark purple */
+    --s2:         #6da7ec;   /* shared pool   — light blue  */
+    --text-pri:   #0b0b0b;
+    --text-sec:   #52514e;
+    --text-muted: #898781;
+    --gridline:   #e1e0d9;
+    --border:     rgba(11,11,11,0.10);
+    --surface:    #fcfcfb;
+    --track:      #e1e0d9;
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      --s1:         #7c3aed;
+      --s2:         #86b6ef;
+      --text-pri:   #ffffff;
+      --text-sec:   #c3c2b7;
+      --text-muted: #898781;
+      --gridline:   #2c2c2a;
+      --border:     rgba(255,255,255,0.10);
+      --surface:    #1a1a19;
+      --track:      #2c2c2a;
+    }
+  }
+
+  /* ── Grand total strip ── */
+  .page-kpi-row {
+    display: flex;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--gridline);
+  }
+  .page-kpi { display: flex; flex-direction: column; }
+  .page-kpi-label {
+    font-size: .68rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .07em;
+    color: var(--text-muted); margin-bottom: .15rem;
+  }
+  .page-kpi-value {
+    font-size: 1.6rem; font-weight: 700;
+    color: var(--text-pri); line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .page-kpi-value.purple { color: var(--s1); }
+  .page-kpi-divider {
+    width: 1px; background: var(--gridline);
+    align-self: stretch; margin: .1rem 0;
+  }
+
+  /* ── Section label ── */
+  .section-label {
+    font-size: .68rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .08em;
+    color: var(--text-muted);
+    margin-bottom: .75rem;
+    display: flex; align-items: center; gap: .4rem;
+  }
+  .section-label::after {
+    content: ''; flex: 1; height: 1px; background: var(--gridline);
+  }
+
+  /* ── Legend ── */
+  .legend-row {
+    display: flex; align-items: center; gap: 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+  .legend-item { display: flex; align-items: center; gap: .4rem; font-size: .78rem; color: var(--text-sec); }
+  .legend-swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+
+  /* ── Client / shared rows ── */
+  .entity-list { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 2rem; }
+
+  .entity-row {
+    display: grid;
+    grid-template-columns: 200px 1fr 110px;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 1rem 1.1rem;
+    border-radius: 8px;
+    border: 1px solid var(--gridline);
+    text-decoration: none;
+    color: inherit;
+    transition: background .12s;
+  }
+  .entity-row:hover { background: rgba(109,40,217,.04); }
+
+  .entity-name {
+    display: flex; align-items: center; gap: .6rem;
+  }
+  .entity-name-text {
+    font-weight: 600; font-size: .92rem; color: var(--text-pri);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .entity-badge {
+    font-size: .67rem; color: var(--text-muted);
+    background: var(--track); border-radius: 20px;
+    padding: .1rem .45rem; white-space: nowrap; flex-shrink: 0;
+  }
+
+  /* ── Product mini-list inside row ── */
+  .product-chips {
+    display: flex; flex-wrap: wrap; gap: .3rem;
+  }
+  .product-chip {
+    font-size: .71rem; color: var(--text-sec);
+    background: var(--surface); border: 1px solid var(--gridline);
+    border-radius: 4px; padding: .15rem .45rem;
+    display: flex; align-items: center; gap: .3rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .chip-qty {
+    font-weight: 700; color: var(--text-pri);
+  }
+
+  /* ── CTA ── */
+  .entity-cta {
+    text-align: right;
+    font-size: .8rem; color: var(--text-muted);
+  }
+  .entity-cta-count {
+    font-size: 1.1rem; font-weight: 700;
+    color: var(--s1); font-variant-numeric: tabular-nums;
+    line-height: 1; margin-bottom: .25rem;
+  }
+
+  /* ── Column header ── */
+  .col-header {
+    display: grid;
+    grid-template-columns: 200px 1fr 110px;
+    gap: 1.25rem;
+    padding: .2rem 1.1rem .5rem;
+    font-size: .67rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .07em;
+    color: var(--text-muted);
+  }
+  .col-header span:last-child { text-align: right; }
+</style>
+
+<div class="viz-root">
+
+<div class="d-flex align-items-baseline gap-3 mb-4">
+  <h4 class="mb-0"><i class="bi bi-bar-chart-line me-1"></i>Licence Summary</h4>
 </div>
 
-<!-- Client-locked tiles -->
-{% if clients %}
-<h6 class="text-muted text-uppercase fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.08em">
-  Client Licences (Locked CSIs)
-</h6>
-<div class="row g-3 mb-4">
-  {% for client in clients %}
-  <div class="col-md-6 col-xl-4">
-    <a href="{{ url_for('licence_summary_client', client_code=client.client_code) }}"
-       class="text-decoration-none">
-    <div class="card shadow-sm h-100" style="cursor:pointer; transition:box-shadow .15s"
-         onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.15)'"
-         onmouseout="this.style.boxShadow=''">
-      <div class="card-header bg-primary text-white d-flex align-items-center gap-2">
-        <i class="bi bi-building"></i>
-        <strong>{{ client.client_name or client.client_code }}</strong>
-        <span class="badge bg-white text-primary ms-auto">
-          <i class="bi bi-arrow-right-circle me-1"></i>{{ client.lines | length }} product{{ 's' if client.lines|length != 1 }}
-        </span>
-      </div>
-      <ul class="list-group list-group-flush">
-        {% for line in client.lines %}
-        <li class="list-group-item d-flex justify-content-between align-items-center py-2">
-          <span class="small">
-            {% set n = line.product_name.lower() %}
-            {% if 'enterprise' in n %}
-              <i class="bi bi-database-fill text-primary me-1"></i>
-            {% elif 'standard' in n %}
-              <i class="bi bi-database text-secondary me-1"></i>
-            {% elif 'diagnostic' in n %}
-              <i class="bi bi-activity text-info me-1"></i>
-            {% elif 'tuning' in n %}
-              <i class="bi bi-sliders text-warning me-1"></i>
-            {% elif 'partition' in n %}
-              <i class="bi bi-layout-split text-success me-1"></i>
-            {% elif 'security' in n %}
-              <i class="bi bi-shield-lock text-danger me-1"></i>
-            {% else %}
-              <i class="bi bi-puzzle text-muted me-1"></i>
-            {% endif %}
-            {{ line.product_name }}
-          </span>
-          <span class="badge bg-secondary rounded-pill">{{ line.total_qty | int }}</span>
-        </li>
-        {% endfor %}
-      </ul>
-    </div>
-    </a>
+{% set total_client_licences = 0 %}
+{% set total_shared_licences = 0 %}
+{% for c in clients %}{% for l in c.lines %}{% set total_client_licences = total_client_licences + (l.total_qty | int) %}{% endfor %}{% endfor %}
+{% for l in shared_lines %}{% set total_shared_licences = total_shared_licences + (l.total_qty | int) %}{% endfor %}
+{% set grand_total = total_client_licences + total_shared_licences %}
+
+<!-- ── Grand totals ── -->
+<div class="page-kpi-row">
+  <div class="page-kpi">
+    <span class="page-kpi-label">Total Licences</span>
+    <span class="page-kpi-value purple">{{ "{:,}".format(grand_total) }}</span>
   </div>
+  <div class="page-kpi-divider"></div>
+  <div class="page-kpi">
+    <span class="page-kpi-label">Client-Locked</span>
+    <span class="page-kpi-value">{{ "{:,}".format(total_client_licences) }}</span>
+  </div>
+  <div class="page-kpi-divider"></div>
+  <div class="page-kpi">
+    <span class="page-kpi-label">Shared Pool</span>
+    <span class="page-kpi-value">{{ "{:,}".format(total_shared_licences) }}</span>
+  </div>
+  <div class="page-kpi-divider"></div>
+  <div class="page-kpi">
+    <span class="page-kpi-label">Clients</span>
+    <span class="page-kpi-value">{{ clients | length }}</span>
+  </div>
+</div>
+
+<!-- ── Client-locked section ── -->
+{% if clients %}
+<div class="section-label">
+  <i class="bi bi-lock-fill" style="color:var(--s1)"></i> Client-Locked Licences
+</div>
+
+<div class="col-header">
+  <span>Client</span>
+  <span>Products</span>
+  <span>Total Qty</span>
+</div>
+
+<div class="entity-list">
+  {% for client in clients %}
+  {% set client_total = client.lines | sum(attribute='total_qty') | int %}
+  <a href="{{ url_for('licence_summary_client', client_code=client.client_code) }}" class="entity-row">
+
+    <div class="entity-name">
+      <i class="bi bi-building" style="color:var(--s1);font-size:.9rem;flex-shrink:0"></i>
+      <span class="entity-name-text">{{ client.client_name or client.client_code }}</span>
+      <span class="entity-badge">{{ client.lines | length }}p</span>
+    </div>
+
+    <div class="product-chips">
+      {% for line in client.lines %}
+      {% set n = line.product_name.lower() %}
+      <span class="product-chip">
+        {% if 'enterprise' in n %}<i class="bi bi-database-fill" style="color:var(--s1)"></i>
+        {% elif 'standard' in n %}<i class="bi bi-database text-secondary"></i>
+        {% elif 'diagnostic' in n %}<i class="bi bi-activity text-info"></i>
+        {% elif 'tuning' in n %}<i class="bi bi-sliders text-warning"></i>
+        {% elif 'partition' in n %}<i class="bi bi-layout-split text-success"></i>
+        {% elif 'security' in n %}<i class="bi bi-shield-lock text-danger"></i>
+        {% else %}<i class="bi bi-puzzle text-muted"></i>{% endif %}
+        {{ line.product_name }}
+        <span class="chip-qty">{{ line.total_qty | int }}</span>
+      </span>
+      {% endfor %}
+    </div>
+
+    <div class="entity-cta">
+      <div class="entity-cta-count">{{ "{:,}".format(client_total) }}</div>
+      <div><i class="bi bi-arrow-right-circle"></i> View detail</div>
+    </div>
+
+  </a>
   {% endfor %}
 </div>
 {% else %}
 <p class="text-muted mb-4">No client-locked CSIs found.</p>
 {% endif %}
 
-<!-- Shared/pooled tile -->
-<h6 class="text-muted text-uppercase fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.08em">
-  Shared / Pooled Licences
-</h6>
+<!-- ── Shared pool section ── -->
+<div class="section-label">
+  <i class="bi bi-share" style="color:var(--s2)"></i> Shared Pool Licences
+</div>
+
 {% if shared_lines %}
-<div class="row g-3">
-  <div class="col-md-6 col-xl-4">
-    <a href="{{ url_for('licence_summary_shared') }}" class="text-decoration-none">
-    <div class="card shadow-sm h-100" style="cursor:pointer; transition:box-shadow .15s"
-         onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.15)'"
-         onmouseout="this.style.boxShadow=''">
-      <div class="card-header bg-secondary text-white d-flex align-items-center gap-2">
-        <i class="bi bi-people-fill"></i>
-        <strong>Shared Pool</strong>
-        <span class="badge bg-white text-secondary ms-auto">
-          <i class="bi bi-arrow-right-circle me-1"></i>{{ shared_lines | length }} product{{ 's' if shared_lines|length != 1 }}
-        </span>
-      </div>
-      <ul class="list-group list-group-flush">
-        {% for line in shared_lines %}
-        <li class="list-group-item d-flex justify-content-between align-items-center py-2">
-          <span class="small">
-            {% set n = line.product_name.lower() %}
-            {% if 'enterprise' in n %}
-              <i class="bi bi-database-fill text-primary me-1"></i>
-            {% elif 'standard' in n %}
-              <i class="bi bi-database text-secondary me-1"></i>
-            {% elif 'diagnostic' in n %}
-              <i class="bi bi-activity text-info me-1"></i>
-            {% elif 'tuning' in n %}
-              <i class="bi bi-sliders text-warning me-1"></i>
-            {% elif 'partition' in n %}
-              <i class="bi bi-layout-split text-success me-1"></i>
-            {% elif 'security' in n %}
-              <i class="bi bi-shield-lock text-danger me-1"></i>
-            {% else %}
-              <i class="bi bi-puzzle text-muted me-1"></i>
-            {% endif %}
-            {{ line.product_name }}
-          </span>
-          <span class="badge bg-secondary rounded-pill">{{ line.total_qty | int }}</span>
-        </li>
-        {% endfor %}
-      </ul>
+{% set shared_total = shared_lines | sum(attribute='total_qty') | int %}
+
+<div class="col-header">
+  <span>Pool</span>
+  <span>Products</span>
+  <span>Total Qty</span>
+</div>
+
+<div class="entity-list">
+  <a href="{{ url_for('licence_summary_shared') }}" class="entity-row">
+
+    <div class="entity-name">
+      <i class="bi bi-people-fill" style="color:var(--s2);font-size:.9rem;flex-shrink:0"></i>
+      <span class="entity-name-text">Shared Pool</span>
+      <span class="entity-badge">{{ shared_lines | length }}p</span>
     </div>
-    </a>
-  </div>
+
+    <div class="product-chips">
+      {% for line in shared_lines %}
+      {% set n = line.product_name.lower() %}
+      <span class="product-chip">
+        {% if 'enterprise' in n %}<i class="bi bi-database-fill" style="color:var(--s2)"></i>
+        {% elif 'standard' in n %}<i class="bi bi-database text-secondary"></i>
+        {% elif 'diagnostic' in n %}<i class="bi bi-activity text-info"></i>
+        {% elif 'tuning' in n %}<i class="bi bi-sliders text-warning"></i>
+        {% elif 'partition' in n %}<i class="bi bi-layout-split text-success"></i>
+        {% elif 'security' in n %}<i class="bi bi-shield-lock text-danger"></i>
+        {% else %}<i class="bi bi-puzzle text-muted"></i>{% endif %}
+        {{ line.product_name }}
+        <span class="chip-qty">{{ line.total_qty | int }}</span>
+      </span>
+      {% endfor %}
+    </div>
+
+    <div class="entity-cta">
+      <div class="entity-cta-count" style="color:var(--s2)">{{ "{:,}".format(shared_total) }}</div>
+      <div><i class="bi bi-arrow-right-circle"></i> View detail</div>
+    </div>
+
+  </a>
 </div>
 {% else %}
 <p class="text-muted">No shared CSIs found.</p>
 {% endif %}
 
+</div>
 {% endblock %}
