@@ -1352,6 +1352,136 @@ def contract_detail(csi_id):
 
 
 # ---------------------------------------------------------------------------
+# Add contract
+# ---------------------------------------------------------------------------
+@app.route("/contracts/new", methods=["GET", "POST"])
+@login_required
+def add_contract():
+    all_clients = query(
+        "SELECT client_id, client_code, client_name FROM sam_admin.clients WHERE is_active ORDER BY client_name"
+    )
+
+    if request.method == "POST":
+        action = request.form.get("action")
+
+        if action == "save_header":
+            # ── Step 1: insert contract header ──────────────────────────────
+            csi_number      = request.form.get("csi_number", "").strip() or None
+            contract_name   = request.form.get("contract_name", "").strip()
+            vendor_ref      = request.form.get("vendor_reference", "").strip() or None
+            purchase_date   = request.form.get("purchase_date") or None
+            support_start   = request.form.get("support_start") or None
+            support_expiry  = request.form.get("support_expiry") or None
+            currency        = request.form.get("currency", "USD").strip().upper() or "USD"
+            sharing_policy  = request.form.get("sharing_policy", "unassigned")
+            locked_client   = request.form.get("locked_client") or None
+            notes           = request.form.get("notes", "").strip() or None
+            status          = request.form.get("status", "active")
+
+            if not contract_name:
+                flash("Contract name is required.", "danger")
+                return render_template("add_contract.html", all_clients=all_clients, step=1)
+
+            # Resolve owning_client_id
+            owning_client_id = None
+            if sharing_policy == "client_locked" and locked_client:
+                row = query(
+                    "SELECT client_id FROM sam_admin.clients WHERE client_code = %s",
+                    (locked_client,), fetchall=False
+                )
+                if row:
+                    owning_client_id = row["client_id"]
+
+            try:
+                new_row = query("""
+                    INSERT INTO shared.csi_contracts
+                      (csi_number, contract_name, vendor_reference,
+                       purchase_date, support_start, support_expiry,
+                       currency, sharing_policy, owning_client_id, notes, status)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s::shared.sharing_policy,%s,%s,%s::shared.license_status)
+                    RETURNING csi_id
+                """, (csi_number, contract_name, vendor_ref,
+                      purchase_date, support_start, support_expiry,
+                      currency, sharing_policy, owning_client_id, notes, status),
+                    fetchall=False)
+                csi_id = new_row["csi_id"]
+
+                # If shareable and a client was selected, assign immediately
+                if sharing_policy == "shareable" and locked_client:
+                    row = query(
+                        "SELECT client_id FROM sam_admin.clients WHERE client_code = %s",
+                        (locked_client,), fetchall=False
+                    )
+                    if row:
+                        execute(
+                            "INSERT INTO shared.csi_client_map (csi_id, client_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                            (csi_id, row["client_id"])
+                        )
+
+                flash("Contract created. Now add entitlement lines.", "success")
+                return redirect(url_for("add_contract_lines", csi_id=csi_id))
+            except Exception as e:
+                flash(f"Error creating contract: {e}", "danger")
+                return render_template("add_contract.html", all_clients=all_clients, step=1)
+
+    return render_template("add_contract.html", all_clients=all_clients, step=1)
+
+
+@app.route("/contracts/<int:csi_id>/lines", methods=["GET", "POST"])
+@login_required
+def add_contract_lines(csi_id):
+    contract = query(
+        "SELECT csi_id, contract_name, csi_number FROM shared.csi_contracts WHERE csi_id = %s",
+        (csi_id,), fetchall=False
+    )
+    if not contract:
+        flash("Contract not found.", "danger")
+        return redirect(url_for("contracts"))
+
+    if request.method == "POST":
+        action = request.form.get("action")
+
+        if action == "add_line":
+            product_name   = request.form.get("product_name", "").strip()
+            product_family = request.form.get("product_family", "oracle_database")
+            metric         = request.form.get("license_metric", "processor")
+            quantity       = request.form.get("quantity", "0").strip()
+            unit_price     = request.form.get("unit_price", "").strip() or None
+            annual_support = request.form.get("annual_support_cost", "").strip() or None
+
+            if not product_name or not quantity:
+                flash("Product name and quantity are required.", "danger")
+            else:
+                # Next line number
+                last = query(
+                    "SELECT COALESCE(MAX(line_number),0) AS mx FROM shared.license_entitlement_lines WHERE csi_id=%s",
+                    (csi_id,), fetchall=False
+                )
+                next_line = (last["mx"] or 0) + 1
+                try:
+                    execute("""
+                        INSERT INTO shared.license_entitlement_lines
+                          (csi_id, line_number, product_name, product_family,
+                           license_metric, quantity, unit_price, annual_support_cost)
+                        VALUES (%s,%s,%s,%s::shared.product_family,%s::shared.license_metric,%s,%s,%s)
+                    """, (csi_id, next_line, product_name, product_family,
+                          metric, quantity, unit_price, annual_support))
+                    flash(f"Line added: {product_name}.", "success")
+                except Exception as e:
+                    flash(f"Error adding line: {e}", "danger")
+
+        elif action == "done":
+            flash("Contract saved successfully.", "success")
+            return redirect(url_for("contract_detail", csi_id=csi_id))
+
+    lines = query(
+        "SELECT * FROM shared.license_entitlement_lines WHERE csi_id=%s ORDER BY line_number",
+        (csi_id,)
+    )
+    return render_template("add_contract_lines.html", contract=contract, lines=lines)
+
+
+# ---------------------------------------------------------------------------
 # Compliance alerts
 # ---------------------------------------------------------------------------
 @app.route("/alerts")
