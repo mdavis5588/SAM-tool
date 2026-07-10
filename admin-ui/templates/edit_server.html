@@ -69,6 +69,22 @@
           <tr><th>Datacenter</th><td>{{ server.datacenter or '—' }}</td></tr>
           <tr><th>IP Address</th><td><code>{{ server.ip_address or '—' }}</code></td></tr>
           <tr><th>Last Seen</th><td>{{ server.last_seen or '—' }}</td></tr>
+          {% if cpu_validation %}
+          <tr><th>Physical Cores</th><td>
+            {{ cpu_validation.cpu_sockets }} socket{{ 's' if cpu_validation.cpu_sockets != 1 }} ×
+            {{ cpu_validation.cores_per_socket }} core{{ 's' if cpu_validation.cores_per_socket != 1 }}
+            = <strong>{{ cpu_validation.total_physical_cores }}</strong>
+          </td></tr>
+          <tr><th>Core Factor</th><td>
+            {% if cpu_validation.validated_factor %}
+              <span class="badge bg-success">{{ cpu_validation.validated_factor }}</span>
+              <small class="text-muted ms-1">→ {{ (cpu_validation.total_physical_cores * cpu_validation.validated_factor) | round(1) }} licence units</small>
+            {% else %}
+              <span class="badge bg-warning text-dark">Unknown</span>
+              <small class="text-muted ms-1">CPU not in core factor table</small>
+            {% endif %}
+          </td></tr>
+          {% endif %}
         </table>
       </div>
     </div>
