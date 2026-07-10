@@ -608,26 +608,36 @@ def edit_server(server_id):
             key = (a["product_family"], a["product_detail"])
             consumed_by_line[key] = consumed_by_line.get(key, 0) + a["licences_consumed"]
 
-    # Total quantity per CSI (sum across all entitlement lines)
-    csi_total_qty = {}
+    # Quantity per (csi_id, product_name) from entitlement lines
+    line_qty = {}
     for l in entitlement_lines:
-        csi_total_qty[l["csi_id"]] = csi_total_qty.get(l["csi_id"], 0) + (l.get("quantity") or 0)
+        line_qty[(l["csi_id"], l["product_name"])] = l.get("quantity") or 0
 
-    # Total consumed per CSI across ALL active client schemas
+    # Consumed per (csi_id, product_detail) across ALL active client schemas
     active_schemas = [
         r["schema_name"] for r in query(
             "SELECT schema_name FROM sam_admin.clients WHERE is_active ORDER BY schema_name"
         )
     ]
-    csi_consumed_global = {}
+    consumed_by_csi_detail = {}   # (csi_id, product_detail) -> total consumed
     if active_schemas:
         union_sql = " UNION ALL ".join(
-            f"SELECT csi_id, COALESCE(SUM(licences_consumed), 0) AS consumed "
-            f"FROM {s}.server_csi_map GROUP BY csi_id"
+            f"SELECT csi_id, product_family::TEXT, COALESCE(product_detail,'') AS product_detail, "
+            f"COALESCE(SUM(licences_consumed), 0) AS consumed "
+            f"FROM {s}.server_csi_map GROUP BY csi_id, product_family, product_detail"
             for s in active_schemas
         )
-        for r in query(f"SELECT csi_id, SUM(consumed) AS total FROM ({union_sql}) t GROUP BY csi_id"):
-            csi_consumed_global[r["csi_id"]] = r["total"]
+        for r in query(
+            f"SELECT csi_id, product_family, product_detail, SUM(consumed) AS total "
+            f"FROM ({union_sql}) t GROUP BY csi_id, product_family, product_detail"
+        ):
+            key = (r["csi_id"], r["product_detail"])
+            consumed_by_csi_detail[key] = consumed_by_csi_detail.get(key, 0) + r["total"]
+
+    # Index consumed entries by csi_id for fast lookup
+    consumed_entries_by_csi = {}
+    for (csi_id, detail), amt in consumed_by_csi_detail.items():
+        consumed_entries_by_csi.setdefault(csi_id, []).append((detail, amt))
 
     compatible_csis_by_line = {}
     for row in licence_position:
@@ -637,12 +647,18 @@ def edit_server(server_id):
             if _is_compatible_product(row["product_family"], row["product_detail"],
                                        l["product_family"], l["product_name"]):
                 if l["csi_id"] not in matches:
-                    total = csi_total_qty.get(l["csi_id"], 0)
-                    consumed = csi_consumed_global.get(l["csi_id"], 0)
+                    qty = line_qty.get((l["csi_id"], l["product_name"]), 0)
+                    # Sum consumed entries for this CSI that match this product type
+                    consumed = sum(
+                        amt for det, amt in consumed_entries_by_csi.get(l["csi_id"], [])
+                        if _is_compatible_product(
+                            l["product_family"], det or None,
+                            l["product_family"], l["product_name"])
+                    )
                     matches[l["csi_id"]] = dict(l,
-                        csi_total_qty=total,
+                        csi_total_qty=qty,
                         csi_consumed=consumed,
-                        csi_available=max(total - consumed, 0)
+                        csi_available=max(qty - consumed, 0)
                     )
         compatible_csis_by_line[key] = list(matches.values())
 
@@ -763,30 +779,37 @@ def contracts():
         ORDER BY l.csi_id, l.line_number
     """)
 
-    # Sum licences_consumed per (csi_id, product_family) across all active schemas
+    # Sum licences_consumed per (csi_id, product_detail) across all active schemas
     active_schemas = [
         r["schema_name"] for r in query(
             "SELECT schema_name FROM sam_admin.clients WHERE is_active ORDER BY schema_name"
         )
     ]
-    consumed_by_csi_family = {}
+    consumed_entries_by_csi = {}   # csi_id -> [(product_family, product_detail, amount)]
     if active_schemas:
         union_sql = " UNION ALL ".join(
-            f"SELECT csi_id, product_family::TEXT, "
+            f"SELECT csi_id, product_family::TEXT, COALESCE(product_detail,'') AS product_detail, "
             f"COALESCE(SUM(licences_consumed), 0) AS consumed "
-            f"FROM {s}.server_csi_map GROUP BY csi_id, product_family"
+            f"FROM {s}.server_csi_map GROUP BY csi_id, product_family, product_detail"
             for s in active_schemas
         )
         for r in query(
-            f"SELECT csi_id, product_family, SUM(consumed) AS total "
-            f"FROM ({union_sql}) t GROUP BY csi_id, product_family"
+            f"SELECT csi_id, product_family, product_detail, SUM(consumed) AS total "
+            f"FROM ({union_sql}) t GROUP BY csi_id, product_family, product_detail"
         ):
-            consumed_by_csi_family[(r["csi_id"], r["product_family"])] = r["total"]
+            consumed_entries_by_csi.setdefault(r["csi_id"], []).append(
+                (r["product_family"], r["product_detail"], r["total"])
+            )
 
     # Group lines under each CSI, attaching consumed/available per line
+    # Match each line to assignments using product compatibility logic
     lines_by_csi = {}
     for l in line_rows:
-        consumed = consumed_by_csi_family.get((l["csi_id"], l["product_family"]), 0)
+        consumed = sum(
+            amt for fam, det, amt in consumed_entries_by_csi.get(l["csi_id"], [])
+            if _is_compatible_product(l["product_family"], det or None,
+                                      l["product_family"], l["product_name"])
+        )
         qty = l["quantity"] or 0
         line = dict(l,
                     consumed=consumed,
