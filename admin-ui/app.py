@@ -948,8 +948,18 @@ def licence_summary_server_costs():
                     WHERE line_id = scm.line_id
                        OR (scm.line_id IS NULL
                            AND csi_id = scm.csi_id
-                           AND product_family::TEXT = scm.product_family
-                           AND is_active)
+                           AND is_active
+                           AND CASE
+                               -- If product_detail is set, match it against product_name
+                               WHEN scm.product_detail IS NOT NULL
+                                 THEN product_name ILIKE '%' || scm.product_detail || '%'
+                               -- Only fall back to family when exactly 1 line in that family
+                               ELSE product_family::TEXT = scm.product_family
+                                 AND 1 = (SELECT COUNT(*) FROM shared.license_entitlement_lines x
+                                          WHERE x.csi_id = scm.csi_id
+                                            AND x.product_family::TEXT = scm.product_family
+                                            AND x.is_active)
+                           END)
                     ORDER BY (line_id = scm.line_id) DESC NULLS LAST
                     LIMIT 1
                 ) l ON TRUE
