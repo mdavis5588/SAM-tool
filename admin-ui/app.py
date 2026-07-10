@@ -848,6 +848,64 @@ def acknowledge_change(server_id, change_id):
 # ---------------------------------------------------------------------------
 # CSI contracts browser
 # ---------------------------------------------------------------------------
+@app.route("/licence-summary")
+@login_required
+def licence_summary():
+    # Per-client totals from client_locked CSIs
+    client_rows = query("""
+        SELECT c.client_code, c.client_name,
+               l.product_name, l.product_family::TEXT AS product_family,
+               COALESCE(SUM(l.quantity), 0) AS total_qty
+        FROM sam_admin.clients c
+        JOIN shared.csi_contracts cs ON cs.owning_client_id = c.client_id
+            AND cs.status = 'active'
+            AND cs.sharing_policy = 'client_locked'
+        JOIN shared.license_entitlement_lines l ON l.csi_id = cs.csi_id AND l.is_active
+        GROUP BY c.client_code, c.client_name, l.product_name, l.product_family
+        ORDER BY c.client_code, l.product_family, l.product_name
+    """)
+
+    # Shared/pooled CSI totals (sharing_policy != 'client_locked')
+    shared_rows = query("""
+        SELECT l.product_name, l.product_family::TEXT AS product_family,
+               COALESCE(SUM(l.quantity), 0) AS total_qty
+        FROM shared.csi_contracts cs
+        JOIN shared.license_entitlement_lines l ON l.csi_id = cs.csi_id AND l.is_active
+        WHERE cs.status = 'active'
+          AND cs.sharing_policy != 'client_locked'
+        GROUP BY l.product_name, l.product_family
+        ORDER BY l.product_family, l.product_name
+    """)
+
+    def _line_sort(name):
+        n = (name or "").lower()
+        if "enterprise" in n or "standard" in n:
+            return (0, n)
+        if "diagnostic" in n:
+            return (1, n)
+        if "tuning" in n:
+            return (2, n)
+        return (3, n)
+
+    # Group client rows by client
+    clients_map = {}
+    for r in client_rows:
+        key = r["client_code"]
+        if key not in clients_map:
+            clients_map[key] = {"client_code": r["client_code"],
+                                "client_name": r["client_name"],
+                                "lines": []}
+        clients_map[key]["lines"].append(r)
+    for v in clients_map.values():
+        v["lines"].sort(key=lambda r: _line_sort(r["product_name"]))
+
+    shared_lines = sorted(shared_rows, key=lambda r: _line_sort(r["product_name"]))
+
+    return render_template("licence_summary.html",
+                           clients=list(clients_map.values()),
+                           shared_lines=shared_lines)
+
+
 @app.route("/contracts")
 @login_required
 def contracts():
