@@ -200,7 +200,7 @@ BEGIN
   END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'Globex EE Production Contract 2024',
-    p_csi_number     => '44444444',
+    p_csi_number     => '66666666',
     p_vendor_ref     => 'ORD-2024-GBX-01',
     p_purchase_date  => '2024-01-15',
     p_support_start  => '2024-01-15',
@@ -276,7 +276,7 @@ BEGIN
   END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'Globex Analytics & Security Options 2024',
-    p_csi_number     => '55555555',
+    p_csi_number     => '77777777',
     p_vendor_ref     => 'ORD-2024-GBX-02',
     p_purchase_date  => '2024-03-01',
     p_support_start  => '2024-03-01',
