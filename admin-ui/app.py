@@ -942,7 +942,17 @@ def licence_summary_server_costs():
                 FROM {s}.server_csi_map scm
                 JOIN {s}.oracle_servers sv ON sv.server_id = scm.server_id
                 JOIN shared.csi_contracts cs ON cs.csi_id = scm.csi_id
-                LEFT JOIN shared.license_entitlement_lines l ON l.line_id = scm.line_id
+                LEFT JOIN LATERAL (
+                    SELECT line_id, product_name, unit_price, quantity, annual_support_cost
+                    FROM shared.license_entitlement_lines
+                    WHERE line_id = scm.line_id
+                       OR (scm.line_id IS NULL
+                           AND csi_id = scm.csi_id
+                           AND product_family::TEXT = scm.product_family
+                           AND is_active)
+                    ORDER BY (line_id = scm.line_id) DESC NULLS LAST
+                    LIMIT 1
+                ) l ON TRUE
                 ORDER BY sv.hostname, scm.product_family, l.product_name
             """)
         except Exception:
