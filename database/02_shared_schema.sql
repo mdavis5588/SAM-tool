@@ -746,6 +746,7 @@ LEFT   JOIN sam_admin.clients        oc ON oc.client_id = cs.owning_client_id;
 -- One row per product line — joined to contract header.
 -- Primary view for per-product and per-seat cost analysis in Power BI.
 -- ---------------------------------------------------------------------------
+DROP VIEW IF EXISTS shared.entitlement_line_detail CASCADE;
 CREATE OR REPLACE VIEW shared.entitlement_line_detail AS
 SELECT
   l.line_id,
