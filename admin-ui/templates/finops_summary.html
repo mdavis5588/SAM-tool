@@ -1,56 +1,300 @@
 {% extends "base.html" %}
-{% block title %}FinOps — Oracle SAM{% endblock %}
+{% block title %}FinOps — Cost Summary — Oracle SAM{% endblock %}
 {% block content %}
 
-<div class="d-flex align-items-center mb-4">
-  <h4 class="mb-0"><i class="bi bi-currency-dollar"></i> FinOps — Cost Summary</h4>
-</div>
+<style>
+  .viz-root {
+    --surface-1:   #fcfcfb;
+    --text-pri:    #0b0b0b;
+    --text-sec:    #52514e;
+    --text-muted:  #898781;
+    --gridline:    #e1e0d9;
+    --border:      rgba(11,11,11,0.10);
+    --s1:          #2a78d6;   /* Annual support — blue  */
+    --s2:          #1baf7a;   /* Shared in-use  — aqua  */
+    --track:       #e1e0d9;
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      --surface-1:  #1a1a19;
+      --text-pri:   #ffffff;
+      --text-sec:   #c3c2b7;
+      --text-muted: #898781;
+      --gridline:   #2c2c2a;
+      --border:     rgba(255,255,255,0.10);
+      --s1:         #3987e5;
+      --s2:         #199e70;
+      --track:      #2c2c2a;
+    }
+  }
 
-{% if not summary %}
-<div class="alert alert-info">No cost data found. Ensure CSI entitlement lines have unit prices set.</div>
-{% endif %}
+  /* ── Page header ── */
+  .page-kpi-row {
+    display: flex;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--gridline);
+  }
+  .page-kpi {
+    display: flex;
+    flex-direction: column;
+  }
+  .page-kpi-label {
+    font-size: .68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: var(--text-muted);
+    margin-bottom: .15rem;
+  }
+  .page-kpi-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text-pri);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .page-kpi-value.blue { color: var(--s1); }
+  .page-kpi-divider {
+    width: 1px;
+    background: var(--gridline);
+    align-self: stretch;
+    margin: .1rem 0;
+  }
 
-<div class="row g-3">
-  {% for c in summary %}
-  <div class="col-md-6 col-xl-4">
-    <a href="{{ url_for('finops_client', client_code=c.client_code) }}" class="text-decoration-none">
-      <div class="card shadow-sm h-100"
-           style="cursor:pointer;transition:box-shadow .15s;border-top:3px solid #2a78d6"
-           onmouseover="this.style.boxShadow='0 4px 18px rgba(0,0,0,.14)'"
-           onmouseout="this.style.boxShadow=''">
-        <div class="card-body">
+  /* ── Legend ── */
+  .legend-row {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    font-size: .78rem;
+    color: var(--text-sec);
+  }
+  .legend-swatch {
+    width: 12px; height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
 
-          <div class="d-flex align-items-center gap-2 mb-3">
-            <i class="bi bi-building fs-5 text-primary"></i>
-            <h5 class="mb-0 text-dark">{{ c.client_name }}</h5>
-            <span class="badge bg-light text-muted ms-auto border">
-              {{ c.product_count }} product{{ 's' if c.product_count != 1 }}
-            </span>
-          </div>
+  /* ── Client rows ── */
+  .client-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .client-row {
+    display: grid;
+    grid-template-columns: 180px 1fr 130px;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 1rem 1.1rem;
+    border-radius: 8px;
+    text-decoration: none;
+    color: inherit;
+    transition: background .12s;
+    border-bottom: 1px solid var(--gridline);
+  }
+  .client-row:last-child { border-bottom: none; }
+  .client-row:hover { background: rgba(42,120,214,.04); }
 
-          <div class="row g-2 text-center">
-            <div class="col-4">
-              <div class="small text-muted">Annual Support</div>
-              <div class="fw-bold text-dark">${{ "{:,.0f}".format(c.total_support) }}</div>
-            </div>
-            <div class="col-4">
-              <div class="small text-muted">Shared Pool (In Use)</div>
-              <div class="fw-bold text-dark">${{ "{:,.0f}".format(c.total_shared_inuse) }}</div>
-            </div>
-            <div class="col-4">
-              <div class="small text-muted">Total Cost</div>
-              <div class="fw-bold" style="color:#2a78d6">${{ "{:,.0f}".format(c.total_client_cost) }}</div>
-            </div>
-          </div>
+  .client-name {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+  }
+  .client-name-text {
+    font-weight: 600;
+    font-size: .92rem;
+    color: var(--text-pri);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .client-prod-badge {
+    font-size: .67rem;
+    color: var(--text-muted);
+    background: var(--track);
+    border-radius: 20px;
+    padding: .1rem .45rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
 
+  /* ── Stacked bar ── */
+  .bar-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+  }
+  .bar-track {
+    height: 8px;
+    border-radius: 4px;
+    background: var(--track);
+    overflow: hidden;
+    display: flex;
+  }
+  .bar-seg {
+    height: 100%;
+    transition: opacity .15s;
+  }
+  .bar-seg:first-child { border-radius: 4px 0 0 4px; }
+  .bar-seg:last-child  { border-radius: 0 4px 4px 0; }
+  .bar-seg:only-child  { border-radius: 4px; }
+  .bar-seg:hover { opacity: .75; }
+  .bar-labels {
+    display: flex;
+    gap: .75rem;
+    font-size: .72rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .bar-label-item { display: flex; align-items: center; gap: .3rem; }
+  .bar-label-dot  { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── Total cost ── */
+  .client-total {
+    text-align: right;
+  }
+  .client-total-value {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--s1);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .client-total-label {
+    font-size: .68rem;
+    color: var(--text-muted);
+    margin-top: .2rem;
+  }
+  .client-arrow {
+    font-size: .8rem;
+    color: var(--text-muted);
+    margin-top: .35rem;
+  }
+</style>
+
+<div class="viz-root">
+
+  <div class="d-flex align-items-baseline gap-3 mb-4">
+    <h4 class="mb-0"><i class="bi bi-currency-dollar me-1"></i>FinOps — Cost Summary</h4>
+  </div>
+
+  {% if not summary %}
+  <div class="alert alert-info">No cost data found. Ensure CSI entitlement lines have unit prices set.</div>
+  {% else %}
+
+  {% set grand_support   = summary | sum(attribute='total_support') %}
+  {% set grand_shared    = summary | sum(attribute='total_shared_inuse') %}
+  {% set grand_total     = summary | sum(attribute='total_client_cost') %}
+  {% set grand_max       = summary | max(attribute='total_client_cost') %}
+
+  <!-- ── Grand totals across all clients ── -->
+  <div class="page-kpi-row">
+    <div class="page-kpi">
+      <span class="page-kpi-label">Total Across All Clients</span>
+      <span class="page-kpi-value blue">${{ "{:,.0f}".format(grand_total) }}</span>
+    </div>
+    <div class="page-kpi-divider"></div>
+    <div class="page-kpi">
+      <span class="page-kpi-label">Annual Support</span>
+      <span class="page-kpi-value">${{ "{:,.0f}".format(grand_support) }}</span>
+    </div>
+    <div class="page-kpi-divider"></div>
+    <div class="page-kpi">
+      <span class="page-kpi-label">Shared Pool (In Use)</span>
+      <span class="page-kpi-value">${{ "{:,.0f}".format(grand_shared) }}</span>
+    </div>
+    <div class="page-kpi-divider"></div>
+    <div class="page-kpi">
+      <span class="page-kpi-label">Clients</span>
+      <span class="page-kpi-value">{{ summary | length }}</span>
+    </div>
+  </div>
+
+  <!-- ── Legend ── -->
+  <div class="legend-row">
+    <span class="text-muted small fw-semibold me-1">Cost breakdown:</span>
+    <div class="legend-item">
+      <span class="legend-swatch" style="background:var(--s1)"></span>
+      Annual Support (client-locked)
+    </div>
+    <div class="legend-item">
+      <span class="legend-swatch" style="background:var(--s2)"></span>
+      Shared Pool in Use
+    </div>
+  </div>
+
+  <!-- ── Client rows ── -->
+  <div class="client-list">
+    <!-- Column header -->
+    <div style="display:grid;grid-template-columns:180px 1fr 130px;gap:1.25rem;
+                padding:.2rem 1.1rem .5rem;
+                font-size:.67rem;font-weight:700;text-transform:uppercase;
+                letter-spacing:.07em;color:var(--text-muted)">
+      <span>Client</span>
+      <span>Cost Split</span>
+      <span style="text-align:right">Total Cost</span>
+    </div>
+
+    {% for c in summary | sort(attribute='total_client_cost', reverse=true) %}
+    {% set support_w  = ((c.total_support    / c.total_client_cost * 100) | round(1)) if c.total_client_cost > 0 else 0 %}
+    {% set shared_w   = ((c.total_shared_inuse / c.total_client_cost * 100) | round(1)) if c.total_client_cost > 0 else 0 %}
+    <a href="{{ url_for('finops_client', client_code=c.client_code) }}" class="client-row">
+
+      <!-- Client name + product count -->
+      <div class="client-name">
+        <i class="bi bi-building text-muted" style="font-size:.9rem;flex-shrink:0"></i>
+        <span class="client-name-text">{{ c.client_name }}</span>
+        <span class="client-prod-badge">{{ c.product_count }}p</span>
+      </div>
+
+      <!-- Stacked bar -->
+      <div class="bar-wrap">
+        <div class="bar-track"
+             title="Annual Support: ${{ '{:,.0f}'.format(c.total_support) }} · Shared Pool: ${{ '{:,.0f}'.format(c.total_shared_inuse) }}">
+          {% if support_w > 0 %}
+          <div class="bar-seg" style="width:{{ support_w }}%;background:var(--s1)"></div>
+          {% endif %}
+          {% if shared_w > 0 %}
+          <div class="bar-seg" style="width:{{ shared_w }}%;background:var(--s2)"></div>
+          {% endif %}
         </div>
-        <div class="card-footer bg-transparent text-end py-2">
-          <small class="text-muted"><i class="bi bi-arrow-right-circle me-1"></i>View detail</small>
+        <div class="bar-labels">
+          {% if c.total_support > 0 %}
+          <div class="bar-label-item">
+            <span class="bar-label-dot" style="background:var(--s1)"></span>
+            ${{ "{:,.0f}".format(c.total_support) }} support
+          </div>
+          {% endif %}
+          {% if c.total_shared_inuse > 0 %}
+          <div class="bar-label-item">
+            <span class="bar-label-dot" style="background:var(--s2)"></span>
+            ${{ "{:,.0f}".format(c.total_shared_inuse) }} shared
+          </div>
+          {% endif %}
         </div>
       </div>
-    </a>
-  </div>
-  {% endfor %}
-</div>
 
+      <!-- Total + arrow -->
+      <div class="client-total">
+        <div class="client-total-value">${{ "{:,.0f}".format(c.total_client_cost) }}</div>
+        <div class="client-arrow"><i class="bi bi-arrow-right-circle"></i> View detail</div>
+      </div>
+
+    </a>
+    {% endfor %}
+  </div>
+
+  {% endif %}
+
+</div>
 {% endblock %}
