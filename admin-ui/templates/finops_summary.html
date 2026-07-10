@@ -10,8 +10,8 @@
     --text-muted:  #898781;
     --gridline:    #e1e0d9;
     --border:      rgba(11,11,11,0.10);
-    --s1:          #2a78d6;   /* Annual support — blue  */
-    --s2:          #1baf7a;   /* Shared in-use  — aqua  */
+    --s1:          #6d28d9;   /* Annual support — dark purple  */
+    --s2:          #a78bfa;   /* Shared in-use  — light purple */
     --track:       #e1e0d9;
   }
   @media (prefers-color-scheme: dark) {
@@ -22,8 +22,8 @@
       --text-muted: #898781;
       --gridline:   #2c2c2a;
       --border:     rgba(255,255,255,0.10);
-      --s1:         #3987e5;
-      --s2:         #199e70;
+      --s1:         #7c3aed;
+      --s2:         #c4b5fd;
       --track:      #2c2c2a;
     }
   }
@@ -56,7 +56,7 @@
     line-height: 1;
     font-variant-numeric: tabular-nums;
   }
-  .page-kpi-value.blue { color: var(--s1); }
+  .page-kpi-value.purple { color: var(--s1); }
   .page-kpi-divider {
     width: 1px;
     background: var(--gridline);
@@ -200,7 +200,7 @@
   <div class="page-kpi-row">
     <div class="page-kpi">
       <span class="page-kpi-label">Total Across All Clients</span>
-      <span class="page-kpi-value blue">${{ "{:,.0f}".format(grand_total) }}</span>
+      <span class="page-kpi-value purple">${{ "{:,.0f}".format(grand_total) }}</span>
     </div>
     <div class="page-kpi-divider"></div>
     <div class="page-kpi">
