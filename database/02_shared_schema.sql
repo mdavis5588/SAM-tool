@@ -77,6 +77,7 @@ RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_csi_updated ON shared.csi_contracts;
 CREATE TRIGGER trg_csi_updated
   BEFORE UPDATE ON shared.csi_contracts
   FOR EACH ROW EXECUTE FUNCTION shared.touch_updated_at();
@@ -124,6 +125,7 @@ CREATE INDEX idx_lines_csi     ON shared.license_entitlement_lines (csi_id);
 CREATE INDEX idx_lines_product ON shared.license_entitlement_lines (product_name);
 CREATE INDEX idx_lines_family  ON shared.license_entitlement_lines (product_family);
 
+DROP TRIGGER IF EXISTS trg_line_updated ON shared.license_entitlement_lines;
 CREATE TRIGGER trg_line_updated
   BEFORE UPDATE ON shared.license_entitlement_lines
   FOR EACH ROW EXECUTE FUNCTION shared.touch_updated_at();
@@ -192,6 +194,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_enforce_csi_sharing ON shared.csi_client_map;
 CREATE TRIGGER trg_enforce_csi_sharing
   BEFORE INSERT OR UPDATE ON shared.csi_client_map
   FOR EACH ROW EXECUTE FUNCTION shared.enforce_csi_sharing_policy();
@@ -303,7 +306,8 @@ INSERT INTO shared.java_license_editions
   ('Amazon Corretto',                FALSE, NULL,        'Free AWS build of OpenJDK — no Oracle licence required'),
   ('Microsoft Build of OpenJDK',     FALSE, NULL,        'Free Microsoft build of OpenJDK — no Oracle licence required'),
   ('Azul Zulu',                      FALSE, NULL,        'Free community build; Azul Platform Core/Prime require separate Azul subscription'),
-  ('Oracle JRE 8 (desktop only)',    FALSE, NULL,        'JRE-only personal desktop use — free under NFTC; review terms carefully');
+  ('Oracle JRE 8 (desktop only)',    FALSE, NULL,        'JRE-only personal desktop use — free under NFTC; review terms carefully')
+ON CONFLICT (edition_name) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- MYSQL LICENSE EDITIONS
@@ -324,7 +328,8 @@ INSERT INTO shared.mysql_license_editions
   ('MySQL Cluster CGE',      TRUE,  'server', 'Annual per-data-node subscription for NDB Cluster'),
   ('MySQL Standard',         TRUE,  'server', 'Legacy edition — discontinued; verify against existing contracts'),
   ('MySQL Classic',          TRUE,  'server', 'Legacy edition — discontinued; verify against existing contracts'),
-  ('MariaDB',                FALSE, NULL,     'Open-source MySQL fork — no Oracle licence required');
+  ('MariaDB',                FALSE, NULL,     'Open-source MySQL fork — no Oracle licence required')
+ON CONFLICT (edition_name) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- ULA CERTIFICATION TRACKING
@@ -359,6 +364,7 @@ CREATE INDEX idx_ula_client ON shared.ula_certifications (client_id);
 CREATE INDEX idx_ula_status ON shared.ula_certifications (status);
 CREATE INDEX idx_ula_expiry ON shared.ula_certifications (ula_expiry_date);
 
+DROP TRIGGER IF EXISTS trg_ula_updated ON shared.ula_certifications;
 CREATE TRIGGER trg_ula_updated
   BEFORE UPDATE ON shared.ula_certifications
   FOR EACH ROW EXECUTE FUNCTION shared.touch_updated_at();
