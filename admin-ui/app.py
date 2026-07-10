@@ -906,6 +906,89 @@ def licence_summary():
                            shared_lines=shared_lines)
 
 
+@app.route("/licence-summary/server-costs")
+@login_required
+def licence_summary_server_costs():
+    """Per-server licence cost breakdown across all active client schemas."""
+    active_clients = query(
+        "SELECT client_id, client_code, client_name, schema_name "
+        "FROM sam_admin.clients WHERE is_active ORDER BY client_name"
+    )
+
+    servers = []
+    for c in active_clients:
+        s = c["schema_name"]
+        try:
+            rows = query(f"""
+                SELECT
+                    sv.server_id,
+                    sv.hostname,
+                    sv.environment::TEXT AS environment,
+                    scm.map_id,
+                    scm.csi_id,
+                    scm.product_family::TEXT AS product_family,
+                    COALESCE(scm.product_detail, '') AS product_detail,
+                    COALESCE(scm.licences_consumed, 0) AS licences_consumed,
+                    cs.csi_number,
+                    cs.contract_name,
+                    cs.sharing_policy::TEXT AS sharing_policy,
+                    l.product_name,
+                    l.unit_price,
+                    l.annual_support_cost,
+                    COALESCE(l.unit_price, 0) * COALESCE(scm.licences_consumed, 0) AS line_licence_cost,
+                    COALESCE(l.annual_support_cost, 0)
+                        / NULLIF(l.quantity, 0)
+                        * COALESCE(scm.licences_consumed, 0) AS line_support_cost
+                FROM {s}.server_csi_map scm
+                JOIN {s}.oracle_servers sv ON sv.server_id = scm.server_id
+                JOIN shared.csi_contracts cs ON cs.csi_id = scm.csi_id
+                LEFT JOIN shared.license_entitlement_lines l ON l.line_id = scm.line_id
+                ORDER BY sv.hostname, scm.product_family, l.product_name
+            """)
+        except Exception:
+            rows = []
+
+        # Group by server
+        server_map = {}
+        for r in rows:
+            key = (c["schema_name"], r["server_id"])
+            if key not in server_map:
+                server_map[key] = {
+                    "hostname":    r["hostname"],
+                    "environment": r["environment"],
+                    "client_name": c["client_name"] or c["client_code"],
+                    "client_code": c["client_code"],
+                    "assignments": [],
+                    "total_licence_cost": 0.0,
+                    "total_support_cost": 0.0,
+                }
+            sv = server_map[key]
+            line_lic  = float(r["line_licence_cost"] or 0)
+            line_supp = float(r["line_support_cost"]  or 0)
+            sv["assignments"].append({
+                "product_name":      r["product_name"] or r["product_detail"] or r["product_family"],
+                "product_family":    r["product_family"],
+                "csi_id":            r["csi_id"],
+                "csi_number":        r["csi_number"],
+                "contract_name":     r["contract_name"],
+                "sharing_policy":    r["sharing_policy"],
+                "licences_consumed": float(r["licences_consumed"]),
+                "unit_price":        float(r["unit_price"] or 0),
+                "line_licence_cost": line_lic,
+                "line_support_cost": line_supp,
+            })
+            sv["total_licence_cost"] += line_lic
+            sv["total_support_cost"] += line_supp
+
+        for sv in server_map.values():
+            sv["total_cost"] = sv["total_licence_cost"] + sv["total_support_cost"]
+            servers.append(sv)
+
+    servers.sort(key=lambda s: (s["client_name"], s["hostname"]))
+
+    return render_template("licence_summary_server_costs.html", servers=servers)
+
+
 def _build_licence_detail(entitlement_rows):
     """Return list of dicts with total_qty, assigned_qty, unassigned_qty, servers per product."""
     active_schemas = [

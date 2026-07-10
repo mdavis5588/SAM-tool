@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% block title %}Server Licence Costs — Oracle SAM{% endblock %}
+{% block content %}
+
+<style>
+  .viz-root {
+    --s1:         #6d28d9;
+    --s2:         #6da7ec;
+    --text-pri:   #0b0b0b;
+    --text-sec:   #52514e;
+    --text-muted: #898781;
+    --gridline:   #e1e0d9;
+    --border:     rgba(11,11,11,0.10);
+    --surface:    #fcfcfb;
+    --track:      #e1e0d9;
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      --s1: #7c3aed; --s2: #86b6ef;
+      --text-pri: #fff; --text-sec: #c3c2b7; --text-muted: #898781;
+      --gridline: #2c2c2a; --border: rgba(255,255,255,0.10);
+      --surface: #1a1a19; --track: #2c2c2a;
+    }
+  }
+
+  /* ── Server accordion card ── */
+  .server-card {
+    border: 1px solid var(--gridline);
+    border-left: 4px solid var(--s1);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: .6rem;
+  }
+  .server-card.shared-pool { border-left-color: var(--s2); }
+
+  .server-header {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    align-items: center;
+    gap: 1rem;
+    padding: .85rem 1.1rem;
+    cursor: pointer;
+    background: var(--surface);
+    border: none; width: 100%; text-align: left;
+    transition: background .12s;
+  }
+  .server-header:hover { background: rgba(109,40,217,.04); }
+  .server-header[aria-expanded="true"] { border-bottom: 1px solid var(--gridline); }
+
+  .server-name {
+    font-weight: 700; font-size: .95rem; color: var(--text-pri);
+    display: flex; align-items: center; gap: .5rem;
+  }
+  .env-badge {
+    font-size: .66rem; font-weight: 600; padding: .1rem .4rem;
+    border-radius: 20px; text-transform: uppercase; letter-spacing: .04em;
+  }
+  .env-prod { background: #fde8e8; color: #991b1b; }
+  .env-dev  { background: #d1fae5; color: #065f46; }
+  .env-test { background: #fef3cd; color: #854d0e; }
+  .env-other{ background: var(--track); color: var(--text-muted); }
+
+  .client-chip {
+    font-size: .72rem; color: var(--text-muted);
+    display: flex; align-items: center; gap: .3rem;
+  }
+
+  .cost-pill {
+    font-size: .8rem; font-weight: 700;
+    color: var(--s1); font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .assign-count {
+    font-size: .72rem; color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .chevron { color: var(--text-muted); transition: transform .2s; font-size: .85rem; }
+  .server-header[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+
+  /* ── Assignment detail table ── */
+  .detail-body { padding: .75rem 1.1rem 1rem; background: var(--surface); }
+
+  .asgn-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  .asgn-table th {
+    font-size: .67rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--text-muted);
+    padding: .35rem .5rem; border-bottom: 2px solid var(--gridline);
+    text-align: right; white-space: nowrap;
+  }
+  .asgn-table th:first-child, .asgn-table th:nth-child(2) { text-align: left; }
+  .asgn-table td {
+    padding: .4rem .5rem; border-bottom: 1px solid var(--gridline);
+    text-align: right; vertical-align: middle; color: var(--text-sec);
+  }
+  .asgn-table td:first-child { text-align: left; color: var(--text-pri); }
+  .asgn-table td:nth-child(2) { text-align: left; }
+  .asgn-table tbody tr:last-child td { border-bottom: none; }
+  .asgn-table tfoot td {
+    font-weight: 700; color: var(--text-pri);
+    border-top: 2px solid var(--gridline); padding-top: .5rem;
+    border-bottom: none;
+  }
+
+  .csi-tag {
+    font-size: .7rem; font-weight: 600;
+    padding: .1rem .4rem; border-radius: 4px;
+    background: rgba(109,40,217,.1); color: var(--s1);
+    white-space: nowrap;
+  }
+  .csi-tag.shared { background: rgba(109,167,236,.15); color: #1e5fa0; }
+
+  /* ── Filter bar ── */
+  .filter-bar {
+    display: flex; gap: .75rem; flex-wrap: wrap;
+    margin-bottom: 1.25rem; align-items: center;
+  }
+  .filter-bar input, .filter-bar select {
+    font-size: .83rem; padding: .35rem .65rem;
+    border: 1px solid var(--gridline); border-radius: 6px;
+    background: var(--surface); color: var(--text-pri);
+  }
+</style>
+
+<div class="viz-root">
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('licence_summary') }}">Licence Summary</a></li>
+    <li class="breadcrumb-item active">Server Costs</li>
+  </ol>
+</nav>
+
+<div class="d-flex align-items-baseline gap-3 mb-4">
+  <h4 class="mb-0"><i class="bi bi-server me-1"></i>Server Licence Costs</h4>
+  <span class="text-muted small">{{ servers | length }} server{{ 's' if servers|length != 1 }}</span>
+</div>
+
+{% if not servers %}
+<div class="alert alert-info">No server licence assignments found.</div>
+{% else %}
+
+<!-- ── Filter bar ── -->
+<div class="filter-bar">
+  <input type="text" id="filterHostname" placeholder="Search hostname…" style="min-width:200px">
+  <select id="filterClient">
+    <option value="">All clients</option>
+    {% for name in servers | map(attribute='client_name') | unique | sort %}
+    <option value="{{ name }}">{{ name }}</option>
+    {% endfor %}
+  </select>
+  <select id="filterEnv">
+    <option value="">All environments</option>
+    {% for env in servers | map(attribute='environment') | unique | sort %}
+    <option value="{{ env }}">{{ env | title }}</option>
+    {% endfor %}
+  </select>
+  <span class="text-muted small ms-auto" id="visibleCount">{{ servers|length }} shown</span>
+</div>
+
+<!-- ── Server cards ── -->
+<div id="serverList">
+{% for sv in servers %}
+{% set card_id = "sv-" ~ loop.index %}
+<div class="server-card" data-hostname="{{ sv.hostname | lower }}"
+     data-client="{{ sv.client_name }}" data-env="{{ sv.environment | lower }}">
+  <button class="server-header" type="button"
+          data-bs-toggle="collapse" data-bs-target="#{{ card_id }}"
+          aria-expanded="false" aria-controls="{{ card_id }}">
+
+    <div>
+      <div class="server-name">
+        <i class="bi bi-server" style="color:var(--s1);font-size:.85rem"></i>
+        {{ sv.hostname }}
+        {% set env = (sv.environment or '') | lower %}
+        <span class="env-badge {% if 'prod' in env %}env-prod{% elif 'dev' in env %}env-dev{% elif 'test' in env or 'uat' in env %}env-test{% else %}env-other{% endif %}">
+          {{ sv.environment or 'unknown' }}
+        </span>
+      </div>
+      <div class="client-chip mt-1">
+        <i class="bi bi-building"></i> {{ sv.client_name }}
+      </div>
+    </div>
+
+    <div class="assign-count">{{ sv.assignments | length }} CSI assignment{{ 's' if sv.assignments|length != 1 }}</div>
+
+    <div>
+      <div class="cost-pill">${{ "{:,.0f}".format(sv.total_support_cost) }}</div>
+      <div class="text-muted" style="font-size:.68rem">Annual support</div>
+    </div>
+
+    <i class="bi bi-chevron-down chevron"></i>
+  </button>
+
+  <div class="collapse" id="{{ card_id }}">
+    <div class="detail-body">
+      <div class="table-responsive">
+        <table class="asgn-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>CSI</th>
+              <th>Qty Used</th>
+              <th>Unit Price</th>
+              <th>Licence Cost</th>
+              <th>Annual Support</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in sv.assignments %}
+            <tr>
+              <td>{{ a.product_name }}</td>
+              <td>
+                <a href="{{ url_for('contract_detail', csi_id=a.csi_id) }}"
+                   class="csi-tag {% if a.sharing_policy == 'shareable' %}shared{% endif %}"
+                   title="{{ a.contract_name }}">
+                  {% if a.csi_number %}{{ a.csi_number }}{% else %}#{{ a.csi_id }}{% endif %}
+                  {% if a.sharing_policy == 'shareable' %}<i class="bi bi-share ms-1"></i>{% endif %}
+                </a>
+                <div class="text-muted" style="font-size:.7rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                  {{ a.contract_name }}
+                </div>
+              </td>
+              <td>{{ a.licences_consumed | int }}</td>
+              <td>{% if a.unit_price > 0 %}${{ "{:,.2f}".format(a.unit_price) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+              <td>{% if a.line_licence_cost > 0 %}<span style="color:var(--s1);font-weight:600">${{ "{:,.0f}".format(a.line_licence_cost) }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+              <td>{% if a.line_support_cost > 0 %}<span style="color:#1baf7a;font-weight:600">${{ "{:,.0f}".format(a.line_support_cost) }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="4">Total</td>
+              <td style="color:var(--s1)">${{ "{:,.0f}".format(sv.total_licence_cost) }}</td>
+              <td style="color:#1baf7a">${{ "{:,.0f}".format(sv.total_support_cost) }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+</div>
+
+{% endif %}
+</div>
+
+<script>
+  const cards   = Array.from(document.querySelectorAll('.server-card'));
+  const hosInp  = document.getElementById('filterHostname');
+  const cliSel  = document.getElementById('filterClient');
+  const envSel  = document.getElementById('filterEnv');
+  const countEl = document.getElementById('visibleCount');
+
+  function applyFilters() {
+    const h = hosInp.value.toLowerCase();
+    const c = cliSel.value;
+    const e = envSel.value.toLowerCase();
+    let shown = 0;
+    cards.forEach(card => {
+      const match = (!h || card.dataset.hostname.includes(h))
+                 && (!c || card.dataset.client === c)
+                 && (!e || card.dataset.env === e);
+      card.style.display = match ? '' : 'none';
+      if (match) shown++;
+    });
+    countEl.textContent = shown + ' shown';
+  }
+
+  hosInp.addEventListener('input',  applyFilters);
+  cliSel.addEventListener('change', applyFilters);
+  envSel.addEventListener('change', applyFilters);
+
+  // Update aria-expanded state for chevron animation
+  document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(btn => {
+    const target = document.querySelector(btn.dataset.bsTarget);
+    if (target) {
+      target.addEventListener('show.bs.collapse',  () => btn.setAttribute('aria-expanded','true'));
+      target.addEventListener('hide.bs.collapse',  () => btn.setAttribute('aria-expanded','false'));
+    }
+  });
+</script>
+{% endblock %}
