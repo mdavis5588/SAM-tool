@@ -1080,10 +1080,10 @@ def _build_client_finops(client_id):
         SELECT l.csi_id,
                l.product_name,
                l.product_family::TEXT AS product_family,
+               cs.sharing_policy::TEXT AS sharing_policy,
                COALESCE(SUM(l.quantity), 0)            AS qty,
                COALESCE(SUM(l.total_price), 0)         AS licence_cost,
                COALESCE(SUM(l.annual_support_cost), 0) AS support_cost,
-               -- unit cost per single licence (avg across lines if multiple)
                CASE WHEN SUM(l.quantity) > 0
                     THEN SUM(l.total_price) / SUM(l.quantity)
                     ELSE 0 END                          AS unit_cost
@@ -1091,9 +1091,14 @@ def _build_client_finops(client_id):
         JOIN shared.license_entitlement_lines l
              ON l.csi_id = cs.csi_id AND l.is_active
         WHERE cs.status = 'active'
-          AND cs.owning_client_id = %s
-        GROUP BY l.csi_id, l.product_name, l.product_family
-    """, (client_id,))
+          AND (
+            cs.owning_client_id = %s
+            OR cs.csi_id IN (
+              SELECT csi_id FROM shared.csi_client_map WHERE client_id = %s
+            )
+          )
+        GROUP BY l.csi_id, l.product_name, l.product_family, cs.sharing_policy
+    """, (client_id, client_id))
     if not rows:
         return None
 
@@ -1115,30 +1120,33 @@ def _build_client_finops(client_id):
                 (r["product_detail"], float(r["total"]))
             )
 
-    # Roll up by product_name (a CSI may have multiple lines for same product)
+    # Roll up by (product_name, sharing_policy) so locked vs shared stay separate
     product_map = {}
     for r in rows:
-        pname = r["product_name"]
-        if pname not in product_map:
-            product_map[pname] = {
+        pname  = r["product_name"]
+        source = r["sharing_policy"]  # 'client_locked' or 'shareable'
+        key    = (pname, source)
+        if key not in product_map:
+            product_map[key] = {
                 "product_name": pname,
                 "product_family": r["product_family"],
+                "source": source,
                 "qty": 0, "licence_cost": 0.0,
                 "support_cost": 0.0, "unit_cost": float(r["unit_cost"] or 0),
                 "assigned_qty": 0,
             }
-        product_map[pname]["qty"]          += int(r["qty"] or 0)
-        product_map[pname]["licence_cost"] += float(r["licence_cost"] or 0)
-        product_map[pname]["support_cost"] += float(r["support_cost"] or 0)
+        product_map[key]["qty"]          += int(r["qty"] or 0)
+        product_map[key]["licence_cost"] += float(r["licence_cost"] or 0)
+        product_map[key]["support_cost"] += float(r["support_cost"] or 0)
 
         consumed = sum(
             amt for det, amt in consumed_entries_by_csi.get(r["csi_id"], [])
             if _is_compatible_product(r["product_family"], det or None,
                                       r["product_family"], r["product_name"])
         )
-        product_map[pname]["assigned_qty"] += consumed
+        product_map[key]["assigned_qty"] += consumed
 
-    lines = sorted(product_map.values(), key=lambda r: _finops_line_sort(r["product_name"]))
+    lines = sorted(product_map.values(), key=lambda r: (r["source"] != "client_locked", _finops_line_sort(r["product_name"])))
     for i, ln in enumerate(lines):
         ln["colour"] = _FINOPS_PALETTE[i % len(_FINOPS_PALETTE)]
         qty   = ln["qty"]
