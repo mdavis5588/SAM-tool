@@ -2,7 +2,7 @@
 {% block title %}Servers — Oracle SAM{% endblock %}
 {% block content %}
 <div class="d-flex align-items-center mb-3">
-  <h4 class="mb-0"><i class="bi bi-server"></i> Servers</h4>
+  <h4 class="mb-0"><i class="bi bi-server"></i> {{ t('servers.title') }}</h4>
   <span class="badge bg-secondary ms-2">{{ servers | length }}</span>
   {% if se2_count > 0 %}
     <span class="badge bg-danger ms-2" title="Servers with SE2 licence violations">
@@ -131,13 +131,13 @@
             <td>
               <a href="{{ url_for('edit_server', server_id=s.server_id) }}"
                  class="btn btn-sm btn-outline-primary">
-                <i class="bi bi-pencil"></i> Edit
+                <i class="bi bi-pencil"></i> {{ t('action.edit') }}
               </a>
             </td>
           </tr>
           {% else %}
           <tr>
-            <td colspan="10" class="text-center text-muted py-4">No servers discovered yet.</td>
+            <td colspan="10" class="text-center text-muted py-4">{{ t('servers.none') }}</td>
           </tr>
           {% endfor %}
         </tbody>

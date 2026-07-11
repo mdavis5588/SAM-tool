@@ -116,12 +116,12 @@
 <div class="viz-root">
 
 <div class="d-flex align-items-baseline gap-3 mb-4">
-  <h4 class="mb-0"><i class="bi bi-bar-chart-line me-1"></i>Licence Summary</h4>
+  <h4 class="mb-0"><i class="bi bi-bar-chart-line me-1"></i>{{ t('licence_summary.title') }}</h4>
 </div>
 
 <!-- ── Legend ── -->
 <div class="legend-row">
-  <span class="text-muted small fw-semibold me-1">Product family:</span>
+  <span class="text-muted small fw-semibold me-1">{{ t('label.product') }} family:</span>
   <div class="legend-item"><span class="legend-swatch" style="background:var(--s1)"></span>Database</div>
   <div class="legend-item"><span class="legend-swatch" style="background:var(--s2)"></span>WebLogic / Middleware</div>
   <div class="legend-item"><span class="legend-swatch" style="background:var(--s3)"></span>Java / Coherence</div>
@@ -131,13 +131,13 @@
 <!-- ── Client-locked section ── -->
 {% if clients %}
 <div class="section-label">
-  <i class="bi bi-lock-fill" style="color:var(--s1)"></i> Client-Locked Licences
+  <i class="bi bi-lock-fill" style="color:var(--s1)"></i> {{ t('licence_summary.client_locked') }}
 </div>
 
 <div class="col-header">
-  <span>Client</span>
-  <span>Quantity by Product Family</span>
-  <span>Total Qty</span>
+  <span>{{ t('label.client') }}</span>
+  <span>{{ t('licence_summary.qty_by_family') }}</span>
+  <span>{{ t('label.quantity') }}</span>
 </div>
 
 <div class="entity-list">
@@ -193,20 +193,20 @@
 
     <div class="entity-total">
       <div class="entity-total-value">{{ "{:,}".format(ns.total | int) }}</div>
-      <div class="entity-total-label">licences</div>
-      <div class="entity-arrow"><i class="bi bi-arrow-right-circle"></i> View detail</div>
+      <div class="entity-total-label">{{ t('licence_summary.licences') }}</div>
+      <div class="entity-arrow"><i class="bi bi-arrow-right-circle"></i> {{ t('licence_summary.view_detail') }}</div>
     </div>
 
   </a>
   {% endfor %}
 </div>
 {% else %}
-<p class="text-muted mb-4">No client-locked CSIs found.</p>
+<p class="text-muted mb-4">{{ t('licence_summary.none_client') }}</p>
 {% endif %}
 
 <!-- ── Shared pool section ── -->
 <div class="section-label">
-  <i class="bi bi-share" style="color:var(--s2)"></i> Shared Pool Licences
+  <i class="bi bi-share" style="color:var(--s2)"></i> {{ t('licence_summary.shared_pool') }}
 </div>
 
 {% if shared_lines %}
@@ -229,9 +229,9 @@
 {% set other_w = ((ns.other / ns.total * 100) | round(1)) if ns.total > 0 else 0 %}
 
 <div class="col-header">
-  <span>Pool</span>
-  <span>Quantity by Product Family</span>
-  <span>Total Qty</span>
+  <span>{{ t('licence_summary.pool') }}</span>
+  <span>{{ t('licence_summary.qty_by_family') }}</span>
+  <span>{{ t('label.quantity') }}</span>
 </div>
 
 <div class="entity-list">
@@ -239,7 +239,7 @@
 
     <div class="entity-name">
       <i class="bi bi-people-fill" style="color:var(--s2);font-size:.9rem;flex-shrink:0"></i>
-      <span class="entity-name-text">Shared Pool</span>
+      <span class="entity-name-text">{{ t('licence_summary.shared_pool_label') }}</span>
       <span class="entity-badge">{{ shared_lines | length }}p</span>
     </div>
 
@@ -268,14 +268,14 @@
 
     <div class="entity-total">
       <div class="entity-total-value" style="color:var(--s2)">{{ "{:,}".format(ns.total | int) }}</div>
-      <div class="entity-total-label">licences</div>
-      <div class="entity-arrow"><i class="bi bi-arrow-right-circle"></i> View detail</div>
+      <div class="entity-total-label">{{ t('licence_summary.licences') }}</div>
+      <div class="entity-arrow"><i class="bi bi-arrow-right-circle"></i> {{ t('licence_summary.view_detail') }}</div>
     </div>
 
   </a>
 </div>
 {% else %}
-<p class="text-muted">No shared CSIs found.</p>
+<p class="text-muted">{{ t('licence_summary.none_shared') }}</p>
 {% endif %}
 
 </div>

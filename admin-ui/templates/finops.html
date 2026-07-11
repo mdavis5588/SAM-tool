@@ -185,27 +185,27 @@
 
 <div class="kpi-strip">
   <div class="kpi-card blue">
-    <div class="kpi-label">Total Client Cost</div>
+    <div class="kpi-label">{{ t('finops.total_client_cost') }}</div>
     <div class="kpi-value">${{ "{:,.0f}".format(client.total_client_cost) }}</div>
     <div class="kpi-sub">Annual support + shared pool in use</div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-label">Annual Support</div>
+    <div class="kpi-label">{{ t('finops.annual_support') }}</div>
     <div class="kpi-value">${{ "{:,.0f}".format(client.total_support) }}</div>
-    <div class="kpi-sub">Client-locked licences</div>
+    <div class="kpi-sub">{{ t('finops_detail.client_locked_section') }}</div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-label">Shared Pool (In Use)</div>
+    <div class="kpi-label">{{ t('finops.shared_pool_in_use') }}</div>
     <div class="kpi-value">${{ "{:,.0f}".format(client.total_shared_inuse) }}</div>
     <div class="kpi-sub">Cost drawn from shared pool</div>
   </div>
   <div class="kpi-card green">
-    <div class="kpi-label">All Licences in Use</div>
+    <div class="kpi-label">{{ t('finops_detail.all_licences_in_use') }}</div>
     <div class="kpi-value">${{ "{:,.0f}".format(client.total_assigned) }}</div>
     <div class="kpi-sub">{{ util_pct }}% utilised</div>
   </div>
   <div class="kpi-card {% if waste_pct > 40 %}red{% elif waste_pct > 20 %}amber{% else %}blue{% endif %}">
-    <div class="kpi-label">Unused (Client-Locked)</div>
+    <div class="kpi-label">{{ t('finops_detail.unused_client_locked') }}</div>
     <div class="kpi-value">${{ "{:,.0f}".format(client.total_unassigned) }}</div>
     <div class="kpi-sub">{{ waste_pct }}% idle</div>
   </div>
@@ -280,9 +280,9 @@
           <tr class="tbl-group-row {% if line.source == 'shareable' %}shared{% endif %}">
             <td colspan="6">
               {% if line.source == 'client_locked' %}
-              <i class="bi bi-lock-fill me-1"></i>Client-Locked Licences
+              <i class="bi bi-lock-fill me-1"></i>{{ t('finops_detail.client_locked_section') }}
               {% else %}
-              <i class="bi bi-share me-1"></i>Shared Pool Licences
+              <i class="bi bi-share me-1"></i>{{ t('finops_detail.shared_pool_section') }}
               {% endif %}
             </td>
           </tr>
@@ -302,7 +302,7 @@
               {% else %}<span class="text-muted">—</span>{% endif %}
             </td>
             <td><span class="text-muted">—</span></td>
-            <td><span class="text-muted small fst-italic">From shared pool</span></td>
+            <td><span class="text-muted small fst-italic">{{ t('finops_detail.from_shared_pool') }}</span></td>
             {% else %}
             <td>{% if line.support_cost | float > 0 %}${{ "{:,.0f}".format(line.support_cost | float) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
             <td>
@@ -335,7 +335,7 @@
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="2">Total</td>
+            <td colspan="2">{{ t('label.total') }}</td>
             <td>${{ "{:,.0f}".format(client.total_support) }}</td>
             <td style="color:var(--green)">${{ "{:,.0f}".format(client.total_assigned) }}</td>
             <td>${{ "{:,.0f}".format(client.total_unassigned) }}</td>

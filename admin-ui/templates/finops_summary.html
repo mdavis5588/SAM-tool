@@ -184,11 +184,11 @@
 <div class="viz-root">
 
   <div class="d-flex align-items-baseline gap-3 mb-4">
-    <h4 class="mb-0"><i class="bi bi-currency-dollar me-1"></i>FinOps — Cost Summary</h4>
+    <h4 class="mb-0"><i class="bi bi-currency-dollar me-1"></i>{{ t('finops.title') }}</h4>
   </div>
 
   {% if not summary %}
-  <div class="alert alert-info">No cost data found. Ensure CSI entitlement lines have unit prices set.</div>
+  <div class="alert alert-info">{{ t('finops.no_data') }}</div>
   {% else %}
 
   {% set grand_support   = summary | sum(attribute='total_support') %}
@@ -199,36 +199,36 @@
   <!-- ── Grand totals across all clients ── -->
   <div class="page-kpi-row">
     <div class="page-kpi">
-      <span class="page-kpi-label">Total Across All Clients</span>
+      <span class="page-kpi-label">{{ t('finops.total_all_clients') }}</span>
       <span class="page-kpi-value purple">${{ "{:,.0f}".format(grand_total) }}</span>
     </div>
     <div class="page-kpi-divider"></div>
     <div class="page-kpi">
-      <span class="page-kpi-label">Annual Support</span>
+      <span class="page-kpi-label">{{ t('finops.annual_support') }}</span>
       <span class="page-kpi-value">${{ "{:,.0f}".format(grand_support) }}</span>
     </div>
     <div class="page-kpi-divider"></div>
     <div class="page-kpi">
-      <span class="page-kpi-label">Shared Pool (In Use)</span>
+      <span class="page-kpi-label">{{ t('finops.shared_pool_in_use') }}</span>
       <span class="page-kpi-value">${{ "{:,.0f}".format(grand_shared) }}</span>
     </div>
     <div class="page-kpi-divider"></div>
     <div class="page-kpi">
-      <span class="page-kpi-label">Clients</span>
+      <span class="page-kpi-label">{{ t('finops.clients') }}</span>
       <span class="page-kpi-value">{{ summary | length }}</span>
     </div>
   </div>
 
   <!-- ── Legend ── -->
   <div class="legend-row">
-    <span class="text-muted small fw-semibold me-1">Cost breakdown:</span>
+    <span class="text-muted small fw-semibold me-1">{{ t('finops.cost_breakdown') }}</span>
     <div class="legend-item">
       <span class="legend-swatch" style="background:var(--s1)"></span>
-      Annual Support (client-locked)
+      {{ t('finops.client_locked_support') }}
     </div>
     <div class="legend-item">
       <span class="legend-swatch" style="background:var(--s2)"></span>
-      Shared Pool in Use
+      {{ t('finops.shared_in_use') }}
     </div>
   </div>
 
@@ -239,9 +239,9 @@
                 padding:.2rem 1.1rem .5rem;
                 font-size:.67rem;font-weight:700;text-transform:uppercase;
                 letter-spacing:.07em;color:var(--text-muted)">
-      <span>Client</span>
-      <span>Cost Split</span>
-      <span style="text-align:right">Total Cost</span>
+      <span>{{ t('label.client') }}</span>
+      <span>{{ t('label.cost_split') }}</span>
+      <span style="text-align:right">{{ t('label.total_cost') }}</span>
     </div>
 
     {% for c in summary | sort(attribute='total_client_cost', reverse=true) %}
@@ -286,7 +286,7 @@
       <!-- Total + arrow -->
       <div class="client-total">
         <div class="client-total-value">${{ "{:,.0f}".format(c.total_client_cost) }}</div>
-        <div class="client-arrow"><i class="bi bi-arrow-right-circle"></i> View detail</div>
+        <div class="client-arrow"><i class="bi bi-arrow-right-circle"></i> {{ t('finops.view_detail') }}</div>
       </div>
 
     </a>

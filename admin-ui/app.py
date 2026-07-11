@@ -21,6 +21,35 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "change-me-in-production")
 
 # ---------------------------------------------------------------------------
+# i18n — simple JSON-based translations
+# ---------------------------------------------------------------------------
+_TRANSLATIONS = {}
+
+def _load_translations():
+    trans_dir = os.path.join(os.path.dirname(__file__), "translations")
+    for lang in ("en", "fr"):
+        path = os.path.join(trans_dir, f"{lang}.json")
+        with open(path, encoding="utf-8") as f:
+            _TRANSLATIONS[lang] = json.load(f)
+
+_load_translations()
+
+@app.route("/set-lang/<lang>")
+def set_lang(lang):
+    if lang in ("en", "fr"):
+        session["lang"] = lang
+    return redirect(request.referrer or url_for("servers"))
+
+@app.context_processor
+def inject_i18n():
+    lang = session.get("lang", "en")
+    strings = _TRANSLATIONS.get(lang, _TRANSLATIONS["en"])
+    def t(key, **kwargs):
+        val = strings.get(key, _TRANSLATIONS["en"].get(key, key))
+        return val.format(**kwargs) if kwargs else val
+    return {"t": t, "current_lang": lang}
+
+# ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
 DB_CONFIG = {

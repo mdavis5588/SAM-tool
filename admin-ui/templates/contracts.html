@@ -2,10 +2,10 @@
 {% block title %}Contracts — Oracle SAM{% endblock %}
 {% block content %}
 <div class="d-flex align-items-center mb-3">
-  <h4 class="mb-0"><i class="bi bi-file-earmark-text"></i> CSI Contracts</h4>
+  <h4 class="mb-0"><i class="bi bi-file-earmark-text"></i> {{ t('contracts.title') }}</h4>
   <span class="badge bg-secondary ms-2" id="visible-count">{{ contracts | length }}</span>
   <a href="{{ url_for('add_contract') }}" class="btn btn-primary btn-sm ms-auto">
-    <i class="bi bi-plus-circle me-1"></i>Add Contract
+    <i class="bi bi-plus-circle me-1"></i>{{ t('contracts.add') }}
   </a>
 </div>
 
@@ -16,8 +16,8 @@
       <div class="col-md-3">
         <label class="form-label form-label-sm mb-1">Owner</label>
         <select id="filter-owner" class="form-select form-select-sm">
-          <option value="">All owners</option>
-          <option value="__unowned__">— No owner (unassigned)</option>
+          <option value="">{{ t('contracts.filter_owner') }}</option>
+          <option value="__unowned__">{{ t('contracts.no_owner') }}</option>
           {% for c in all_clients %}
           <option value="{{ c.client_code }}">{{ c.client_name }} ({{ c.client_code }})</option>
           {% endfor %}
@@ -26,7 +26,7 @@
       <div class="col-md-3">
         <label class="form-label form-label-sm mb-1">Sharing Policy</label>
         <select id="filter-policy" class="form-select form-select-sm">
-          <option value="">All policies</option>
+          <option value="">{{ t('contracts.filter_policy') }}</option>
           {% for p in sharing_policies %}
           <option value="{{ p }}">{{ p | replace('_',' ') | title }}</option>
           {% endfor %}
@@ -35,14 +35,14 @@
       <div class="col-md-2">
         <label class="form-label form-label-sm mb-1">Status</label>
         <select id="filter-status" class="form-select form-select-sm">
-          <option value="">All statuses</option>
-          <option value="active">Active</option>
-          <option value="expired">Expired</option>
+          <option value="">{{ t('contracts.filter_status') }}</option>
+          <option value="active">{{ t('label.active') }}</option>
+          <option value="expired">{{ t('label.expired') }}</option>
         </select>
       </div>
       <div class="col-auto">
         <button class="btn btn-sm btn-outline-secondary" id="btn-clear-filters">
-          <i class="bi bi-x-circle"></i> Clear
+          <i class="bi bi-x-circle"></i> {{ t('action.clear') }}
         </button>
       </div>
     </div>
@@ -65,14 +65,14 @@
       </colgroup>
       <thead class="table-dark">
         <tr>
-          <th>CSI Number</th>
-          <th>Product</th>
-          <th>Metric</th>
-          <th class="text-end">Quantity</th>
-          <th class="text-end">Consumed</th>
-          <th class="text-end">Available</th>
-          <th class="text-end">Total Cost</th>
-          <th class="text-end">Price per Seat</th>
+          <th>{{ t('label.csi_number') }}</th>
+          <th>{{ t('label.product') }}</th>
+          <th>{{ t('label.metric') }}</th>
+          <th class="text-end">{{ t('label.quantity') }}</th>
+          <th class="text-end">{{ t('label.consumed') }}</th>
+          <th class="text-end">{{ t('label.available') }}</th>
+          <th class="text-end">{{ t('label.total_cost') }}</th>
+          <th class="text-end">{{ t('contracts.price_per_seat') }}</th>
           <th></th>
         </tr>
       </thead>
@@ -123,7 +123,7 @@
           <td class="text-end">
             <a href="{{ url_for('contract_detail', csi_id=c.csi_id) }}"
                class="btn btn-sm btn-outline-secondary py-0">
-              <i class="bi bi-eye"></i> View
+              <i class="bi bi-eye"></i> {{ t('action.view') }}
             </a>
           </td>
         </tr>
@@ -185,13 +185,13 @@
         {% else %}
         <tr class="contract-line" data-csi="{{ c.csi_id }}">
           <td></td>
-          <td colspan="8" class="text-muted small fst-italic">No entitlement lines.</td>
+          <td colspan="8" class="text-muted small fst-italic">{{ t('contracts.no_lines') }}</td>
         </tr>
         {% endfor %}
 
         {% else %}
         <tr>
-          <td colspan="9" class="text-center text-muted py-4">No contracts found.</td>
+          <td colspan="9" class="text-center text-muted py-4">{{ t('contracts.none') }}</td>
         </tr>
         {% endfor %}
       </tbody>

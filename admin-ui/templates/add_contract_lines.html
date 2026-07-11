@@ -38,7 +38,7 @@
   </ol>
 </nav>
 
-<h4 class="mb-1"><i class="bi bi-list-ul me-1"></i>Add Licence Lines</h4>
+<h4 class="mb-1"><i class="bi bi-list-ul me-1"></i>{{ t('add_lines.title') }}</h4>
 <p class="text-muted small mb-4">
   Contract: <strong>{{ contract.contract_name }}</strong>
   {% if contract.csi_number %}<span class="ms-1 text-muted">(CSI {{ contract.csi_number }})</span>{% endif %}
@@ -47,7 +47,7 @@
 <!-- ── Existing lines ── -->
 {% if lines %}
 <div class="mb-4">
-  <div class="field-label mb-2">Lines added so far</div>
+  <div class="field-label mb-2">{{ t('add_lines.lines_added') }}</div>
   <div style="overflow-x:auto">
     <table class="lines-table">
       <thead>
@@ -83,13 +83,13 @@
 
 <!-- ── Add line form ── -->
 <div class="form-card shadow-sm mb-4">
-  <div class="field-label mb-3">Add a Licence Line</div>
+  <div class="field-label mb-3">{{ t('add_lines.add_line') }}</div>
   <form method="post">
     <input type="hidden" name="action" value="add_line">
 
     <div class="row g-3 mb-3">
       <div class="col-md-6">
-        <div class="field-label">Product Name <span class="text-danger">*</span></div>
+        <div class="field-label">{{ t('add_lines.product_name') }} <span class="text-danger">*</span></div>
         <input type="text" name="product_name" class="form-control" required
                placeholder="e.g. Oracle Database Enterprise Edition"
                list="product-suggestions">
@@ -109,7 +109,7 @@
         </datalist>
       </div>
       <div class="col-md-3">
-        <div class="field-label">Product Family</div>
+        <div class="field-label">{{ t('add_lines.product_family') }}</div>
         <select name="product_family" class="form-select">
           <option value="oracle_database" selected>Oracle Database</option>
           <option value="oracle_weblogic">WebLogic</option>
@@ -120,7 +120,7 @@
         </select>
       </div>
       <div class="col-md-3">
-        <div class="field-label">Licence Metric</div>
+        <div class="field-label">{{ t('add_lines.licence_metric') }}</div>
         <select name="license_metric" class="form-select">
           <option value="processor" selected>Processor</option>
           <option value="named_user_plus">Named User Plus</option>
@@ -138,7 +138,7 @@
                min="0" step="1" placeholder="0">
       </div>
       <div class="col-md-3">
-        <div class="field-label">Unit Price</div>
+        <div class="field-label">{{ t('add_lines.unit_price') }}</div>
         <div class="input-group">
           <span class="input-group-text">$</span>
           <input type="number" name="unit_price" class="form-control"
@@ -147,7 +147,7 @@
         <div class="form-text">Per licence unit</div>
       </div>
       <div class="col-md-3">
-        <div class="field-label">Annual Support Cost</div>
+        <div class="field-label">{{ t('add_lines.annual_support') }}</div>
         <div class="input-group">
           <span class="input-group-text">$</span>
           <input type="number" name="annual_support_cost" class="form-control"
@@ -168,9 +168,9 @@
   <input type="hidden" name="action" value="done">
   <div class="d-flex gap-2 align-items-center">
     <button type="submit" class="btn btn-primary">
-      <i class="bi bi-check-circle me-1"></i>Done — View Contract
+      <i class="bi bi-check-circle me-1"></i>{{ t('add_lines.done_view') }}
     </button>
-    <span class="text-muted small">or keep adding lines above</span>
+    <span class="text-muted small">{{ t('add_lines.keep_adding') }}</span>
   </div>
 </form>
 

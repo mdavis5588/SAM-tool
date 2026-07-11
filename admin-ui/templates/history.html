@@ -13,7 +13,7 @@
 </nav>
 
 <div class="d-flex align-items-center mb-3">
-  <h4 class="mb-0"><i class="bi bi-clock-history"></i> Change History — {{ server.hostname }}</h4>
+  <h4 class="mb-0"><i class="bi bi-clock-history"></i> {{ t('history.title') }} — {{ server.hostname }}</h4>
   <span class="badge bg-secondary ms-2">{{ history | length }}</span>
 </div>
 
@@ -92,7 +92,7 @@
   </div>
 </div>
 {% else %}
-<div class="alert alert-info">No change history recorded for this server yet.</div>
+<div class="alert alert-info">{{ t('history.none') }}</div>
 {% endif %}
 
 {% endblock %}

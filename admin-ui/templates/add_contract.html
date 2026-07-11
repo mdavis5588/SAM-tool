@@ -37,11 +37,11 @@
 <nav aria-label="breadcrumb" class="mb-3">
   <ol class="breadcrumb">
     <li class="breadcrumb-item"><a href="{{ url_for('contracts') }}">Contracts</a></li>
-    <li class="breadcrumb-item active">New Contract</li>
+    <li class="breadcrumb-item active">{{ t('add_contract.title') }}</li>
   </ol>
 </nav>
 
-<h4 class="mb-4"><i class="bi bi-file-earmark-plus me-1"></i>New Contract</h4>
+<h4 class="mb-4"><i class="bi bi-file-earmark-plus me-1"></i>{{ t('add_contract.title') }}</h4>
 
 <div class="form-card shadow-sm">
   <form method="post">
@@ -50,7 +50,7 @@
     <!-- ── Identity ── -->
     <div class="row g-3 mb-3">
       <div class="col-md-5">
-        <div class="field-label">CSI Number</div>
+        <div class="field-label">{{ t('add_contract.csi_number') }}</div>
         <input type="text" name="csi_number" class="form-control" placeholder="e.g. 12345678"
                pattern="\d*" title="Digits only">
         <div class="form-text">Leave blank if not yet assigned.</div>
@@ -64,7 +64,7 @@
 
     <div class="row g-3 mb-3">
       <div class="col-md-6">
-        <div class="field-label">Vendor Reference</div>
+        <div class="field-label">{{ t('add_contract.vendor_reference') }}</div>
         <input type="text" name="vendor_reference" class="form-control" placeholder="PO / Oracle ref">
       </div>
       <div class="col-md-3">
@@ -91,15 +91,15 @@
     <!-- ── Dates ── -->
     <div class="row g-3 mb-4">
       <div class="col-md-4">
-        <div class="field-label">Purchase Date</div>
+        <div class="field-label">{{ t('add_contract.purchase_date') }}</div>
         <input type="date" name="purchase_date" class="form-control">
       </div>
       <div class="col-md-4">
-        <div class="field-label">Support Start</div>
+        <div class="field-label">{{ t('add_contract.support_start') }}</div>
         <input type="date" name="support_start" class="form-control">
       </div>
       <div class="col-md-4">
-        <div class="field-label">Support Expiry</div>
+        <div class="field-label">{{ t('add_contract.support_expiry') }}</div>
         <input type="date" name="support_expiry" class="form-control">
       </div>
     </div>
@@ -110,21 +110,21 @@
       <div class="col-md-4">
         <label class="policy-card d-block">
           <input type="radio" name="sharing_policy" value="client_locked" required>
-          <div class="policy-title"><i class="bi bi-lock-fill text-purple me-1" style="color:#7c3aed"></i>Client-Locked</div>
+          <div class="policy-title"><i class="bi bi-lock-fill text-purple me-1" style="color:#7c3aed"></i>{{ t('add_contract.policy_client_locked') }}</div>
           <div class="policy-desc">Exclusively assigned to one client.</div>
         </label>
       </div>
       <div class="col-md-4">
         <label class="policy-card d-block">
           <input type="radio" name="sharing_policy" value="shareable">
-          <div class="policy-title"><i class="bi bi-share me-1" style="color:#2a78d6"></i>Shareable</div>
+          <div class="policy-title"><i class="bi bi-share me-1" style="color:#2a78d6"></i>{{ t('add_contract.policy_shareable') }}</div>
           <div class="policy-desc">Pooled — can be allocated across clients.</div>
         </label>
       </div>
       <div class="col-md-4">
         <label class="policy-card d-block">
           <input type="radio" name="sharing_policy" value="unassigned">
-          <div class="policy-title"><i class="bi bi-question-circle me-1 text-muted"></i>Unassigned</div>
+          <div class="policy-title"><i class="bi bi-question-circle me-1 text-muted"></i>{{ t('add_contract.policy_unassigned') }}</div>
           <div class="policy-desc">Not yet assigned to any client.</div>
         </label>
       </div>
@@ -150,9 +150,9 @@
 
     <div class="d-flex gap-2">
       <button type="submit" class="btn btn-primary">
-        <i class="bi bi-arrow-right-circle me-1"></i>Save &amp; Add Licence Lines
+        <i class="bi bi-arrow-right-circle me-1"></i>{{ t('add_contract.save_add_lines') }}
       </button>
-      <a href="{{ url_for('contracts') }}" class="btn btn-outline-secondary">Cancel</a>
+      <a href="{{ url_for('contracts') }}" class="btn btn-outline-secondary">{{ t('action.cancel') }}</a>
     </div>
   </form>
 </div>

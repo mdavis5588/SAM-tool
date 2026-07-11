@@ -2,7 +2,7 @@
 {% block title %}Alerts — Oracle SAM{% endblock %}
 {% block content %}
 <div class="d-flex align-items-center mb-3">
-  <h4 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Compliance Alerts</h4>
+  <h4 class="mb-0"><i class="bi bi-exclamation-triangle"></i> {{ t('alerts.title') }}</h4>
   <span class="badge bg-danger ms-2">{{ alerts | selectattr('severity', 'equalto', 'HIGH') | list | length }} HIGH</span>
   <span class="badge bg-warning text-dark ms-1">{{ alerts | selectattr('severity', 'equalto', 'MEDIUM') | list | length }} MEDIUM</span>
 </div>

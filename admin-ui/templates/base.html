@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ current_lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -179,13 +179,13 @@
         </span>
       </button>
       <ul class="dropdown-menu" style="min-width:220px">
-        <li><h6 class="dropdown-header">Switch Client</h6></li>
+        <li><h6 class="dropdown-header">{{ t('nav.switch_client') }}</h6></li>
         <li>
           <form method="post" action="{{ url_for('switch_client') }}">
             <input type="hidden" name="schema" value="__all__">
             <button type="submit"
                     class="dropdown-item {% if active_schema == '__all__' %}active{% endif %}">
-              <i class="bi bi-globe me-1"></i> All Clients
+              <i class="bi bi-globe me-1"></i> {{ t('nav.all_clients') }}
             </button>
           </form>
         </li>
@@ -208,37 +208,43 @@
     {% endif %}
 
     <nav class="sidebar-nav">
-      <div class="sidebar-section-label">Inventory</div>
+      <div class="sidebar-section-label">{{ t('nav.inventory') }}</div>
       <a class="sidebar-link {% if request.endpoint == 'servers' %}active{% endif %}"
-         href="{{ url_for('servers') }}"><i class="bi bi-server"></i><span>Servers</span></a>
+         href="{{ url_for('servers') }}"><i class="bi bi-server"></i><span>{{ t('nav.servers') }}</span></a>
       <a class="sidebar-link {% if request.endpoint == 'vmware' %}active{% endif %}"
-         href="{{ url_for('vmware') }}"><i class="bi bi-diagram-3"></i><span>VMware</span></a>
+         href="{{ url_for('vmware') }}"><i class="bi bi-diagram-3"></i><span>{{ t('nav.vmware') }}</span></a>
 
-      <div class="sidebar-section-label">Licensing</div>
+      <div class="sidebar-section-label">{{ t('nav.licensing') }}</div>
       <a class="sidebar-link {% if request.endpoint in ['contracts','contract_detail'] %}active{% endif %}"
-         href="{{ url_for('contracts') }}"><i class="bi bi-file-earmark-text"></i><span>Contracts</span></a>
+         href="{{ url_for('contracts') }}"><i class="bi bi-file-earmark-text"></i><span>{{ t('nav.contracts') }}</span></a>
       <a class="sidebar-link {% if request.endpoint in ['licence_summary','licence_summary_client','licence_summary_shared'] %}active{% endif %}"
-         href="{{ url_for('licence_summary') }}"><i class="bi bi-bar-chart-line"></i><span>Licence Summary</span></a>
+         href="{{ url_for('licence_summary') }}"><i class="bi bi-bar-chart-line"></i><span>{{ t('nav.licence_summary') }}</span></a>
       <a class="sidebar-link {% if request.endpoint == 'licence_summary_server_costs' %}active{% endif %}"
-         href="{{ url_for('licence_summary_server_costs') }}"><i class="bi bi-server"></i><span>Server Costs</span></a>
+         href="{{ url_for('licence_summary_server_costs') }}"><i class="bi bi-server"></i><span>{{ t('nav.server_costs') }}</span></a>
       <a class="sidebar-link {% if request.endpoint in ['finops','finops_client'] %}active{% endif %}"
-         href="{{ url_for('finops') }}"><i class="bi bi-currency-dollar"></i><span>FinOps</span></a>
+         href="{{ url_for('finops') }}"><i class="bi bi-currency-dollar"></i><span>{{ t('nav.finops') }}</span></a>
       <a class="sidebar-link {% if request.endpoint == 'alerts' %}active{% endif %}"
-         href="{{ url_for('alerts') }}"><i class="bi bi-exclamation-triangle"></i><span>Alerts</span></a>
+         href="{{ url_for('alerts') }}"><i class="bi bi-exclamation-triangle"></i><span>{{ t('nav.alerts') }}</span></a>
 
-      <div class="sidebar-section-label">Administration</div>
+      <div class="sidebar-section-label">{{ t('nav.administration') }}</div>
       <a class="sidebar-link {% if request.endpoint == 'clients' %}active{% endif %}"
-         href="{{ url_for('clients') }}"><i class="bi bi-people"></i><span>Clients</span></a>
+         href="{{ url_for('clients') }}"><i class="bi bi-people"></i><span>{{ t('nav.clients') }}</span></a>
       <a class="sidebar-link {% if request.endpoint == 'settings' %}active{% endif %}"
-         href="{{ url_for('settings') }}"><i class="bi bi-gear"></i><span>Alert Settings</span></a>
+         href="{{ url_for('settings') }}"><i class="bi bi-gear"></i><span>{{ t('nav.alert_settings') }}</span></a>
     </nav>
 
     <div class="sidebar-bottom">
       <a class="sidebar-link text-warning-link" href="{{ url_for('export_lms') }}">
-        <i class="bi bi-file-earmark-excel"></i><span>LMS Export</span>
+        <i class="bi bi-file-earmark-excel"></i><span>{{ t('nav.lms_export') }}</span>
+      </a>
+      <!-- Language toggle -->
+      <a class="sidebar-link" href="{{ url_for('set_lang', lang=('fr' if current_lang == 'en' else 'en')) }}"
+         title="{{ t('lang_name') }}">
+        <i class="bi bi-translate"></i>
+        <span>{{ t('lang_toggle') }}</span>
       </a>
       <a class="sidebar-link" href="{{ url_for('logout') }}">
-        <i class="bi bi-box-arrow-right"></i><span>Logout</span>
+        <i class="bi bi-box-arrow-right"></i><span>{{ t('nav.logout') }}</span>
       </a>
     </div>
   </aside>

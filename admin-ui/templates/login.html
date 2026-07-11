@@ -10,14 +10,14 @@
         </h4>
         <form method="post">
           <div class="mb-3">
-            <label class="form-label">Username</label>
+            <label class="form-label">{{ t('login.username') }}</label>
             <input type="text" name="username" class="form-control" autofocus required>
           </div>
           <div class="mb-3">
-            <label class="form-label">Password</label>
+            <label class="form-label">{{ t('login.password') }}</label>
             <input type="password" name="password" class="form-control" required>
           </div>
-          <button type="submit" class="btn btn-primary w-100">Sign in</button>
+          <button type="submit" class="btn btn-primary w-100">{{ t('login.sign_in') }}</button>
         </form>
       </div>
     </div>

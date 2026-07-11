@@ -126,30 +126,30 @@
 <div class="viz-root">
 
 <div class="d-flex align-items-baseline gap-3 mb-4">
-  <h4 class="mb-0"><i class="bi bi-server me-1"></i>Server Licence Costs</h4>
+  <h4 class="mb-0"><i class="bi bi-server me-1"></i>{{ t('server_costs.title') }}</h4>
   <span class="text-muted small">{{ servers | length }} server{{ 's' if servers|length != 1 }}</span>
 </div>
 
 {% if not servers %}
-<div class="alert alert-info">No server licence assignments found.</div>
+<div class="alert alert-info">{{ t('server_costs.none') }}</div>
 {% else %}
 
 <!-- ── Filter bar ── -->
 <div class="filter-bar">
-  <input type="text" id="filterHostname" placeholder="Search hostname…" style="min-width:200px">
+  <input type="text" id="filterHostname" placeholder="{{ t('server_costs.search') }}" style="min-width:200px">
   <select id="filterClient">
-    <option value="">All clients</option>
+    <option value="">{{ t('server_costs.filter_client') }}</option>
     {% for name in servers | map(attribute='client_name') | unique | sort %}
     <option value="{{ name }}">{{ name }}</option>
     {% endfor %}
   </select>
   <select id="filterEnv">
-    <option value="">All environments</option>
+    <option value="">{{ t('server_costs.filter_env') }}</option>
     {% for env in servers | map(attribute='environment') | unique | sort %}
     <option value="{{ env }}">{{ env | title }}</option>
     {% endfor %}
   </select>
-  <span class="text-muted small ms-auto" id="visibleCount">{{ servers|length }} shown</span>
+  <span class="text-muted small ms-auto" id="visibleCount">{{ servers|length }} {{ t('label.shown') }}</span>
 </div>
 
 <!-- ── Server cards ── -->
@@ -176,11 +176,11 @@
       </div>
     </div>
 
-    <div class="assign-count">{{ sv.assignments | length }} CSI assignment{{ 's' if sv.assignments|length != 1 }}</div>
+    <div class="assign-count">{{ sv.assignments | length }} {{ t('server_costs.assignments_plural') if sv.assignments|length != 1 else t('server_costs.assignments') }}</div>
 
     <div>
       <div class="cost-pill">${{ "{:,.0f}".format(sv.total_support_cost) }}</div>
-      <div class="text-muted" style="font-size:.68rem">Annual support</div>
+      <div class="text-muted" style="font-size:.68rem">{{ t('server_costs.annual_support') }}</div>
     </div>
 
     <i class="bi bi-chevron-down chevron"></i>
@@ -192,12 +192,12 @@
         <table class="asgn-table">
           <thead>
             <tr>
-              <th>Product</th>
+              <th>{{ t('label.product') }}</th>
               <th>CSI</th>
-              <th>Qty Used</th>
-              <th>Unit Price</th>
-              <th>Licence Cost</th>
-              <th>Annual Support</th>
+              <th>{{ t('server_costs.qty_used') }}</th>
+              <th>{{ t('label.unit_price') }}</th>
+              <th>{{ t('server_costs.licence_cost') }}</th>
+              <th>{{ t('label.annual_support') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -224,7 +224,7 @@
           </tbody>
           <tfoot>
             <tr>
-              <td colspan="4">Total</td>
+              <td colspan="4">{{ t('label.total') }}</td>
               <td style="color:var(--s1)">${{ "{:,.0f}".format(sv.total_licence_cost) }}</td>
               <td style="color:#1baf7a">${{ "{:,.0f}".format(sv.total_support_cost) }}</td>
             </tr>
@@ -259,7 +259,7 @@
       card.style.display = match ? '' : 'none';
       if (match) shown++;
     });
-    countEl.textContent = shown + ' shown';
+    countEl.textContent = shown + ' {{ t('label.shown') }}';
   }
 
   hosInp.addEventListener('input',  applyFilters);
