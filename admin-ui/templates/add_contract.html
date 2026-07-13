@@ -161,14 +161,14 @@
           <div class="policy-desc">Exclusively assigned to one client.</div>
         </label>
       </div>
-      <div class="col-md-4">
+      <div class="col-md-4" id="policyShareableCol">
         <label class="policy-card d-block">
           <input type="radio" name="sharing_policy" value="shareable">
           <div class="policy-title"><i class="bi bi-share me-1" style="color:#2a78d6"></i>{{ t('add_contract.policy_shareable') }}</div>
           <div class="policy-desc">Pooled — can be allocated across clients.</div>
         </label>
       </div>
-      <div class="col-md-4">
+      <div class="col-md-4" id="policyUnassignedCol">
         <label class="policy-card d-block">
           <input type="radio" name="sharing_policy" value="unassigned">
           <div class="policy-title"><i class="bi bi-question-circle me-1 text-muted"></i>{{ t('add_contract.policy_unassigned') }}</div>
@@ -234,6 +234,10 @@
   const tagsDiv    = document.getElementById('productTags');
   const customInp  = document.getElementById('customProduct');
 
+  const policyShareableCol  = document.getElementById('policyShareableCol');
+  const policyUnassignedCol = document.getElementById('policyUnassignedCol');
+  const radioLocked         = document.querySelector('input[name="sharing_policy"][value="client_locked"]');
+
   function applyUlaState() {
     const on = ulaToggle.checked;
     ulaFields.style.display = on ? '' : 'none';
@@ -244,6 +248,13 @@
     // Highlight toggle row
     ulaRow.style.borderColor = on ? '#7c3aed' : '#e3e6ea';
     ulaRow.style.background  = on ? 'rgba(124,58,237,.04)' : '';
+    // ULA must be client-locked — hide other sharing options
+    policyShareableCol.style.display  = on ? 'none' : '';
+    policyUnassignedCol.style.display = on ? 'none' : '';
+    if (on) {
+      radioLocked.checked = true;
+      updateClient();
+    }
   }
 
   ulaToggle.addEventListener('change', applyUlaState);
