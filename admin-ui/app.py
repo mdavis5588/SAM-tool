@@ -1667,7 +1667,7 @@ def visibility_versions():
         "SELECT client_id, client_code, client_name, schema_name "
         "FROM sam_admin.clients WHERE is_active ORDER BY client_name"
     )
-    version_map = {}   # db_version -> {count, clients: set, status, end_date}
+    clients_data = []
     for c in active_clients:
         s = c["schema_name"]
         try:
@@ -1682,23 +1682,22 @@ def visibility_versions():
         except Exception as e:
             app.logger.error("visibility_versions query failed for %s: %s", s, e)
             continue
+        versions = []
         for r in rows:
             ver = r["db_version"] or "Unknown"
             cnt = int(r["server_count"] or 0)
-            if ver not in version_map:
-                status, end_date = _version_support_status(ver)
-                version_map[ver] = {"version": ver, "count": 0,
-                                    "clients": set(), "status": status,
-                                    "end_date": end_date}
-            version_map[ver]["count"] += cnt
-            version_map[ver]["clients"].add(c["client_name"])
-
-    versions = sorted(version_map.values(), key=lambda v: v["version"], reverse=True)
-    for v in versions:
-        v["clients"] = sorted(v["clients"])
-    max_count = max((v["count"] for v in versions), default=1)
-    return render_template("visibility_versions.html",
-                           versions=versions, max_count=max_count)
+            status, end_date = _version_support_status(ver)
+            versions.append({"version": ver, "count": cnt,
+                             "status": status, "end_date": end_date})
+        versions.sort(key=lambda v: v["version"], reverse=True)
+        max_count = max((v["count"] for v in versions), default=1)
+        clients_data.append({
+            "client_name": c["client_name"],
+            "client_code": c["client_code"],
+            "versions": versions,
+            "max_count": max_count,
+        })
+    return render_template("visibility_versions.html", clients=clients_data)
 
 
 # ---------------------------------------------------------------------------
