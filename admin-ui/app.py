@@ -671,7 +671,7 @@ def edit_server(server_id):
 
     entitlement_lines = query("""
         SELECT l.csi_id, l.product_name, l.product_family::TEXT AS product_family,
-               l.quantity, cs.csi_number, cs.contract_name, cs.support_expiry,
+               l.quantity, l.unit_price, cs.csi_number, cs.contract_name, cs.support_expiry,
                cs.sharing_policy, c.client_code AS owning_client
         FROM shared.csi_contracts cs
         JOIN shared.license_entitlement_lines l ON l.csi_id = cs.csi_id AND l.is_active
