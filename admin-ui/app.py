@@ -1620,6 +1620,88 @@ def add_contract_lines(csi_id):
 
 
 # ---------------------------------------------------------------------------
+# Visibility — Versions
+# ---------------------------------------------------------------------------
+
+# Oracle DB version → Premier/Extended support end dates (yyyy-mm-dd)
+# Source: Oracle Lifetime Support Policy
+_ORACLE_DB_SUPPORT = {
+    "23":   {"premier": "2028-04-30", "extended": "2031-04-30"},
+    "21":   {"premier": "2024-04-30", "extended": "2027-04-30"},
+    "19":   {"premier": "2024-04-30", "extended": "2027-04-30"},
+    "18":   {"premier": "2021-06-30", "extended": "2021-06-30"},
+    "12.2": {"premier": "2020-11-30", "extended": "2023-03-31"},
+    "12.1": {"premier": "2018-07-31", "extended": "2022-07-31"},
+    "11.2": {"premier": "2015-01-31", "extended": "2020-12-31"},
+    "11.1": {"premier": "2010-08-31", "extended": "2013-08-31"},
+    "10.2": {"premier": "2010-07-31", "extended": "2013-07-31"},
+}
+
+def _version_support_status(db_version):
+    """Return ('supported'|'warning'|'eol', end_date_str) for a db_version string."""
+    from datetime import date, timedelta
+    if not db_version:
+        return "unknown", None
+    v = db_version.strip()
+    # Match longest prefix key first
+    matched = None
+    for key in sorted(_ORACLE_DB_SUPPORT, key=len, reverse=True):
+        if v.startswith(key):
+            matched = _ORACLE_DB_SUPPORT[key]
+            break
+    if not matched:
+        return "unknown", None
+    today = date.today()
+    extended_end = date.fromisoformat(matched["extended"])
+    warning_threshold = extended_end - timedelta(days=365)
+    if today > extended_end:
+        return "eol", matched["extended"]
+    elif today >= warning_threshold:
+        return "warning", matched["extended"]
+    return "supported", matched["extended"]
+
+@app.route("/visibility/versions")
+@login_required
+def visibility_versions():
+    active_clients = query(
+        "SELECT client_id, client_code, client_name, schema_name "
+        "FROM sam_admin.clients WHERE is_active ORDER BY client_name"
+    )
+    version_map = {}   # db_version -> {count, clients: set, status, end_date}
+    for c in active_clients:
+        s = c["schema_name"]
+        try:
+            rows = query(f"""
+                SELECT COALESCE(i.db_version, 'Unknown') AS db_version,
+                       COUNT(DISTINCT s.server_id) AS server_count
+                FROM {s}.oracle_servers s
+                JOIN {s}.oracle_instances i ON i.server_id = s.server_id AND i.is_active
+                WHERE s.is_active
+                GROUP BY i.db_version
+            """)
+        except Exception as e:
+            app.logger.error("visibility_versions query failed for %s: %s", s, e)
+            continue
+        for r in rows:
+            ver = r["db_version"] or "Unknown"
+            cnt = int(r["server_count"] or 0)
+            if ver not in version_map:
+                status, end_date = _version_support_status(ver)
+                version_map[ver] = {"version": ver, "count": 0,
+                                    "clients": set(), "status": status,
+                                    "end_date": end_date}
+            version_map[ver]["count"] += cnt
+            version_map[ver]["clients"].add(c["client_name"])
+
+    versions = sorted(version_map.values(), key=lambda v: v["version"], reverse=True)
+    for v in versions:
+        v["clients"] = sorted(v["clients"])
+    max_count = max((v["count"] for v in versions), default=1)
+    return render_template("visibility_versions.html",
+                           versions=versions, max_count=max_count)
+
+
+# ---------------------------------------------------------------------------
 # Compliance dashboard
 # ---------------------------------------------------------------------------
 @app.route("/compliance")

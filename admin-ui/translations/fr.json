@@ -12,6 +12,8 @@
   "nav.finops": "FinOps",
   "nav.alerts": "Alertes",
   "nav.compliance": "Conformité",
+  "nav.visibility": "Visibilité",
+  "nav.versions": "Versions BDD",
   "nav.administration": "Administration",
   "nav.clients": "Clients",
   "nav.alert_settings": "Paramètres d'alerte",
@@ -137,6 +139,18 @@
   "finops_detail.from_shared_pool": "Du pool partagé",
   "finops_detail.utilisation": "Utilisation",
   "finops_detail.waste_badge": "% gaspillage",
+
+  "visibility.versions_title": "Distribution des versions de base de données",
+  "visibility.supported": "Supporté",
+  "visibility.approaching_eol": "Fin de support proche",
+  "visibility.out_of_support": "Hors support",
+  "visibility.total_servers": "Total serveurs",
+  "visibility.legend": "Statut du support :",
+  "visibility.within_12mo": "dans les 12 mois",
+  "visibility.support_ends": "Support se termine",
+  "visibility.support_ended": "Support terminé",
+  "visibility.unknown": "Inconnu",
+  "visibility.no_data": "Aucune donnée de version de base de données trouvée.",
 
   "alerts.title": "Alertes",
 

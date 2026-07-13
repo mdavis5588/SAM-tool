@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+{% block title %}DB Versions — Oracle SAM{% endblock %}
+{% block content %}
+
+<style>
+  .vv-root {
+    --ok:         #059669;
+    --warn:       #d97706;
+    --eol:        #dc2626;
+    --unknown:    #6b7280;
+    --text-pri:   #0f0e0d;
+    --text-sec:   #52514e;
+    --text-muted: #8a8884;
+    --surface:    #ffffff;
+    --border:     #e4e2dc;
+    --bg:         #f4f6f8;
+    --track:      #e4e2dc;
+  }
+  @media (prefers-color-scheme: dark) {
+    .vv-root {
+      --ok: #34d399; --warn: #fbbf24; --eol: #f87171; --unknown: #9ca3af;
+      --text-pri: #f0eeeb; --text-sec: #c3c2b7; --text-muted: #898781;
+      --surface: #1e1e1d; --border: #2e2e2b; --bg: #141413; --track: #2e2e2b;
+    }
+  }
+  :root[data-theme="dark"]  .vv-root { --ok:#34d399;--warn:#fbbf24;--eol:#f87171;--unknown:#9ca3af;--text-pri:#f0eeeb;--text-sec:#c3c2b7;--text-muted:#898781;--surface:#1e1e1d;--border:#2e2e2b;--bg:#141413;--track:#2e2e2b; }
+  :root[data-theme="light"] .vv-root { --ok:#059669;--warn:#d97706;--eol:#dc2626;--unknown:#6b7280;--text-pri:#0f0e0d;--text-sec:#52514e;--text-muted:#8a8884;--surface:#ffffff;--border:#e4e2dc;--bg:#f4f6f8;--track:#e4e2dc; }
+
+  /* ── Legend ── */
+  .legend-strip {
+    display: flex;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.75rem;
+    padding: .7rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: .78rem;
+    color: var(--text-sec);
+  }
+  .legend-item { display: flex; align-items: center; gap: .4rem; }
+  .legend-dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  }
+
+  /* ── KPI strip ── */
+  .kpi-strip { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.75rem; }
+  .kpi-card {
+    flex: 1 1 110px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .75rem 1rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .kpi-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  }
+  .kpi-card.ok::before    { background: var(--ok); }
+  .kpi-card.warn::before  { background: var(--warn); }
+  .kpi-card.eol::before   { background: var(--eol); }
+  .kpi-label {
+    font-size: .65rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .07em; color: var(--text-muted); margin-bottom: .2rem;
+  }
+  .kpi-value { font-size: 1.5rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .kpi-card.ok   .kpi-value { color: var(--ok); }
+  .kpi-card.warn .kpi-value { color: var(--warn); }
+  .kpi-card.eol  .kpi-value { color: var(--eol); }
+
+  /* ── Version rows ── */
+  .version-list { display: flex; flex-direction: column; gap: .65rem; }
+
+  .version-row {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .85rem 1.1rem;
+    border-left-width: 4px;
+  }
+  .version-row.ok      { border-left-color: var(--ok); }
+  .version-row.warning { border-left-color: var(--warn); }
+  .version-row.eol     { border-left-color: var(--eol); }
+  .version-row.unknown { border-left-color: var(--unknown); }
+
+  .version-top {
+    display: grid;
+    grid-template-columns: 160px 1fr auto;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: .55rem;
+  }
+
+  .version-label {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+  }
+  .version-name {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text-pri);
+    font-variant-numeric: tabular-nums;
+  }
+  .status-pill {
+    font-size: .65rem;
+    font-weight: 700;
+    padding: .15rem .5rem;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+  .status-pill.ok      { background: rgba(5,150,105,.12);  color: var(--ok); }
+  .status-pill.warning { background: rgba(217,119,6,.12);  color: var(--warn); }
+  .status-pill.eol     { background: rgba(220,38,38,.12);  color: var(--eol); }
+  .status-pill.unknown { background: rgba(107,114,128,.12); color: var(--unknown); }
+
+  /* ── Bar ── */
+  .bar-wrap { display: flex; flex-direction: column; gap: .3rem; }
+  .bar-track {
+    height: 10px;
+    border-radius: 5px;
+    background: var(--track);
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 5px;
+    transition: width .4s ease;
+  }
+  .bar-fill.ok      { background: var(--ok); }
+  .bar-fill.warning { background: var(--warn); }
+  .bar-fill.eol     { background: var(--eol); }
+  .bar-fill.unknown { background: var(--unknown); }
+
+  /* ── Server count ── */
+  .server-count {
+    text-align: right;
+    white-space: nowrap;
+  }
+  .server-count-num {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: var(--text-pri);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .server-count-label {
+    font-size: .65rem;
+    color: var(--text-muted);
+    margin-top: .1rem;
+  }
+
+  /* ── Client tags + end date ── */
+  .version-meta {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    flex-wrap: wrap;
+    margin-top: .4rem;
+  }
+  .end-date {
+    font-size: .72rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+  }
+  .end-date.warning { color: var(--warn); font-weight: 600; }
+  .end-date.eol     { color: var(--eol);  font-weight: 600; }
+  .client-tags { display: flex; flex-wrap: wrap; gap: .3rem; }
+  .client-tag {
+    font-size: .65rem;
+    background: var(--track);
+    color: var(--text-sec);
+    border-radius: 4px;
+    padding: .1rem .4rem;
+  }
+</style>
+
+<div class="vv-root">
+
+<div class="d-flex align-items-baseline gap-3 mb-4">
+  <h4 class="mb-0"><i class="bi bi-database me-1"></i>{{ t('visibility.versions_title') }}</h4>
+</div>
+
+{% set n_ok      = versions | selectattr('status','equalto','supported') | list | length %}
+{% set n_warn    = versions | selectattr('status','equalto','warning')   | list | length %}
+{% set n_eol     = versions | selectattr('status','equalto','eol')       | list | length %}
+{% set total_srv = versions | sum(attribute='count') %}
+
+<!-- ── KPI strip ── -->
+<div class="kpi-strip">
+  <div class="kpi-card ok">
+    <div class="kpi-label">{{ t('visibility.supported') }}</div>
+    <div class="kpi-value">{{ n_ok }}</div>
+  </div>
+  <div class="kpi-card warn">
+    <div class="kpi-label">{{ t('visibility.approaching_eol') }}</div>
+    <div class="kpi-value">{{ n_warn }}</div>
+  </div>
+  <div class="kpi-card eol">
+    <div class="kpi-label">{{ t('visibility.out_of_support') }}</div>
+    <div class="kpi-value">{{ n_eol }}</div>
+  </div>
+  <div class="kpi-card" style="border-top:3px solid var(--text-muted)">
+    <div class="kpi-label">{{ t('visibility.total_servers') }}</div>
+    <div class="kpi-value" style="color:var(--text-pri)">{{ total_srv }}</div>
+  </div>
+</div>
+
+<!-- ── Legend ── -->
+<div class="legend-strip">
+  <span class="fw-semibold text-muted me-1" style="font-size:.75rem">{{ t('visibility.legend') }}</span>
+  <div class="legend-item"><span class="legend-dot" style="background:var(--ok)"></span>{{ t('visibility.supported') }}</div>
+  <div class="legend-item"><span class="legend-dot" style="background:var(--warn)"></span>{{ t('visibility.approaching_eol') }} <span class="text-muted ms-1" style="font-size:.7rem">({{ t('visibility.within_12mo') }})</span></div>
+  <div class="legend-item"><span class="legend-dot" style="background:var(--eol)"></span>{{ t('visibility.out_of_support') }}</div>
+</div>
+
+{% if not versions %}
+<div class="alert alert-info">{{ t('visibility.no_data') }}</div>
+{% else %}
+
+<!-- ── Version rows ── -->
+<div class="version-list">
+  {% for v in versions %}
+  {% set pct = ((v.count / max_count) * 100) | round(1) %}
+  <div class="version-row {{ v.status if v.status in ('ok','warning','eol') else 'unknown' }}
+              {%- if v.status == 'supported' %} ok{% endif %}">
+
+    <div class="version-top">
+
+      <!-- Version label + pill -->
+      <div class="version-label">
+        <span class="version-name">{{ v.version }}</span>
+        {% if v.status == 'supported' %}
+        <span class="status-pill ok"><i class="bi bi-check-circle-fill"></i> {{ t('visibility.supported') }}</span>
+        {% elif v.status == 'warning' %}
+        <span class="status-pill warning"><i class="bi bi-exclamation-triangle-fill"></i> {{ t('visibility.approaching_eol') }}</span>
+        {% elif v.status == 'eol' %}
+        <span class="status-pill eol"><i class="bi bi-x-circle-fill"></i> {{ t('visibility.out_of_support') }}</span>
+        {% else %}
+        <span class="status-pill unknown">{{ t('visibility.unknown') }}</span>
+        {% endif %}
+      </div>
+
+      <!-- Bar -->
+      <div class="bar-wrap">
+        <div class="bar-track">
+          <div class="bar-fill {{ v.status if v.status in ('warning','eol') else 'ok' }}"
+               style="width:{{ pct }}%"></div>
+        </div>
+      </div>
+
+      <!-- Server count -->
+      <div class="server-count">
+        <div class="server-count-num">{{ v.count }}</div>
+        <div class="server-count-label">server{{ 's' if v.count != 1 }}</div>
+      </div>
+
+    </div>
+
+    <!-- Meta row: end date + client tags -->
+    <div class="version-meta">
+      {% if v.end_date %}
+      <div class="end-date {{ v.status if v.status in ('warning','eol') else '' }}">
+        <i class="bi bi-calendar{% if v.status == 'eol' %}-x{% elif v.status == 'warning' %}-warning{% endif %}"></i>
+        {% if v.status == 'eol' %}
+        {{ t('visibility.support_ended') }} {{ v.end_date }}
+        {% elif v.status == 'warning' %}
+        {{ t('visibility.support_ends') }} {{ v.end_date }}
+        {% else %}
+        {{ t('visibility.support_ends') }} {{ v.end_date }}
+        {% endif %}
+      </div>
+      {% endif %}
+      <div class="client-tags">
+        {% for cname in v.clients %}
+        <span class="client-tag"><i class="bi bi-building" style="font-size:.6rem"></i> {{ cname }}</span>
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+  {% endfor %}
+</div>
+
+{% endif %}
+
+</div>
+{% endblock %}
