@@ -1483,10 +1483,39 @@ def contract_detail(csi_id):
         key = row["product_family"]
         consumed_by_line[key] = consumed_by_line.get(key, 0) + (row["licences_consumed"] or 0)
 
+    # ULA extras
+    ula_products = []
+    ula_available_servers = []
+    ula_assigned_server_ids = set()
+    if contract.get("is_ula"):
+        ula_products = [r["product_name"] for r in query(
+            "SELECT product_name FROM shared.ula_covered_products WHERE csi_id = %s ORDER BY product_name",
+            (csi_id,)
+        )]
+        # Owning client schema for server list
+        owner = query(
+            "SELECT schema_name FROM sam_admin.clients WHERE client_id = %s",
+            (contract["owning_client_id"],), fetchall=False
+        ) if contract.get("owning_client_id") else None
+        if owner:
+            s = owner["schema_name"]
+            ula_available_servers = query(
+                f"SELECT server_id, hostname, environment::TEXT AS environment "
+                f"FROM {s}.oracle_servers WHERE is_active ORDER BY hostname"
+            )
+            already = query(
+                f"SELECT DISTINCT server_id FROM {s}.server_csi_map WHERE csi_id = %s",
+                (csi_id,)
+            )
+            ula_assigned_server_ids = {r["server_id"] for r in already}
+
     return render_template("contract_detail.html",
                            contract=contract, lines=lines,
                            assigned_servers=assigned_servers,
-                           consumed_by_line=consumed_by_line)
+                           consumed_by_line=consumed_by_line,
+                           ula_products=ula_products,
+                           ula_available_servers=ula_available_servers,
+                           ula_assigned_server_ids=ula_assigned_server_ids)
 
 
 @app.route("/contracts/<int:csi_id>/notes", methods=["POST"])
@@ -1498,6 +1527,126 @@ def contract_save_notes(csi_id):
         (notes, csi_id)
     )
     flash("Notes saved.", "success")
+    return redirect(url_for("contract_detail", csi_id=csi_id))
+
+
+@app.route("/contracts/<int:csi_id>/ula/products", methods=["POST"])
+@login_required
+def ula_save_products(csi_id):
+    """Replace the covered-product list for a ULA contract."""
+    products = [p.strip() for p in request.form.getlist("products") if p.strip()]
+    execute("DELETE FROM shared.ula_covered_products WHERE csi_id = %s", (csi_id,))
+    for p in products:
+        execute(
+            "INSERT INTO shared.ula_covered_products (csi_id, product_name) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            (csi_id, p)
+        )
+    flash("ULA covered products updated.", "success")
+    return redirect(url_for("contract_detail", csi_id=csi_id))
+
+
+@app.route("/contracts/<int:csi_id>/ula/assign", methods=["POST"])
+@login_required
+def ula_assign_server(csi_id):
+    """Assign a server to a ULA, validating that all its licence needs are covered."""
+    server_id = request.form.get("server_id", type=int)
+    if not server_id:
+        flash("No server selected.", "danger")
+        return redirect(url_for("contract_detail", csi_id=csi_id))
+
+    # Resolve owning client schema
+    contract = query(
+        "SELECT cs.is_ula, c.schema_name, c.client_name "
+        "FROM shared.csi_contracts cs "
+        "JOIN sam_admin.clients c ON c.client_id = cs.owning_client_id "
+        "WHERE cs.csi_id = %s",
+        (csi_id,), fetchall=False
+    )
+    if not contract or not contract["is_ula"]:
+        flash("Contract is not a ULA.", "danger")
+        return redirect(url_for("contract_detail", csi_id=csi_id))
+
+    schema = contract["schema_name"]
+
+    # Get what products the server needs
+    needed = query(
+        f"SELECT DISTINCT COALESCE(product_detail, product_family::TEXT) AS product "
+        f"FROM {schema}.license_position WHERE server_id = %s",
+        (server_id,)
+    )
+    needed_products = {r["product"] for r in needed}
+
+    # Get what the ULA covers
+    covered = query(
+        "SELECT product_name FROM shared.ula_covered_products WHERE csi_id = %s",
+        (csi_id,)
+    )
+    covered_products = {r["product_name"] for r in covered}
+
+    # Validate
+    out_of_scope = needed_products - covered_products
+    if out_of_scope:
+        missing = ", ".join(sorted(out_of_scope))
+        flash(
+            f"Cannot assign server — the following licence requirements are outside this ULA's scope: {missing}",
+            "danger"
+        )
+        return redirect(url_for("contract_detail", csi_id=csi_id))
+
+    # Insert one server_csi_map row per covered product the server actually needs
+    # (licences_consumed = NULL = unlimited under ULA)
+    assigned_any = False
+    for prod in needed_products:
+        # Find product_family for this product_detail
+        lp_row = query(
+            f"SELECT product_family FROM {schema}.license_position "
+            f"WHERE server_id = %s AND COALESCE(product_detail, product_family::TEXT) = %s LIMIT 1",
+            (server_id, prod), fetchall=False
+        )
+        family = lp_row["product_family"] if lp_row else "oracle_database"
+        try:
+            exists = query(
+                f"SELECT 1 FROM {schema}.server_csi_map "
+                f"WHERE server_id = %s AND csi_id = %s AND product_family = %s::shared.product_family",
+                (server_id, csi_id, family), fetchall=False
+            )
+            if not exists:
+                execute(
+                    f"INSERT INTO {schema}.server_csi_map "
+                    f"(server_id, csi_id, product_family, product_detail, licences_consumed, notes, assigned_by) "
+                    f"VALUES (%s, %s, %s::shared.product_family, %s, NULL, 'ULA', %s)",
+                    (server_id, csi_id, family, prod, ADMIN_USER)
+                )
+                assigned_any = True
+        except Exception as e:
+            app.logger.warning("ULA assign insert failed: %s", e)
+
+    if assigned_any:
+        flash("Server assigned to ULA successfully.", "success")
+    else:
+        flash("Server was already fully assigned to this ULA.", "info")
+
+    return redirect(url_for("contract_detail", csi_id=csi_id))
+
+
+@app.route("/contracts/<int:csi_id>/ula/remove", methods=["POST"])
+@login_required
+def ula_remove_server(csi_id):
+    """Remove all ULA assignments for a server from this contract."""
+    server_id = request.form.get("server_id", type=int)
+    contract = query(
+        "SELECT c.schema_name FROM shared.csi_contracts cs "
+        "JOIN sam_admin.clients c ON c.client_id = cs.owning_client_id "
+        "WHERE cs.csi_id = %s",
+        (csi_id,), fetchall=False
+    )
+    if contract:
+        schema = contract["schema_name"]
+        execute(
+            f"DELETE FROM {schema}.server_csi_map WHERE csi_id = %s AND server_id = %s",
+            (csi_id, server_id)
+        )
+    flash("Server removed from ULA.", "success")
     return redirect(url_for("contract_detail", csi_id=csi_id))
 
 
@@ -1522,11 +1671,14 @@ def add_contract():
             purchase_date   = request.form.get("purchase_date") or None
             support_start   = request.form.get("support_start") or None
             support_expiry  = request.form.get("support_expiry") or None
+            ula_expiry      = request.form.get("ula_expiry") or None
+            is_ula          = request.form.get("is_ula") == "1"
             currency        = request.form.get("currency", "USD").strip().upper() or "USD"
             sharing_policy  = request.form.get("sharing_policy", "unassigned")
             locked_client   = request.form.get("locked_client") or None
             notes           = request.form.get("notes", "").strip() or None
             status          = request.form.get("status", "active")
+            ula_products    = [p.strip() for p in request.form.getlist("ula_products") if p.strip()]
 
             if not contract_name:
                 flash("Contract name is required.", "danger")
@@ -1547,14 +1699,23 @@ def add_contract():
                     INSERT INTO shared.csi_contracts
                       (csi_number, contract_name, vendor_reference,
                        purchase_date, support_start, support_expiry,
+                       ula_expiry, is_ula,
                        currency, sharing_policy, owning_client_id, notes, status)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s::shared.sharing_policy,%s,%s,%s::shared.license_status)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::shared.sharing_policy,%s,%s,%s::shared.license_status)
                     RETURNING csi_id
                 """, (csi_number, contract_name, vendor_ref,
                       purchase_date, support_start, support_expiry,
+                      ula_expiry, is_ula,
                       currency, sharing_policy, owning_client_id, notes, status),
                     fetchall=False)
                 csi_id = new_row["csi_id"]
+
+                # Save ULA covered products
+                for p in ula_products:
+                    execute(
+                        "INSERT INTO shared.ula_covered_products (csi_id, product_name) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                        (csi_id, p)
+                    )
 
                 # If shareable and a client was selected, assign immediately
                 if sharing_policy == "shareable" and locked_client:

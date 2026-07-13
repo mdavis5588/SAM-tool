@@ -89,7 +89,7 @@
     </div>
 
     <!-- ── Dates ── -->
-    <div class="row g-3 mb-4">
+    <div class="row g-3 mb-3">
       <div class="col-md-4">
         <div class="field-label">{{ t('add_contract.purchase_date') }}</div>
         <input type="date" name="purchase_date" class="form-control">
@@ -101,6 +101,49 @@
       <div class="col-md-4">
         <div class="field-label">{{ t('add_contract.support_expiry') }}</div>
         <input type="date" name="support_expiry" class="form-control">
+      </div>
+    </div>
+
+    <!-- ── ULA ── -->
+    <div class="mb-3">
+      <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="isUlaToggle"
+               name="is_ula" value="1">
+        <label class="form-check-label fw-semibold" for="isUlaToggle">
+          Unlimited Licence Agreement (ULA)
+        </label>
+      </div>
+    </div>
+
+    <div id="ulaFields" style="display:none">
+      <div class="p-3 mb-4 rounded border" style="border-color:#7c3aed!important;background:rgba(124,58,237,.04)">
+        <div class="row g-3 mb-3">
+          <div class="col-md-5">
+            <div class="field-label">ULA Expiry Date</div>
+            <input type="date" name="ula_expiry" class="form-control">
+          </div>
+        </div>
+
+        <div class="field-label mb-1">Covered Products / Features</div>
+        <div class="form-text mb-2">Add every product this ULA covers. Servers with requirements outside this list will be rejected when assigned.</div>
+
+        <!-- Quick-add common products -->
+        <div class="mb-2 d-flex flex-wrap gap-1" id="quickAddBtns">
+          {% for prod in ['Enterprise Edition', 'Standard Edition 2', 'Tuning Pack', 'Diagnostics Pack',
+                          'Real Application Clusters', 'Partitioning', 'Advanced Security',
+                          'Label Security', 'Database Vault', 'OLAP', 'Spatial and Graph',
+                          'Active Data Guard', 'GoldenGate', 'Multitenant'] %}
+          <button type="button" class="btn btn-sm btn-outline-secondary quick-product"
+                  data-product="{{ prod }}">+ {{ prod }}</button>
+          {% endfor %}
+        </div>
+
+        <div id="productTags" class="d-flex flex-wrap gap-1 mb-2"></div>
+        <div class="input-group" style="max-width:380px">
+          <input type="text" id="customProduct" class="form-control form-control-sm"
+                 placeholder="Type custom product name…">
+          <button type="button" class="btn btn-sm btn-outline-primary" id="addCustomBtn">Add</button>
+        </div>
       </div>
     </div>
 
@@ -158,6 +201,7 @@
 </div>
 
 <script>
+  // ── Sharing policy ──────────────────────────────────────────────────────
   const radios    = document.querySelectorAll('input[name="sharing_policy"]');
   const clientRow = document.getElementById('clientRow');
   const clientLbl = document.getElementById('clientLabel');
@@ -178,5 +222,54 @@
     }
   }
   radios.forEach(r => r.addEventListener('change', updateClient));
+
+  // ── ULA fields ──────────────────────────────────────────────────────────
+  const ulaToggle  = document.getElementById('isUlaToggle');
+  const ulaFields  = document.getElementById('ulaFields');
+  const tagsDiv    = document.getElementById('productTags');
+  const customInp  = document.getElementById('customProduct');
+
+  ulaToggle.addEventListener('change', () => {
+    ulaFields.style.display = ulaToggle.checked ? '' : 'none';
+  });
+
+  const products = new Set();
+
+  function renderTags() {
+    tagsDiv.innerHTML = '';
+    // Remove old hidden inputs
+    document.querySelectorAll('input[name="ula_products"]').forEach(el => el.remove());
+    products.forEach(p => {
+      // Tag chip
+      const chip = document.createElement('span');
+      chip.className = 'badge d-inline-flex align-items-center gap-1';
+      chip.style.cssText = 'background:rgba(124,58,237,.12);color:#7c3aed;font-size:.78rem;padding:.3rem .55rem;border-radius:20px';
+      chip.innerHTML = `${p} <button type="button" style="background:none;border:none;color:#7c3aed;padding:0;line-height:1;font-size:.9rem" data-p="${p}">&times;</button>`;
+      chip.querySelector('button').addEventListener('click', () => { products.delete(p); renderTags(); });
+      tagsDiv.appendChild(chip);
+      // Hidden input
+      const inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = 'ula_products'; inp.value = p;
+      document.querySelector('form').appendChild(inp);
+    });
+  }
+
+  function addProduct(p) {
+    p = p.trim();
+    if (p) { products.add(p); renderTags(); }
+  }
+
+  document.querySelectorAll('.quick-product').forEach(btn => {
+    btn.addEventListener('click', () => addProduct(btn.dataset.product));
+  });
+
+  document.getElementById('addCustomBtn').addEventListener('click', () => {
+    addProduct(customInp.value);
+    customInp.value = '';
+  });
+
+  customInp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); addProduct(customInp.value); customInp.value = ''; }
+  });
 </script>
 {% endblock %}
