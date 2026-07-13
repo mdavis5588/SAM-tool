@@ -150,12 +150,69 @@
       position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 1030;
     }
 
+    /* ---- Sidebar flyout submenu ---- */
+    .sidebar-flyout { position: relative; }
+    .sidebar-flyout-arrow {
+      margin-left: auto;
+      font-size: .7rem;
+      color: var(--sidebar-fg);
+      opacity: .5;
+      transition: transform .18s;
+    }
+    .sidebar-flyout-menu {
+      display: none;
+      position: absolute;
+      left: calc(var(--sidebar-w) - 2px);
+      top: 0;
+      width: 180px;
+      background: #1a1024;
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 0 6px 6px 0;
+      padding: .35rem 0;
+      z-index: 1050;
+      box-shadow: 4px 4px 16px rgba(0,0,0,.35);
+    }
+    .sidebar-flyout:hover .sidebar-flyout-menu,
+    .sidebar-flyout:focus-within .sidebar-flyout-menu { display: block; }
+    .sidebar-flyout:hover .sidebar-flyout-arrow { transform: rotate(90deg); opacity: 1; }
+    .sidebar-flyout-item {
+      display: flex;
+      align-items: center;
+      gap: .55rem;
+      padding: .55rem 1rem;
+      color: var(--sidebar-fg);
+      text-decoration: none;
+      font-size: .88rem;
+      white-space: nowrap;
+    }
+    .sidebar-flyout-item i { font-size: .9rem; width: 1rem; text-align: center; }
+    .sidebar-flyout-item:hover { color: var(--sidebar-fg-active); background: rgba(255,255,255,.06); }
+    .sidebar-flyout-item.active {
+      color: var(--sidebar-fg-active);
+      font-weight: 600;
+      background: rgba(255,255,255,.08);
+      border-left: 3px solid var(--accent);
+      padding-left: calc(1rem - 3px);
+    }
+
     @media (max-width: 991.98px) {
       .sidebar { transform: translateX(-100%); }
       .sidebar.show { transform: translateX(0); }
       .main-area { margin-left: 0; }
       .sidebar-toggle { display: inline-block; }
       .sidebar-backdrop.show { display: block; }
+      /* On mobile the flyout sits below the parent link, not to the right */
+      .sidebar-flyout-menu {
+        position: static;
+        width: auto;
+        border-radius: 0;
+        border: none;
+        box-shadow: none;
+        background: rgba(0,0,0,.2);
+        padding: 0;
+      }
+      .sidebar-flyout-item { padding-left: 2.4rem; }
+      .sidebar-flyout-item.active { padding-left: calc(2.4rem - 3px); }
     }
   </style>
 </head>
@@ -228,20 +285,23 @@
          href="{{ url_for('contracts') }}"><i class="bi bi-file-earmark-text"></i><span>{{ t('nav.contracts') }}</span></a>
       <a class="sidebar-link {% if request.endpoint in ['licence_summary','licence_summary_client','licence_summary_shared'] %}active{% endif %}"
          href="{{ url_for('licence_summary') }}"><i class="bi bi-bar-chart-line"></i><span>{{ t('nav.licence_summary') }}</span></a>
-      <a class="sidebar-link {% if request.endpoint in ['finops','finops_client','licence_summary_server_costs'] %}active{% endif %}"
-         href="{{ url_for('finops') }}"><i class="bi bi-currency-dollar"></i><span>{{ t('nav.finops') }}</span></a>
-      {% if request.endpoint in ['finops','finops_client','licence_summary_server_costs'] %}
-      <a class="sidebar-link {% if request.endpoint == 'finops' or request.endpoint == 'finops_client' %}active{% endif %}"
-         href="{{ url_for('finops') }}"
-         style="padding-left:2rem;font-size:.85rem">
-        <i class="bi bi-bar-chart-steps"></i><span>{{ t('finops.title') | replace(' — Cost Summary','') }}</span>
-      </a>
-      <a class="sidebar-link {% if request.endpoint == 'licence_summary_server_costs' %}active{% endif %}"
-         href="{{ url_for('licence_summary_server_costs') }}"
-         style="padding-left:2rem;font-size:.85rem">
-        <i class="bi bi-server"></i><span>{{ t('nav.server_costs') }}</span>
-      </a>
-      {% endif %}
+      <div class="sidebar-flyout {% if request.endpoint in ['finops','finops_client','licence_summary_server_costs'] %}has-active{% endif %}">
+        <a class="sidebar-link {% if request.endpoint in ['finops','finops_client','licence_summary_server_costs'] %}active{% endif %}"
+           href="{{ url_for('finops') }}">
+          <i class="bi bi-currency-dollar"></i><span>{{ t('nav.finops') }}</span>
+          <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
+        </a>
+        <div class="sidebar-flyout-menu">
+          <a class="sidebar-flyout-item {% if request.endpoint in ['finops','finops_client'] %}active{% endif %}"
+             href="{{ url_for('finops') }}">
+            <i class="bi bi-bar-chart-steps"></i>{{ t('finops.tab_cost_summary') }}
+          </a>
+          <a class="sidebar-flyout-item {% if request.endpoint == 'licence_summary_server_costs' %}active{% endif %}"
+             href="{{ url_for('licence_summary_server_costs') }}">
+            <i class="bi bi-server"></i>{{ t('nav.server_costs') }}
+          </a>
+        </div>
+      </div>
       <a class="sidebar-link {% if request.endpoint == 'alerts' %}active{% endif %}"
          href="{{ url_for('alerts') }}"><i class="bi bi-exclamation-triangle"></i><span>{{ t('nav.alerts') }}</span></a>
 
