@@ -34,6 +34,36 @@
         </table>
       </div>
     </div>
+
+    <!-- Notes -->
+    <div class="card shadow-sm">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-journal-text me-1"></i>{{ t('label.notes') }}</span>
+        <button class="btn btn-sm btn-outline-secondary" type="button"
+                data-bs-toggle="collapse" data-bs-target="#notesEditArea" aria-expanded="false">
+          <i class="bi bi-pencil"></i> {{ t('action.edit') }}
+        </button>
+      </div>
+      <div class="card-body">
+        {% if contract.notes %}
+        <p class="mb-2" style="white-space:pre-wrap;font-size:.9rem">{{ contract.notes }}</p>
+        {% else %}
+        <p class="text-muted mb-2" style="font-size:.875rem"><em>No notes added yet.</em></p>
+        {% endif %}
+
+        <div class="collapse" id="notesEditArea">
+          <form method="POST" action="{{ url_for('contract_save_notes', csi_id=contract.csi_id) }}">
+            <textarea name="notes" class="form-control form-control-sm mb-2" rows="4"
+                      placeholder="Add notes…">{{ contract.notes or '' }}</textarea>
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-sm btn-primary">{{ t('action.save') }}</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary"
+                      data-bs-toggle="collapse" data-bs-target="#notesEditArea">{{ t('action.cancel') }}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="col-lg-8">

@@ -1489,6 +1489,18 @@ def contract_detail(csi_id):
                            consumed_by_line=consumed_by_line)
 
 
+@app.route("/contracts/<int:csi_id>/notes", methods=["POST"])
+@login_required
+def contract_save_notes(csi_id):
+    notes = request.form.get("notes", "").strip() or None
+    execute(
+        "UPDATE shared.csi_contracts SET notes = %s WHERE csi_id = %s",
+        (notes, csi_id)
+    )
+    flash("Notes saved.", "success")
+    return redirect(url_for("contract_detail", csi_id=csi_id))
+
+
 # ---------------------------------------------------------------------------
 # Add contract
 # ---------------------------------------------------------------------------
