@@ -44,7 +44,7 @@
   /* ── Tile grid ── */
   .tile-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
     gap: 1rem;
     margin-bottom: 2.5rem;
   }
@@ -54,13 +54,12 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 1.25rem 1.1rem 1rem;
+    padding: 1.1rem 1.1rem .9rem;
     text-decoration: none;
     color: inherit;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: .85rem;
+    gap: .75rem;
     transition: box-shadow .18s, transform .18s, border-color .18s;
     cursor: pointer;
   }
@@ -73,19 +72,24 @@
 
   /* ── Tile header ── */
   .tile-header {
-    width: 100%;
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
-    gap: .4rem;
+    gap: .5rem;
   }
   .tile-name {
     font-weight: 700;
-    font-size: .88rem;
+    font-size: .92rem;
     color: var(--text-pri);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .tile-header-right {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    flex-shrink: 0;
   }
   .tile-count {
     font-size: .65rem;
@@ -94,90 +98,54 @@
     background: var(--track);
     border-radius: 20px;
     padding: .1rem .42rem;
-    flex-shrink: 0;
-  }
-
-  /* ── Donut ── */
-  .donut-wrap {
-    position: relative;
-    width: 92px;
-    height: 92px;
-    flex-shrink: 0;
-  }
-  .donut {
-    width: 92px;
-    height: 92px;
-    border-radius: 50%;
-  }
-  /* hollow centre */
-  .donut-hole {
-    position: absolute;
-    inset: 22%;
-    border-radius: 50%;
-    background: var(--surface);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-  }
-  .donut-total {
-    font-size: .95rem;
-    font-weight: 800;
-    color: var(--text-pri);
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-  }
-  .donut-label {
-    font-size: .52rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: .06em;
-    margin-top: 1px;
-  }
-
-  /* ── Product pills ── */
-  .pill-row {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: .3rem;
-  }
-  .pill-item {
-    display: flex;
-    align-items: center;
-    gap: .4rem;
-    font-size: .72rem;
-    color: var(--text-sec);
-  }
-  .pill-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .pill-name { flex: 1; }
-  .pill-qty {
-    font-variant-numeric: tabular-nums;
-    font-weight: 600;
-    color: var(--text-pri);
   }
 
   /* ── Scope badge ── */
   .tile-scope-badge {
-    font-size: .62rem;
+    font-size: .6rem;
     font-weight: 600;
     color: var(--s1);
     background: rgba(109,40,217,.08);
     border: 1px solid rgba(109,40,217,.18);
     border-radius: 20px;
-    padding: .1rem .5rem;
-    letter-spacing: .03em;
+    padding: .1rem .45rem;
+    letter-spacing: .02em;
+  }
+
+  /* ── Product sub-tiles ── */
+  .product-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .45rem;
+  }
+  .product-card {
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    padding: .5rem .6rem;
+    border-left-width: 3px;
+    display: flex;
+    flex-direction: column;
+    gap: .1rem;
+    min-width: 0;
+  }
+  .product-card-qty {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--text-pri);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .product-card-name {
+    font-size: .65rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* ── Tile footer ── */
   .tile-footer {
-    width: 100%;
-    padding-top: .7rem;
+    padding-top: .6rem;
     border-top: 1px solid var(--border);
     font-size: .72rem;
     color: var(--text-muted);
@@ -198,43 +166,25 @@
 {# Colour palette cycling per product — 10 distinct hues #}
 {% set palette = ['#6d28d9','#2563eb','#059669','#d97706','#dc2626','#0891b2','#7c3aed','#65a30d','#c2410c','#0369a1'] %}
 
-{%- macro donut_tile(lines, total, href, title, badge_label, centre_label) %}
+{%- macro product_tile(lines, total, href, title, badge_label) %}
   <a href="{{ href }}" class="tile">
 
     <div class="tile-header">
       <span class="tile-name">{{ title }}</span>
-      <span class="tile-count">{{ lines | length }}p</span>
-    </div>
-    {% if badge_label %}
-    <span class="tile-scope-badge"><i class="bi bi-lock-fill"></i> {{ badge_label }}</span>
-    {% endif %}
-
-    <div class="donut-wrap">
-      {% if total > 0 %}
-      {% set ns = namespace(cum=0) %}
-      <div class="donut" style="background: conic-gradient(
-        {%- for l in lines -%}
-          {%- set pct = (l.total_qty / total * 100) | round(2) -%}
-          {%- set start = ns.cum -%}
-          {%- set ns.cum = (ns.cum + pct) | round(2) -%}
-          {{ palette[loop.index0 % (palette | length)] }} {{ start }}% {{ ns.cum }}%{%- if not loop.last %},{% endif %}
-        {%- endfor %}
-      )"></div>
-      {% else %}
-      <div class="donut" style="background: var(--track)"></div>
-      {% endif %}
-      <div class="donut-hole">
-        <span class="donut-total">{{ "{:,}".format(total | int) }}</span>
-        <span class="donut-label">{{ centre_label }}</span>
+      <div class="tile-header-right">
+        {% if badge_label %}
+        <span class="tile-scope-badge"><i class="bi bi-lock-fill"></i> {{ badge_label }}</span>
+        {% endif %}
+        <span class="tile-count">{{ lines | length }}p</span>
       </div>
     </div>
 
-    <div class="pill-row">
+    <div class="product-grid">
       {% for l in lines %}
-      <div class="pill-item">
-        <span class="pill-dot" style="background:{{ palette[loop.index0 % (palette | length)] }}"></span>
-        <span class="pill-name">{{ l.product_name }}</span>
-        <span class="pill-qty">{{ "{:,}".format(l.total_qty | int) }}</span>
+      <div class="product-card"
+           style="border-left-color:{{ palette[loop.index0 % (palette | length)] }}">
+        <span class="product-card-qty">{{ "{:,}".format(l.total_qty | int) }}</span>
+        <span class="product-card-name" title="{{ l.product_name }}">{{ l.product_name }}</span>
       </div>
       {% endfor %}
     </div>
@@ -257,12 +207,11 @@
 <div class="tile-grid">
   {% for client in clients %}
   {% set total = client.lines | sum(attribute='total_qty') %}
-  {{ donut_tile(
+  {{ product_tile(
        client.lines, total,
        url_for('licence_summary_client', client_code=client.client_code),
        client.client_name or client.client_code,
-       t('licence_summary.locked_only'),
-       t('licence_summary.locked')
+       t('licence_summary.locked_only')
      ) }}
   {% endfor %}
 </div>
@@ -280,12 +229,11 @@
 {% if shared_lines %}
 {% set shared_total = shared_lines | sum(attribute='total_qty') %}
 <div class="tile-grid">
-  {{ donut_tile(
+  {{ product_tile(
        shared_lines, shared_total,
        url_for('licence_summary_shared'),
        t('licence_summary.shared_pool_label'),
-       none,
-       t('licence_summary.licences')
+       none
      ) }}
 </div>
 {% else %}
