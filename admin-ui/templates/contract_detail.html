@@ -128,50 +128,58 @@
               <th>Annual Support</th>
               {% endif %}
             </tr>
+
           </thead>
           <tbody>
-            {% for l in lines %}
-            {% if not contract.is_ula %}
-            {% set consumed = consumed_by_line.get(l.product_family, 0) %}
-            {% set qty = l.quantity or 0 %}
-            {% set available = [qty - consumed, 0] | max %}
-            {% endif %}
-            <tr>
-              <td>{{ l.line_number }}</td>
-              <td>{{ l.product_name }}</td>
-              <td>{{ l.license_metric | replace('_',' ') | title }}</td>
-              {% if not contract.is_ula %}
-              <td>{{ l.quantity or '—' }}</td>
-              <td>
-                {% if consumed %}
-                  <span class="fw-semibold">{{ consumed }}</span>
-                {% else %}
-                  <span class="text-muted">0</span>
-                {% endif %}
-              </td>
+            {% if contract.is_ula %}
+              {% if ula_products %}
+                {% for p in ula_products %}
+                <tr>
+                  <td>{{ loop.index }}</td>
+                  <td>{{ p }}</td>
+                  <td>Processor</td>
+                  <td><span class="badge" style="background:rgba(124,58,237,.12);color:#7c3aed">ULA</span></td>
+                </tr>
+                {% endfor %}
+              {% else %}
+                <tr><td colspan="4" class="text-muted text-center">No covered products defined.</td></tr>
               {% endif %}
-              <td>
-                {% if contract.is_ula %}
-                  <span class="badge" style="background:rgba(124,58,237,.12);color:#7c3aed">ULA</span>
-                {% elif qty %}
-                  {% if available == 0 %}
-                    <span class="badge bg-danger">0</span>
-                  {% elif available * 5 < qty %}
-                    <span class="badge bg-warning text-dark">{{ available }}</span>
-                  {% else %}
-                    <span class="badge bg-success">{{ available }}</span>
-                  {% endif %}
-                {% else %}—{% endif %}
-              </td>
-              {% if not contract.is_ula %}
-              <td>{% if l.unit_price %}{{ '{:,.2f}'.format(l.unit_price) }}{% else %}—{% endif %}</td>
-              <td>{% if l.total_price %}{{ '{:,.2f}'.format(l.total_price) }}{% else %}—{% endif %}</td>
-              <td>{% if l.annual_support_cost %}{{ '{:,.2f}'.format(l.annual_support_cost) }}{% else %}—{% endif %}</td>
-              {% endif %}
-            </tr>
             {% else %}
-            <tr><td colspan="{{ 3 if contract.is_ula else 9 }}" class="text-muted text-center">No lines found.</td></tr>
-            {% endfor %}
+              {% for l in lines %}
+              {% set consumed = consumed_by_line.get(l.product_family, 0) %}
+              {% set qty = l.quantity or 0 %}
+              {% set available = [qty - consumed, 0] | max %}
+              <tr>
+                <td>{{ l.line_number }}</td>
+                <td>{{ l.product_name }}</td>
+                <td>{{ l.license_metric | replace('_',' ') | title }}</td>
+                <td>{{ l.quantity or '—' }}</td>
+                <td>
+                  {% if consumed %}
+                    <span class="fw-semibold">{{ consumed }}</span>
+                  {% else %}
+                    <span class="text-muted">0</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if qty %}
+                    {% if available == 0 %}
+                      <span class="badge bg-danger">0</span>
+                    {% elif available * 5 < qty %}
+                      <span class="badge bg-warning text-dark">{{ available }}</span>
+                    {% else %}
+                      <span class="badge bg-success">{{ available }}</span>
+                    {% endif %}
+                  {% else %}—{% endif %}
+                </td>
+                <td>{% if l.unit_price %}{{ '{:,.2f}'.format(l.unit_price) }}{% else %}—{% endif %}</td>
+                <td>{% if l.total_price %}{{ '{:,.2f}'.format(l.total_price) }}{% else %}—{% endif %}</td>
+                <td>{% if l.annual_support_cost %}{{ '{:,.2f}'.format(l.annual_support_cost) }}{% else %}—{% endif %}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="9" class="text-muted text-center">No lines found.</td></tr>
+              {% endfor %}
+            {% endif %}
           </tbody>
         </table>
       </div>
