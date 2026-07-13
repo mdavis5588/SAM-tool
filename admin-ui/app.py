@@ -1521,16 +1521,13 @@ def contract_detail(csi_id):
         for line_no, p in enumerate(ula_products, start=1):
             if p not in existing_line_names:
                 family = _ULA_PRODUCT_FAMILY.get(p, "oracle_database")
-                try:
-                    execute(
-                        "INSERT INTO shared.license_entitlement_lines "
-                        "(csi_id, line_number, product_name, product_family, license_metric, quantity) "
-                        "VALUES (%s, %s, %s, %s::shared.product_family, 'processor', NULL) "
-                        "ON CONFLICT DO NOTHING",
-                        (csi_id, line_no, p, family)
-                    )
-                except Exception:
-                    pass
+                execute(
+                    "INSERT INTO shared.license_entitlement_lines "
+                    "(csi_id, line_number, product_name, product_family, license_metric, quantity) "
+                    "VALUES (%s, %s, %s, %s::shared.product_family, 'processor', 0) "
+                    "ON CONFLICT (csi_id, line_number) DO NOTHING",
+                    (csi_id, line_no, p, family)
+                )
         # Reload lines after potential sync
         lines = query(
             "SELECT * FROM shared.license_entitlement_lines WHERE csi_id = %s ORDER BY line_number",
@@ -1855,7 +1852,7 @@ def add_contract():
                         execute(
                             "INSERT INTO shared.license_entitlement_lines "
                             "(csi_id, line_number, product_name, product_family, license_metric, quantity) "
-                            "VALUES (%s, %s, %s, %s::shared.product_family, 'processor', NULL)",
+                            "VALUES (%s, %s, %s, %s::shared.product_family, 'processor', 0)",
                             (csi_id, line_no, p, family)
                         )
                     return redirect(url_for("ula_support_cost", csi_id=csi_id))
