@@ -1702,6 +1702,48 @@ def visibility_versions():
     return render_template("visibility_versions.html", clients=clients_data)
 
 
+@app.route("/visibility/versions/<client_code>")
+@login_required
+def visibility_versions_client(client_code):
+    rows_c = query(
+        "SELECT client_id, client_code, client_name, schema_name "
+        "FROM sam_admin.clients WHERE client_code = %s AND is_active",
+        (client_code,)
+    )
+    if not rows_c:
+        abort(404)
+    client = rows_c[0]
+    s = client["schema_name"]
+    rows = query(f"""
+        SELECT s.hostname,
+               COALESCE(s.environment::TEXT, '') AS environment,
+               COALESCE(s.datacenter, '')         AS datacenter,
+               COALESCE(i.db_version, 'Unknown')  AS db_version
+        FROM {s}.oracle_servers s
+        LEFT JOIN {s}.oracle_instances i
+               ON i.server_id = s.server_id AND i.is_active
+        WHERE s.is_active
+        ORDER BY s.hostname
+    """)
+    servers = []
+    for r in rows:
+        ver = r["db_version"] or "Unknown"
+        status, end_date = _version_support_status(ver)
+        servers.append({
+            "hostname":    r["hostname"],
+            "environment": r["environment"],
+            "datacenter":  r["datacenter"],
+            "db_version":  ver,
+            "status":      status,
+            "end_date":    end_date,
+        })
+    return render_template(
+        "visibility_versions_client.html",
+        client=client,
+        servers=servers,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Compliance dashboard
 # ---------------------------------------------------------------------------

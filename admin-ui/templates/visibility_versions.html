@@ -51,6 +51,16 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 1.1rem 1.2rem 1rem;
+    text-decoration: none;
+    color: inherit;
+    display: block;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .client-card:hover {
+    border-color: #6d28d9;
+    box-shadow: 0 0 0 3px rgba(109,40,217,.08);
+    color: inherit;
+    text-decoration: none;
   }
   .client-card-header {
     display: flex; align-items: center; justify-content: space-between;
@@ -151,16 +161,19 @@
   {% set n_warn = c.versions | selectattr('status','equalto','warning')   | list | length %}
   {% set n_eol  = c.versions | selectattr('status','equalto','eol')       | list | length %}
 
-  <div class="client-card">
+  <a class="client-card" href="{{ url_for('visibility_versions_client', client_code=c.client_code) }}">
     <div class="client-card-header">
       <div class="client-card-name">
         <i class="bi bi-building"></i>{{ c.client_name }}
       </div>
-      <div class="client-summary-pills">
-        {% if n_ok   > 0 %}<span class="summary-pill ok">{{ n_ok }} {{ t('visibility.supported') | lower }}</span>{% endif %}
-        {% if n_ext  > 0 %}<span class="summary-pill extended">{{ n_ext }} extended</span>{% endif %}
-        {% if n_warn > 0 %}<span class="summary-pill warn">{{ n_warn }} ⚠ EOL soon</span>{% endif %}
-        {% if n_eol  > 0 %}<span class="summary-pill eol">{{ n_eol }} ✗ EOL</span>{% endif %}
+      <div class="d-flex align-items-center gap-2">
+        <div class="client-summary-pills">
+          {% if n_ok   > 0 %}<span class="summary-pill ok">{{ n_ok }} {{ t('visibility.supported') | lower }}</span>{% endif %}
+          {% if n_ext  > 0 %}<span class="summary-pill extended">{{ n_ext }} extended</span>{% endif %}
+          {% if n_warn > 0 %}<span class="summary-pill warn">{{ n_warn }} ⚠ EOL soon</span>{% endif %}
+          {% if n_eol  > 0 %}<span class="summary-pill eol">{{ n_eol }} ✗ EOL</span>{% endif %}
+        </div>
+        <i class="bi bi-chevron-right" style="font-size:.75rem;color:var(--text-muted)"></i>
       </div>
     </div>
 
@@ -192,7 +205,7 @@
       </div>
       {% endfor %}
     </div>
-  </div>
+  </a>
   {% endfor %}
 </div>
 
