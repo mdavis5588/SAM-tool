@@ -2,12 +2,39 @@
 {% block title %}{{ contract.contract_name }} — Oracle SAM{% endblock %}
 {% block content %}
 
-<nav aria-label="breadcrumb" class="mb-3">
-  <ol class="breadcrumb">
+<nav aria-label="breadcrumb" class="mb-3 d-flex align-items-center justify-content-between">
+  <ol class="breadcrumb mb-0">
     <li class="breadcrumb-item"><a href="{{ url_for('contracts') }}">Contracts</a></li>
     <li class="breadcrumb-item active">{{ contract.csi_number or contract.contract_name }}</li>
   </ol>
+  <button type="button" class="btn btn-sm btn-outline-danger"
+          data-bs-toggle="modal" data-bs-target="#deleteContractModal">
+    <i class="bi bi-trash me-1"></i>Delete Contract
+  </button>
 </nav>
+
+<!-- Delete confirmation modal -->
+<div class="modal fade" id="deleteContractModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title text-danger"><i class="bi bi-exclamation-triangle me-2"></i>Delete Contract</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to permanently delete <strong>{{ contract.contract_name }}</strong>
+          {% if contract.csi_number %}(CSI {{ contract.csi_number }}){% endif %}?</p>
+        <p class="text-muted" style="font-size:.875rem">This will also remove all entitlement lines and server assignments linked to this contract. This cannot be undone.</p>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form method="POST" action="{{ url_for('delete_contract', csi_id=contract.csi_id) }}">
+          <button type="submit" class="btn btn-danger">Delete permanently</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="row g-4">
   <div class="col-lg-4">

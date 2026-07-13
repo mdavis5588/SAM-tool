@@ -1518,6 +1518,32 @@ def contract_detail(csi_id):
                            ula_assigned_server_ids=ula_assigned_server_ids)
 
 
+@app.route("/contracts/<int:csi_id>/delete", methods=["POST"])
+@login_required
+def delete_contract(csi_id):
+    # Remove server_csi_map rows in every client schema first (no cascade)
+    all_schemas = query(
+        "SELECT schema_name FROM sam_admin.clients WHERE is_active"
+    )
+    for c in all_schemas:
+        s = c["schema_name"]
+        try:
+            execute(f"DELETE FROM {s}.server_csi_map WHERE csi_id = %s", (csi_id,))
+        except Exception:
+            pass
+
+    # Also clean ula_certifications if referenced (no cascade defined)
+    try:
+        execute("DELETE FROM shared.ula_certifications WHERE csi_id = %s", (csi_id,))
+    except Exception:
+        pass
+
+    # Delete the contract — cascades to lines, client_map, ula_covered_products
+    execute("DELETE FROM shared.csi_contracts WHERE csi_id = %s", (csi_id,))
+    flash("Contract deleted.", "success")
+    return redirect(url_for("contracts"))
+
+
 @app.route("/contracts/<int:csi_id>/notes", methods=["POST"])
 @login_required
 def contract_save_notes(csi_id):
