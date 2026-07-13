@@ -162,13 +162,12 @@
       <div class="card-header d-flex align-items-center justify-content-between">
         <span><i class="bi bi-list-ul"></i> Entitlement Lines</span>
         {% if contract.is_ula %}
-        {% set ula_support = lines | selectattr('annual_support_cost') | map(attribute='annual_support_cost') | sum %}
         <span style="font-size:.85rem">
           <span class="text-muted me-1">Annual Support:</span>
-          {% if ula_support %}
-          <strong>{{ contract.currency or 'USD' }} {{ '{:,.2f}'.format(ula_support) }}</strong>
+          {% if ula_annual_support %}
+          <strong>{{ contract.currency or 'USD' }} {{ '{:,.2f}'.format(ula_annual_support) }}</strong>
           {% else %}
-          <span class="text-muted">—</span>
+          <a href="{{ url_for('ula_support_cost', csi_id=contract.csi_id) }}" class="text-decoration-none" style="font-size:.82rem;color:#7c3aed">+ Add cost</a>
           {% endif %}
         </span>
         {% endif %}

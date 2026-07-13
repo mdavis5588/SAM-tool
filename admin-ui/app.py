@@ -1485,6 +1485,7 @@ def contract_detail(csi_id):
 
     # ULA extras
     ula_products = []
+    ula_annual_support = None
     ula_available_servers = []
     ula_assigned_server_ids = set()
     if contract.get("is_ula"):
@@ -1492,6 +1493,59 @@ def contract_detail(csi_id):
             "SELECT product_name FROM shared.ula_covered_products WHERE csi_id = %s ORDER BY product_name",
             (csi_id,)
         )]
+
+        # Sync entitlement lines from ula_covered_products so lines always reflect
+        # what was selected, even for ULAs created before this was enforced.
+        _ULA_PRODUCT_FAMILY = {
+            "Enterprise Edition":        "oracle_database",
+            "Standard Edition 2":        "oracle_database",
+            "Tuning Pack":               "oracle_database",
+            "Diagnostics Pack":          "oracle_database",
+            "Real Application Clusters": "oracle_database",
+            "Partitioning":              "oracle_database",
+            "Advanced Security":         "oracle_database",
+            "Label Security":            "oracle_database",
+            "Database Vault":            "oracle_database",
+            "OLAP":                      "oracle_database",
+            "Spatial and Graph":         "oracle_database",
+            "Active Data Guard":         "oracle_database",
+            "Multitenant":               "oracle_database",
+            "GoldenGate":                "oracle_database",
+            "WebLogic Server":           "oracle_weblogic",
+            "WebLogic Suite":            "oracle_weblogic",
+            "Coherence":                 "oracle_coherence",
+            "Java SE":                   "oracle_java",
+            "Java SE Subscription":      "oracle_java",
+        }
+        existing_line_names = {r["product_name"] for r in lines}
+        for line_no, p in enumerate(ula_products, start=1):
+            if p not in existing_line_names:
+                family = _ULA_PRODUCT_FAMILY.get(p, "oracle_database")
+                try:
+                    execute(
+                        "INSERT INTO shared.license_entitlement_lines "
+                        "(csi_id, line_number, product_name, product_family, license_metric, quantity) "
+                        "VALUES (%s, %s, %s, %s::shared.product_family, 'processor', NULL) "
+                        "ON CONFLICT DO NOTHING",
+                        (csi_id, line_no, p, family)
+                    )
+                except Exception:
+                    pass
+        # Reload lines after potential sync
+        lines = query(
+            "SELECT * FROM shared.license_entitlement_lines WHERE csi_id = %s ORDER BY line_number",
+            (csi_id,)
+        )
+
+        # Get annual support cost (stored on any line that has it)
+        support_row = query(
+            "SELECT annual_support_cost FROM shared.license_entitlement_lines "
+            "WHERE csi_id = %s AND annual_support_cost IS NOT NULL LIMIT 1",
+            (csi_id,), fetchall=False
+        )
+        if support_row:
+            ula_annual_support = support_row["annual_support_cost"]
+
         # Owning client schema for server list
         owner = query(
             "SELECT schema_name FROM sam_admin.clients WHERE client_id = %s",
@@ -1514,6 +1568,7 @@ def contract_detail(csi_id):
                            assigned_servers=assigned_servers,
                            consumed_by_line=consumed_by_line,
                            ula_products=ula_products,
+                           ula_annual_support=ula_annual_support,
                            ula_available_servers=ula_available_servers,
                            ula_assigned_server_ids=ula_assigned_server_ids)
 
