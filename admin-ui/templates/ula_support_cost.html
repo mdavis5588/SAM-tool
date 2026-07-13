@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}ULA Support Cost — Oracle SAM{% endblock %}
+{% block content %}
+
+<style>
+  .ula-card {
+    max-width: 600px;
+    background: #fff;
+    border: 1px solid #e3e6ea;
+    border-radius: 10px;
+    padding: 2rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    .ula-card { background: #1e1e1d; border-color: #2c2c2a; }
+  }
+  :root[data-theme="dark"] .ula-card { background: #1e1e1d; border-color: #2c2c2a; }
+  :root[data-theme="light"] .ula-card { background: #fff; border-color: #e3e6ea; }
+
+  .ula-header {
+    display: flex; align-items: center; gap: .6rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e3e6ea;
+  }
+  :root[data-theme="dark"] .ula-header,
+  @media (prefers-color-scheme: dark) { .ula-header { border-color: #2c2c2a; } }
+
+  .ula-badge {
+    display: inline-block;
+    background: rgba(124,58,237,.12);
+    color: #7c3aed;
+    font-size: .7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    padding: .2rem .55rem;
+    border-radius: 20px;
+  }
+  .product-list {
+    list-style: none;
+    padding: 0; margin: 0;
+    display: flex; flex-wrap: wrap; gap: .5rem;
+  }
+  .product-list li {
+    display: flex; align-items: center; gap: .35rem;
+    background: rgba(124,58,237,.07);
+    border: 1px solid rgba(124,58,237,.2);
+    color: #5b21b6;
+    border-radius: 6px;
+    padding: .35rem .65rem;
+    font-size: .85rem; font-weight: 500;
+  }
+  :root[data-theme="dark"] .product-list li { color: #a78bfa; background: rgba(124,58,237,.15); border-color: rgba(124,58,237,.3); }
+  .product-list li i { font-size: .75rem; }
+</style>
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('contracts') }}">Contracts</a></li>
+    <li class="breadcrumb-item active">{{ contract.contract_name }}</li>
+  </ol>
+</nav>
+
+<div class="ula-card shadow-sm">
+
+  <div class="ula-header">
+    <i class="bi bi-infinity" style="font-size:1.4rem;color:#7c3aed"></i>
+    <div>
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <span class="fw-bold" style="font-size:1.05rem">{{ contract.contract_name }}</span>
+        {% if contract.csi_number %}<code style="font-size:.8rem">CSI {{ contract.csi_number }}</code>{% endif %}
+      </div>
+      <span class="ula-badge">Unlimited Licence Agreement</span>
+    </div>
+  </div>
+
+  <!-- Covered products (read-only summary) -->
+  <div class="mb-4">
+    <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6c757d;margin-bottom:.6rem">
+      Covered Products
+    </div>
+    {% if ula_products %}
+    <ul class="product-list">
+      {% for p in ula_products %}
+      <li><i class="bi bi-check-circle-fill"></i>{{ p }}</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-muted" style="font-size:.875rem"><em>No covered products defined.</em></p>
+    {% endif %}
+  </div>
+
+  <!-- Annual support cost -->
+  <form method="POST">
+    <div class="mb-4">
+      <label class="form-label fw-semibold">Annual Support Cost</label>
+      <div class="input-group" style="max-width:280px">
+        <span class="input-group-text">{{ contract.currency or 'USD' }}</span>
+        <input type="number" name="annual_support_cost" class="form-control"
+               min="0" step="0.01" placeholder="e.g. 250000">
+      </div>
+      <div class="form-text">Total annual support cost for this ULA. Leave blank if not yet known.</div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-check-circle me-1"></i>Save &amp; View Contract
+      </button>
+      <a href="{{ url_for('contract_detail', csi_id=contract.csi_id) }}" class="btn btn-outline-secondary">
+        Skip for now
+      </a>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

@@ -1655,6 +1655,37 @@ def ula_assign_server(csi_id):
     return redirect(url_for("contract_detail", csi_id=csi_id))
 
 
+@app.route("/contracts/<int:csi_id>/ula/support", methods=["GET", "POST"])
+@login_required
+def ula_support_cost(csi_id):
+    contract = query(
+        "SELECT csi_id, contract_name, csi_number, currency FROM shared.csi_contracts WHERE csi_id = %s",
+        (csi_id,), fetchall=False
+    )
+    if not contract:
+        abort(404)
+    ula_products = [r["product_name"] for r in query(
+        "SELECT product_name FROM shared.ula_covered_products WHERE csi_id = %s ORDER BY product_name",
+        (csi_id,)
+    )]
+    if request.method == "POST":
+        annual_cost = request.form.get("annual_support_cost", "").strip() or None
+        if annual_cost:
+            try:
+                annual_cost = float(annual_cost.replace(",", ""))
+            except ValueError:
+                annual_cost = None
+        # Store on the first entitlement line (all products share the ULA cost)
+        execute(
+            "UPDATE shared.license_entitlement_lines SET annual_support_cost = %s "
+            "WHERE csi_id = %s AND line_number = 1",
+            (annual_cost, csi_id)
+        )
+        flash("ULA contract saved.", "success")
+        return redirect(url_for("contract_detail", csi_id=csi_id))
+    return render_template("ula_support_cost.html", contract=contract, ula_products=ula_products)
+
+
 @app.route("/contracts/<int:csi_id>/ula/remove", methods=["POST"])
 @login_required
 def ula_remove_server(csi_id):
@@ -1736,33 +1767,34 @@ def add_contract():
                     fetchall=False)
                 csi_id = new_row["csi_id"]
 
-                # Save ULA covered products and auto-create entitlement lines
-                if is_ula and ula_products:
+                # Save ULA covered products and auto-create entitlement lines, then go to support cost step
+                if is_ula:
                     _ULA_PRODUCT_FAMILY = {
-                        "Enterprise Edition":       "oracle_database",
-                        "Standard Edition 2":       "oracle_database",
-                        "Tuning Pack":              "oracle_database",
-                        "Diagnostics Pack":         "oracle_database",
-                        "Real Application Clusters":"oracle_database",
-                        "Partitioning":             "oracle_database",
-                        "Advanced Security":        "oracle_database",
-                        "Label Security":           "oracle_database",
-                        "Database Vault":           "oracle_database",
-                        "OLAP":                     "oracle_database",
-                        "Spatial and Graph":        "oracle_database",
-                        "Active Data Guard":        "oracle_database",
-                        "Multitenant":              "oracle_database",
-                        "GoldenGate":               "oracle_database",
-                        "WebLogic Server":          "oracle_weblogic",
-                        "WebLogic Suite":           "oracle_weblogic",
-                        "Coherence":                "oracle_coherence",
-                        "Java SE":                  "oracle_java",
-                        "Java SE Subscription":     "oracle_java",
+                        "Enterprise Edition":        "oracle_database",
+                        "Standard Edition 2":        "oracle_database",
+                        "Tuning Pack":               "oracle_database",
+                        "Diagnostics Pack":          "oracle_database",
+                        "Real Application Clusters": "oracle_database",
+                        "Partitioning":              "oracle_database",
+                        "Advanced Security":         "oracle_database",
+                        "Label Security":            "oracle_database",
+                        "Database Vault":            "oracle_database",
+                        "OLAP":                      "oracle_database",
+                        "Spatial and Graph":         "oracle_database",
+                        "Active Data Guard":         "oracle_database",
+                        "Multitenant":               "oracle_database",
+                        "GoldenGate":                "oracle_database",
+                        "WebLogic Server":           "oracle_weblogic",
+                        "WebLogic Suite":            "oracle_weblogic",
+                        "Coherence":                 "oracle_coherence",
+                        "Java SE":                   "oracle_java",
+                        "Java SE Subscription":      "oracle_java",
                     }
                     for line_no, p in enumerate(ula_products, start=1):
                         family = _ULA_PRODUCT_FAMILY.get(p, "oracle_database")
                         execute(
-                            "INSERT INTO shared.ula_covered_products (csi_id, product_name) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                            "INSERT INTO shared.ula_covered_products (csi_id, product_name) "
+                            "VALUES (%s, %s) ON CONFLICT DO NOTHING",
                             (csi_id, p)
                         )
                         execute(
@@ -1771,15 +1803,7 @@ def add_contract():
                             "VALUES (%s, %s, %s, %s::shared.product_family, 'processor', NULL)",
                             (csi_id, line_no, p, family)
                         )
-                    flash("ULA contract created with entitlement lines for each covered product.", "success")
-                    return redirect(url_for("contract_detail", csi_id=csi_id))
-
-                # Non-ULA: save any products listed (edge case) then go to line entry
-                for p in ula_products:
-                    execute(
-                        "INSERT INTO shared.ula_covered_products (csi_id, product_name) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-                        (csi_id, p)
-                    )
+                    return redirect(url_for("ula_support_cost", csi_id=csi_id))
 
                 # If shareable and a client was selected, assign immediately
                 if sharing_policy == "shareable" and locked_client:
@@ -1806,12 +1830,16 @@ def add_contract():
 @login_required
 def add_contract_lines(csi_id):
     contract = query(
-        "SELECT csi_id, contract_name, csi_number FROM shared.csi_contracts WHERE csi_id = %s",
+        "SELECT csi_id, contract_name, csi_number, is_ula FROM shared.csi_contracts WHERE csi_id = %s",
         (csi_id,), fetchall=False
     )
     if not contract:
         flash("Contract not found.", "danger")
         return redirect(url_for("contracts"))
+
+    # ULA contracts use a different flow
+    if contract.get("is_ula"):
+        return redirect(url_for("ula_support_cost", csi_id=csi_id))
 
     if request.method == "POST":
         action = request.form.get("action")
