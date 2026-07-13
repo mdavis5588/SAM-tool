@@ -207,6 +207,15 @@
     </div>
     {% endif %}
 
+    <!-- Language toggle -->
+    <div style="border-bottom: 1px solid rgba(255,255,255,.08); padding: .35rem 0;">
+      <a class="sidebar-link" href="{{ url_for('set_lang', lang=('fr' if current_lang == 'en' else 'en')) }}"
+         title="{{ t('lang_name') }}" style="padding-top:.45rem;padding-bottom:.45rem">
+        <i class="bi bi-translate"></i>
+        <span>{{ t('lang_toggle') }}</span>
+      </a>
+    </div>
+
     <nav class="sidebar-nav">
       <div class="sidebar-section-label">{{ t('nav.inventory') }}</div>
       <a class="sidebar-link {% if request.endpoint == 'servers' %}active{% endif %}"
@@ -236,12 +245,6 @@
     <div class="sidebar-bottom">
       <a class="sidebar-link text-warning-link" href="{{ url_for('export_lms') }}">
         <i class="bi bi-file-earmark-excel"></i><span>{{ t('nav.lms_export') }}</span>
-      </a>
-      <!-- Language toggle -->
-      <a class="sidebar-link" href="{{ url_for('set_lang', lang=('fr' if current_lang == 'en' else 'en')) }}"
-         title="{{ t('lang_name') }}">
-        <i class="bi bi-translate"></i>
-        <span>{{ t('lang_toggle') }}</span>
       </a>
       <a class="sidebar-link" href="{{ url_for('logout') }}">
         <i class="bi bi-box-arrow-right"></i><span>{{ t('nav.logout') }}</span>
