@@ -95,6 +95,8 @@
   "licence_summary.qty_by_family": "Quantity by Product Family",
   "licence_summary.licences": "licences",
   "licence_summary.view_detail": "View detail",
+  "licence_summary.locked_only": "client-locked only",
+  "licence_summary.locked": "locked",
   "licence_summary.db": "DB",
   "licence_summary.pool": "Pool",
   "licence_summary.shared_pool_label": "Shared Pool",

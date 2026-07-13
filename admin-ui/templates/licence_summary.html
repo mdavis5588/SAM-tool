@@ -162,6 +162,18 @@
     color: var(--text-pri);
   }
 
+  /* ── Scope badge ── */
+  .tile-scope-badge {
+    font-size: .62rem;
+    font-weight: 600;
+    color: var(--s1);
+    background: rgba(109,40,217,.08);
+    border: 1px solid rgba(109,40,217,.18);
+    border-radius: 20px;
+    padding: .1rem .5rem;
+    letter-spacing: .03em;
+  }
+
   /* ── Tile footer ── */
   .tile-footer {
     width: 100%;
@@ -222,6 +234,7 @@
       <span class="tile-name">{{ client.client_name or client.client_code }}</span>
       <span class="tile-count">{{ client.lines | length }}p</span>
     </div>
+    <span class="tile-scope-badge"><i class="bi bi-lock-fill"></i> {{ t('licence_summary.locked_only') }}</span>
 
     <div class="donut-wrap">
       {% if ns.total > 0 %}
@@ -236,7 +249,7 @@
       {% endif %}
       <div class="donut-hole">
         <span class="donut-total">{{ "{:,}".format(ns.total | int) }}</span>
-        <span class="donut-label">{{ t('licence_summary.licences') }}</span>
+        <span class="donut-label">{{ t('licence_summary.locked') }}</span>
       </div>
     </div>
 
