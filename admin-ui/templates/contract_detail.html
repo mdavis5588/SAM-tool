@@ -46,8 +46,10 @@
           <tr><th>Contract Name</th><td>{{ contract.contract_name }}</td></tr>
           <tr><th>Vendor Reference</th><td>{{ contract.vendor_reference or '—' }}</td></tr>
           <tr><th>Purchase Date</th><td>{{ contract.purchase_date or '—' }}</td></tr>
+          {% if not contract.is_ula %}
           <tr><th>Support Start</th><td>{{ contract.support_start or '—' }}</td></tr>
           <tr><th>Support Expiry</th><td>{{ contract.support_expiry or '—' }}</td></tr>
+          {% endif %}
           <tr><th>ULA</th><td>{% if contract.is_ula %}Yes — expires {{ contract.ula_expiry }}{% else %}No{% endif %}</td></tr>
           <tr><th>Sharing Policy</th><td>{{ contract.sharing_policy | replace('_',' ') | title }}</td></tr>
           <tr><th>Owning Client</th><td>{{ contract.owning_client or '—' }}</td></tr>
