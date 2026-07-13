@@ -228,10 +228,20 @@
          href="{{ url_for('contracts') }}"><i class="bi bi-file-earmark-text"></i><span>{{ t('nav.contracts') }}</span></a>
       <a class="sidebar-link {% if request.endpoint in ['licence_summary','licence_summary_client','licence_summary_shared'] %}active{% endif %}"
          href="{{ url_for('licence_summary') }}"><i class="bi bi-bar-chart-line"></i><span>{{ t('nav.licence_summary') }}</span></a>
-      <a class="sidebar-link {% if request.endpoint == 'licence_summary_server_costs' %}active{% endif %}"
-         href="{{ url_for('licence_summary_server_costs') }}"><i class="bi bi-server"></i><span>{{ t('nav.server_costs') }}</span></a>
-      <a class="sidebar-link {% if request.endpoint in ['finops','finops_client'] %}active{% endif %}"
+      <a class="sidebar-link {% if request.endpoint in ['finops','finops_client','licence_summary_server_costs'] %}active{% endif %}"
          href="{{ url_for('finops') }}"><i class="bi bi-currency-dollar"></i><span>{{ t('nav.finops') }}</span></a>
+      {% if request.endpoint in ['finops','finops_client','licence_summary_server_costs'] %}
+      <a class="sidebar-link {% if request.endpoint == 'finops' or request.endpoint == 'finops_client' %}active{% endif %}"
+         href="{{ url_for('finops') }}"
+         style="padding-left:2rem;font-size:.85rem">
+        <i class="bi bi-bar-chart-steps"></i><span>{{ t('finops.title') | replace(' — Cost Summary','') }}</span>
+      </a>
+      <a class="sidebar-link {% if request.endpoint == 'licence_summary_server_costs' %}active{% endif %}"
+         href="{{ url_for('licence_summary_server_costs') }}"
+         style="padding-left:2rem;font-size:.85rem">
+        <i class="bi bi-server"></i><span>{{ t('nav.server_costs') }}</span>
+      </a>
+      {% endif %}
       <a class="sidebar-link {% if request.endpoint == 'alerts' %}active{% endif %}"
          href="{{ url_for('alerts') }}"><i class="bi bi-exclamation-triangle"></i><span>{{ t('nav.alerts') }}</span></a>
 

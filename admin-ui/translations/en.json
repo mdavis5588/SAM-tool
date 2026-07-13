@@ -114,6 +114,7 @@
   "server_costs.licence_cost": "Licence Cost",
 
   "finops.title": "FinOps — Cost Summary",
+  "finops.tab_cost_summary": "Cost Summary",
   "finops.total_all_clients": "Total Across All Clients",
   "finops.annual_support": "Annual Support",
   "finops.shared_pool_in_use": "Shared Pool (In Use)",

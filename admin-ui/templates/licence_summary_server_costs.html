@@ -125,8 +125,25 @@
 
 <div class="viz-root">
 
-<div class="d-flex align-items-baseline gap-3 mb-4">
-  <h4 class="mb-0"><i class="bi bi-server me-1"></i>{{ t('server_costs.title') }}</h4>
+<div class="d-flex align-items-baseline gap-3 mb-3">
+  <h4 class="mb-0"><i class="bi bi-currency-dollar me-1"></i>{{ t('finops.title') }}</h4>
+</div>
+
+<ul class="nav nav-tabs mb-4">
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('finops') }}">
+      <i class="bi bi-bar-chart-steps me-1"></i>{{ t('finops.tab_cost_summary') }}
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="{{ url_for('licence_summary_server_costs') }}">
+      <i class="bi bi-server me-1"></i>{{ t('nav.server_costs') }}
+    </a>
+  </li>
+</ul>
+
+<div class="d-flex align-items-baseline gap-2 mb-3">
+  <span class="fw-semibold">{{ t('server_costs.title') }}</span>
   <span class="text-muted small">{{ servers | length }} server{{ 's' if servers|length != 1 }}</span>
 </div>
 
