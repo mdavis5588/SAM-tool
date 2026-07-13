@@ -159,7 +159,20 @@
   <div class="col-lg-8">
     <!-- Entitlement lines -->
     <div class="card shadow-sm mb-4">
-      <div class="card-header"><i class="bi bi-list-ul"></i> Entitlement Lines</div>
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-list-ul"></i> Entitlement Lines</span>
+        {% if contract.is_ula %}
+        {% set ula_support = lines | selectattr('annual_support_cost') | map(attribute='annual_support_cost') | sum %}
+        <span style="font-size:.85rem">
+          <span class="text-muted me-1">Annual Support:</span>
+          {% if ula_support %}
+          <strong>{{ contract.currency or 'USD' }} {{ '{:,.2f}'.format(ula_support) }}</strong>
+          {% else %}
+          <span class="text-muted">—</span>
+          {% endif %}
+        </span>
+        {% endif %}
+      </div>
       <div class="table-responsive">
         <table class="table table-sm table-striped mb-0">
           <thead class="table-light">
@@ -175,8 +188,8 @@
               {% if not contract.is_ula %}
               <th>Unit Price</th>
               <th>Total Price</th>
-              {% endif %}
               <th>Annual Support</th>
+              {% endif %}
             </tr>
           </thead>
           <tbody>
@@ -216,19 +229,11 @@
               {% if not contract.is_ula %}
               <td>{% if l.unit_price %}{{ '{:,.2f}'.format(l.unit_price) }}{% else %}—{% endif %}</td>
               <td>{% if l.total_price %}{{ '{:,.2f}'.format(l.total_price) }}{% else %}—{% endif %}</td>
+              <td>{% if l.annual_support_cost %}{{ '{:,.2f}'.format(l.annual_support_cost) }}{% else %}—{% endif %}</td>
               {% endif %}
-              <td>
-                {% if l.annual_support_cost %}
-                  {{ '{:,.2f}'.format(l.annual_support_cost) }}
-                {% elif contract.is_ula and loop.first %}
-                  <span class="text-muted">—</span>
-                {% else %}
-                  —
-                {% endif %}
-              </td>
             </tr>
             {% else %}
-            <tr><td colspan="9" class="text-muted text-center">No lines found.</td></tr>
+            <tr><td colspan="{{ 3 if contract.is_ula else 9 }}" class="text-muted text-center">No lines found.</td></tr>
             {% endfor %}
           </tbody>
         </table>
