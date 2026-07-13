@@ -40,6 +40,14 @@
           <option value="expired">{{ t('label.expired') }}</option>
         </select>
       </div>
+      <div class="col-md-2">
+        <label class="form-label form-label-sm mb-1">Type</label>
+        <select id="filter-ula" class="form-select form-select-sm">
+          <option value="">All types</option>
+          <option value="ula">ULA only</option>
+          <option value="standard">Standard only</option>
+        </select>
+      </div>
       <div class="col-auto">
         <button class="btn btn-sm btn-outline-secondary" id="btn-clear-filters">
           <i class="bi bi-x-circle"></i> {{ t('action.clear') }}
@@ -85,6 +93,7 @@
             data-owner="{{ c.owning_client or '' }}"
             data-policy="{{ c.sharing_policy }}"
             data-status="{{ c.status }}"
+            data-ula="{{ 'ula' if c.is_ula else 'standard' }}"
             data-csi="{{ c.csi_id }}">
           <td class="fw-bold">
             <code>{{ c.csi_number or '—' }}</code>
@@ -215,12 +224,14 @@ const today = "{{ today }}";
   const filterOwner  = document.getElementById('filter-owner');
   const filterPolicy = document.getElementById('filter-policy');
   const filterStatus = document.getElementById('filter-status');
+  const filterUla    = document.getElementById('filter-ula');
   const countBadge   = document.getElementById('visible-count');
 
   function applyFilters() {
     const owner  = filterOwner.value;
     const policy = filterPolicy.value;
     const status = filterStatus.value;
+    const ula    = filterUla.value;
     let visible = 0;
 
     // Hide/show each CSI header row and its line rows together
@@ -231,11 +242,13 @@ const today = "{{ today }}";
       const rowOwner  = hdr.dataset.owner;
       const rowPolicy = hdr.dataset.policy;
       const rowStatus = hdr.dataset.status;
+      const rowUla    = hdr.dataset.ula;
       const csiId     = hdr.dataset.csi;
 
       const show = (!owner  || (owner === '__unowned__' ? rowOwner === '' : rowOwner === owner))
                 && (!policy || rowPolicy === policy)
-                && (!status || rowStatus === status);
+                && (!status || rowStatus === status)
+                && (!ula    || rowUla === ula);
 
       const spacer = hdr.previousElementSibling;
       if (spacer && spacer.classList.contains('contract-spacer')) {
@@ -254,11 +267,13 @@ const today = "{{ today }}";
   filterOwner .addEventListener('change', applyFilters);
   filterPolicy.addEventListener('change', applyFilters);
   filterStatus.addEventListener('change', applyFilters);
+  filterUla   .addEventListener('change', applyFilters);
 
   document.getElementById('btn-clear-filters').addEventListener('click', () => {
     filterOwner.value  = '';
     filterPolicy.value = '';
     filterStatus.value = '';
+    filterUla.value    = '';
     applyFilters();
   });
 })();
