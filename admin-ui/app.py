@@ -1372,6 +1372,7 @@ def contracts():
     csi_rows = query("""
         SELECT cs.csi_id, cs.csi_number, cs.contract_name,
                cs.support_expiry, cs.sharing_policy, cs.status, cs.currency,
+               cs.is_ula,
                oc.client_code AS owning_client
         FROM shared.csi_contracts cs
         LEFT JOIN sam_admin.clients oc ON oc.client_id = cs.owning_client_id

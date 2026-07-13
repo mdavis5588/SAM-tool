@@ -100,6 +100,9 @@
             {% else %}
               <span class="badge bg-secondary me-1">{{ c.sharing_policy | replace('_',' ') | title }}</span>
             {% endif %}
+            {% if c.is_ula %}
+              <span class="badge me-1" style="background:rgba(124,58,237,.15);color:#7c3aed;border:1px solid rgba(124,58,237,.3)"><i class="bi bi-infinity me-1"></i>ULA</span>
+            {% endif %}
             {% if c.status == 'active' %}
               <span class="badge bg-success">Active</span>
             {% elif c.status == 'expired' %}
@@ -165,14 +168,18 @@
             {% else %}—{% endif %}
           </td>
           <td class="text-end">
-            {% if l.total_price %}
+            {% if c.is_ula %}
+              <span class="badge" style="background:rgba(124,58,237,.12);color:#7c3aed">ULA</span>
+            {% elif l.total_price %}
               <small>{{ c.currency or 'USD' }} {{ '{:,.2f}'.format(l.total_price) }}</small>
             {% else %}
               <span class="text-muted">—</span>
             {% endif %}
           </td>
           <td class="text-end">
-            {% if l.total_price and l.quantity %}
+            {% if c.is_ula %}
+              <span class="text-muted">—</span>
+            {% elif l.total_price and l.quantity %}
               <small>{{ c.currency or 'USD' }} {{ '{:,.2f}'.format(l.total_price / l.quantity) }}</small>
             {% elif l.unit_price %}
               <small>{{ c.currency or 'USD' }} {{ '{:,.2f}'.format(l.unit_price) }}</small>
