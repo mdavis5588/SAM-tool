@@ -1628,7 +1628,7 @@ def add_contract_lines(csi_id):
 _ORACLE_DB_SUPPORT = {
     "23":   {"premier": "2028-04-30", "extended": "2031-04-30"},
     "21":   {"premier": "2024-04-30", "extended": "2027-04-30"},
-    "19":   {"premier": "2024-04-30", "extended": "2027-04-30"},
+    "19":   {"premier": "2029-12-31", "extended": "2032-12-31"},
     "18":   {"premier": "2021-06-30", "extended": "2021-06-30"},
     "12.2": {"premier": "2020-11-30", "extended": "2023-03-31"},
     "12.1": {"premier": "2018-07-31", "extended": "2022-07-31"},
