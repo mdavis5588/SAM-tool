@@ -1710,7 +1710,45 @@ def add_contract():
                     fetchall=False)
                 csi_id = new_row["csi_id"]
 
-                # Save ULA covered products
+                # Save ULA covered products and auto-create entitlement lines
+                if is_ula and ula_products:
+                    _ULA_PRODUCT_FAMILY = {
+                        "Enterprise Edition":       "oracle_database",
+                        "Standard Edition 2":       "oracle_database",
+                        "Tuning Pack":              "oracle_database",
+                        "Diagnostics Pack":         "oracle_database",
+                        "Real Application Clusters":"oracle_database",
+                        "Partitioning":             "oracle_database",
+                        "Advanced Security":        "oracle_database",
+                        "Label Security":           "oracle_database",
+                        "Database Vault":           "oracle_database",
+                        "OLAP":                     "oracle_database",
+                        "Spatial and Graph":        "oracle_database",
+                        "Active Data Guard":        "oracle_database",
+                        "Multitenant":              "oracle_database",
+                        "GoldenGate":               "oracle_database",
+                        "WebLogic Server":          "oracle_weblogic",
+                        "WebLogic Suite":           "oracle_weblogic",
+                        "Coherence":                "oracle_coherence",
+                        "Java SE":                  "oracle_java",
+                        "Java SE Subscription":     "oracle_java",
+                    }
+                    for line_no, p in enumerate(ula_products, start=1):
+                        family = _ULA_PRODUCT_FAMILY.get(p, "oracle_database")
+                        execute(
+                            "INSERT INTO shared.ula_covered_products (csi_id, product_name) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                            (csi_id, p)
+                        )
+                        execute(
+                            "INSERT INTO shared.license_entitlement_lines "
+                            "(csi_id, line_number, product_name, product_family, license_metric, quantity) "
+                            "VALUES (%s, %s, %s, %s::shared.product_family, 'processor', NULL)",
+                            (csi_id, line_no, p, family)
+                        )
+                    flash("ULA contract created with entitlement lines for each covered product.", "success")
+                    return redirect(url_for("contract_detail", csi_id=csi_id))
+
+                # Non-ULA: save any products listed (edge case) then go to line entry
                 for p in ula_products:
                     execute(
                         "INSERT INTO shared.ula_covered_products (csi_id, product_name) VALUES (%s, %s) ON CONFLICT DO NOTHING",
