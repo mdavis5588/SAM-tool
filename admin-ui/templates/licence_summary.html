@@ -195,6 +195,57 @@
   <h4 class="mb-0"><i class="bi bi-bar-chart-line me-1"></i>{{ t('licence_summary.title') }}</h4>
 </div>
 
+{# Colour palette cycling per product — 10 distinct hues #}
+{% set palette = ['#6d28d9','#2563eb','#059669','#d97706','#dc2626','#0891b2','#7c3aed','#65a30d','#c2410c','#0369a1'] %}
+
+{%- macro donut_tile(lines, total, href, title, badge_label, centre_label) %}
+  <a href="{{ href }}" class="tile">
+
+    <div class="tile-header">
+      <span class="tile-name">{{ title }}</span>
+      <span class="tile-count">{{ lines | length }}p</span>
+    </div>
+    {% if badge_label %}
+    <span class="tile-scope-badge"><i class="bi bi-lock-fill"></i> {{ badge_label }}</span>
+    {% endif %}
+
+    <div class="donut-wrap">
+      {% if total > 0 %}
+      {% set ns = namespace(cum=0) %}
+      <div class="donut" style="background: conic-gradient(
+        {%- for l in lines -%}
+          {%- set pct = (l.total_qty / total * 100) | round(2) -%}
+          {%- set start = ns.cum -%}
+          {%- set ns.cum = (ns.cum + pct) | round(2) -%}
+          {{ palette[loop.index0 % (palette | length)] }} {{ start }}% {{ ns.cum }}%{%- if not loop.last %},{% endif %}
+        {%- endfor %}
+      )"></div>
+      {% else %}
+      <div class="donut" style="background: var(--track)"></div>
+      {% endif %}
+      <div class="donut-hole">
+        <span class="donut-total">{{ "{:,}".format(total | int) }}</span>
+        <span class="donut-label">{{ centre_label }}</span>
+      </div>
+    </div>
+
+    <div class="pill-row">
+      {% for l in lines %}
+      <div class="pill-item">
+        <span class="pill-dot" style="background:{{ palette[loop.index0 % (palette | length)] }}"></span>
+        <span class="pill-name">{{ l.product_name }}</span>
+        <span class="pill-qty">{{ "{:,}".format(l.total_qty | int) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="tile-footer">
+      {{ t('licence_summary.view_detail') }} <i class="bi bi-arrow-right"></i>
+    </div>
+
+  </a>
+{%- endmacro %}
+
 <!-- ── Client-locked section ── -->
 {% if clients %}
 <div class="ls-section">
@@ -205,90 +256,14 @@
 
 <div class="tile-grid">
   {% for client in clients %}
-  {% set ns = namespace(db=0, wl=0, java=0, other=0, total=0) %}
-  {% for l in client.lines %}
-    {% set ns.total = ns.total + l.total_qty %}
-    {% if l.product_family == 'oracle_database' %}
-      {% set ns.db = ns.db + l.total_qty %}
-    {% elif l.product_family in ('oracle_weblogic', 'oracle_middleware') %}
-      {% set ns.wl = ns.wl + l.total_qty %}
-    {% elif l.product_family in ('oracle_java', 'oracle_coherence') %}
-      {% set ns.java = ns.java + l.total_qty %}
-    {% else %}
-      {% set ns.other = ns.other + l.total_qty %}
-    {% endif %}
-  {% endfor %}
-
-  {# cumulative stops for conic-gradient #}
-  {% set db_p    = ((ns.db    / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
-  {% set wl_p    = ((ns.wl    / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
-  {% set java_p  = ((ns.java  / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
-  {% set other_p = ((ns.other / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
-  {% set s1 = db_p %}
-  {% set s2 = (s1 + wl_p)   | round(2) %}
-  {% set s3 = (s2 + java_p) | round(2) %}
-
-  <a href="{{ url_for('licence_summary_client', client_code=client.client_code) }}" class="tile">
-
-    <div class="tile-header">
-      <span class="tile-name">{{ client.client_name or client.client_code }}</span>
-      <span class="tile-count">{{ client.lines | length }}p</span>
-    </div>
-    <span class="tile-scope-badge"><i class="bi bi-lock-fill"></i> {{ t('licence_summary.locked_only') }}</span>
-
-    <div class="donut-wrap">
-      {% if ns.total > 0 %}
-      <div class="donut" style="background: conic-gradient(
-        {% if ns.db > 0 %}var(--s1) 0% {{ s1 }}%{% if ns.wl > 0 or ns.java > 0 or ns.other > 0 %},{% endif %}{% endif %}
-        {% if ns.wl > 0 %}var(--s2) {{ s1 }}% {{ s2 }}%{% if ns.java > 0 or ns.other > 0 %},{% endif %}{% endif %}
-        {% if ns.java > 0 %}var(--s3) {{ s2 }}% {{ s3 }}%{% if ns.other > 0 %},{% endif %}{% endif %}
-        {% if ns.other > 0 %}var(--s4) {{ s3 }}% 100%{% endif %}
-      )"></div>
-      {% else %}
-      <div class="donut" style="background: var(--track)"></div>
-      {% endif %}
-      <div class="donut-hole">
-        <span class="donut-total">{{ "{:,}".format(ns.total | int) }}</span>
-        <span class="donut-label">{{ t('licence_summary.locked') }}</span>
-      </div>
-    </div>
-
-    <div class="pill-row">
-      {% if ns.db > 0 %}
-      <div class="pill-item">
-        <span class="pill-dot" style="background:var(--s1)"></span>
-        <span class="pill-name">{{ t('licence_summary.db') }}</span>
-        <span class="pill-qty">{{ "{:,}".format(ns.db | int) }}</span>
-      </div>
-      {% endif %}
-      {% if ns.wl > 0 %}
-      <div class="pill-item">
-        <span class="pill-dot" style="background:var(--s2)"></span>
-        <span class="pill-name">WebLogic</span>
-        <span class="pill-qty">{{ "{:,}".format(ns.wl | int) }}</span>
-      </div>
-      {% endif %}
-      {% if ns.java > 0 %}
-      <div class="pill-item">
-        <span class="pill-dot" style="background:var(--s3)"></span>
-        <span class="pill-name">Java</span>
-        <span class="pill-qty">{{ "{:,}".format(ns.java | int) }}</span>
-      </div>
-      {% endif %}
-      {% if ns.other > 0 %}
-      <div class="pill-item">
-        <span class="pill-dot" style="background:var(--s4)"></span>
-        <span class="pill-name">Other</span>
-        <span class="pill-qty">{{ "{:,}".format(ns.other | int) }}</span>
-      </div>
-      {% endif %}
-    </div>
-
-    <div class="tile-footer">
-      {{ t('licence_summary.view_detail') }} <i class="bi bi-arrow-right"></i>
-    </div>
-
-  </a>
+  {% set total = client.lines | sum(attribute='total_qty') %}
+  {{ donut_tile(
+       client.lines, total,
+       url_for('licence_summary_client', client_code=client.client_code),
+       client.client_name or client.client_code,
+       t('licence_summary.locked_only'),
+       t('licence_summary.locked')
+     ) }}
   {% endfor %}
 </div>
 
@@ -303,89 +278,15 @@
 </div>
 
 {% if shared_lines %}
-{% set ns = namespace(db=0, wl=0, java=0, other=0, total=0) %}
-{% for l in shared_lines %}
-  {% set ns.total = ns.total + l.total_qty %}
-  {% if l.product_family == 'oracle_database' %}
-    {% set ns.db = ns.db + l.total_qty %}
-  {% elif l.product_family in ('oracle_weblogic', 'oracle_middleware') %}
-    {% set ns.wl = ns.wl + l.total_qty %}
-  {% elif l.product_family in ('oracle_java', 'oracle_coherence') %}
-    {% set ns.java = ns.java + l.total_qty %}
-  {% else %}
-    {% set ns.other = ns.other + l.total_qty %}
-  {% endif %}
-{% endfor %}
-
-{% set db_p    = ((ns.db    / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
-{% set wl_p    = ((ns.wl    / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
-{% set java_p  = ((ns.java  / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
-{% set other_p = ((ns.other / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
-{% set s1 = db_p %}
-{% set s2 = (s1 + wl_p)   | round(2) %}
-{% set s3 = (s2 + java_p) | round(2) %}
-
+{% set shared_total = shared_lines | sum(attribute='total_qty') %}
 <div class="tile-grid">
-  <a href="{{ url_for('licence_summary_shared') }}" class="tile">
-
-    <div class="tile-header">
-      <span class="tile-name">{{ t('licence_summary.shared_pool_label') }}</span>
-      <span class="tile-count">{{ shared_lines | length }}p</span>
-    </div>
-
-    <div class="donut-wrap">
-      {% if ns.total > 0 %}
-      <div class="donut" style="background: conic-gradient(
-        {% if ns.db > 0 %}var(--s1) 0% {{ s1 }}%{% if ns.wl > 0 or ns.java > 0 or ns.other > 0 %},{% endif %}{% endif %}
-        {% if ns.wl > 0 %}var(--s2) {{ s1 }}% {{ s2 }}%{% if ns.java > 0 or ns.other > 0 %},{% endif %}{% endif %}
-        {% if ns.java > 0 %}var(--s3) {{ s2 }}% {{ s3 }}%{% if ns.other > 0 %},{% endif %}{% endif %}
-        {% if ns.other > 0 %}var(--s4) {{ s3 }}% 100%{% endif %}
-      )"></div>
-      {% else %}
-      <div class="donut" style="background: var(--track)"></div>
-      {% endif %}
-      <div class="donut-hole">
-        <span class="donut-total">{{ "{:,}".format(ns.total | int) }}</span>
-        <span class="donut-label">{{ t('licence_summary.licences') }}</span>
-      </div>
-    </div>
-
-    <div class="pill-row">
-      {% if ns.db > 0 %}
-      <div class="pill-item">
-        <span class="pill-dot" style="background:var(--s1)"></span>
-        <span class="pill-name">{{ t('licence_summary.db') }}</span>
-        <span class="pill-qty">{{ "{:,}".format(ns.db | int) }}</span>
-      </div>
-      {% endif %}
-      {% if ns.wl > 0 %}
-      <div class="pill-item">
-        <span class="pill-dot" style="background:var(--s2)"></span>
-        <span class="pill-name">WebLogic</span>
-        <span class="pill-qty">{{ "{:,}".format(ns.wl | int) }}</span>
-      </div>
-      {% endif %}
-      {% if ns.java > 0 %}
-      <div class="pill-item">
-        <span class="pill-dot" style="background:var(--s3)"></span>
-        <span class="pill-name">Java</span>
-        <span class="pill-qty">{{ "{:,}".format(ns.java | int) }}</span>
-      </div>
-      {% endif %}
-      {% if ns.other > 0 %}
-      <div class="pill-item">
-        <span class="pill-dot" style="background:var(--s4)"></span>
-        <span class="pill-name">Other</span>
-        <span class="pill-qty">{{ "{:,}".format(ns.other | int) }}</span>
-      </div>
-      {% endif %}
-    </div>
-
-    <div class="tile-footer">
-      {{ t('licence_summary.view_detail') }} <i class="bi bi-arrow-right"></i>
-    </div>
-
-  </a>
+  {{ donut_tile(
+       shared_lines, shared_total,
+       url_for('licence_summary_shared'),
+       t('licence_summary.shared_pool_label'),
+       none,
+       t('licence_summary.licences')
+     ) }}
 </div>
 {% else %}
 <p class="text-muted">{{ t('licence_summary.none_shared') }}</p>
