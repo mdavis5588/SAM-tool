@@ -142,6 +142,7 @@
 
   "visibility.versions_title": "Distribution des versions de base de données",
   "visibility.supported": "Supporté",
+  "visibility.extended_support": "Support étendu",
   "visibility.approaching_eol": "Fin de support proche",
   "visibility.out_of_support": "Hors support",
   "visibility.total_servers": "Total serveurs",

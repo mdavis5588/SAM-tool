@@ -1638,12 +1638,11 @@ _ORACLE_DB_SUPPORT = {
 }
 
 def _version_support_status(db_version):
-    """Return ('supported'|'warning'|'eol', end_date_str) for a db_version string."""
+    """Return ('supported'|'extended'|'warning'|'eol', end_date_str) for a db_version string."""
     from datetime import date, timedelta
     if not db_version:
         return "unknown", None
     v = db_version.strip()
-    # Match longest prefix key first
     matched = None
     for key in sorted(_ORACLE_DB_SUPPORT, key=len, reverse=True):
         if v.startswith(key):
@@ -1652,13 +1651,16 @@ def _version_support_status(db_version):
     if not matched:
         return "unknown", None
     today = date.today()
+    premier_end  = date.fromisoformat(matched["premier"])
     extended_end = date.fromisoformat(matched["extended"])
     warning_threshold = extended_end - timedelta(days=365)
     if today > extended_end:
         return "eol", matched["extended"]
     elif today >= warning_threshold:
         return "warning", matched["extended"]
-    return "supported", matched["extended"]
+    elif today > premier_end:
+        return "extended", matched["extended"]
+    return "supported", matched["premier"]
 
 @app.route("/visibility/versions")
 @login_required

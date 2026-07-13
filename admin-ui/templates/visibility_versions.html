@@ -5,6 +5,7 @@
 <style>
   .vv-root {
     --ok:         #059669;
+    --extended:   #2563eb;
     --warn:       #d97706;
     --eol:        #dc2626;
     --unknown:    #6b7280;
@@ -18,13 +19,13 @@
   }
   @media (prefers-color-scheme: dark) {
     .vv-root {
-      --ok:#34d399;--warn:#fbbf24;--eol:#f87171;--unknown:#9ca3af;
+      --ok:#34d399;--extended:#60a5fa;--warn:#fbbf24;--eol:#f87171;--unknown:#9ca3af;
       --text-pri:#f0eeeb;--text-sec:#c3c2b7;--text-muted:#898781;
       --surface:#1e1e1d;--border:#2e2e2b;--bg:#141413;--track:#2e2e2b;
     }
   }
-  :root[data-theme="dark"]  .vv-root{--ok:#34d399;--warn:#fbbf24;--eol:#f87171;--unknown:#9ca3af;--text-pri:#f0eeeb;--text-sec:#c3c2b7;--text-muted:#898781;--surface:#1e1e1d;--border:#2e2e2b;--bg:#141413;--track:#2e2e2b;}
-  :root[data-theme="light"] .vv-root{--ok:#059669;--warn:#d97706;--eol:#dc2626;--unknown:#6b7280;--text-pri:#0f0e0d;--text-sec:#52514e;--text-muted:#8a8884;--surface:#ffffff;--border:#e4e2dc;--bg:#f4f6f8;--track:#e4e2dc;}
+  :root[data-theme="dark"]  .vv-root{--ok:#34d399;--extended:#60a5fa;--warn:#fbbf24;--eol:#f87171;--unknown:#9ca3af;--text-pri:#f0eeeb;--text-sec:#c3c2b7;--text-muted:#898781;--surface:#1e1e1d;--border:#2e2e2b;--bg:#141413;--track:#2e2e2b;}
+  :root[data-theme="light"] .vv-root{--ok:#059669;--extended:#2563eb;--warn:#d97706;--eol:#dc2626;--unknown:#6b7280;--text-pri:#0f0e0d;--text-sec:#52514e;--text-muted:#8a8884;--surface:#ffffff;--border:#e4e2dc;--bg:#f4f6f8;--track:#e4e2dc;}
 
   /* ── Legend ── */
   .legend-strip {
@@ -67,9 +68,10 @@
     font-size: .62rem; font-weight: 700; padding: .12rem .45rem;
     border-radius: 20px; white-space: nowrap;
   }
-  .summary-pill.ok   { background: rgba(5,150,105,.1);  color: var(--ok); }
-  .summary-pill.warn { background: rgba(217,119,6,.1);  color: var(--warn); }
-  .summary-pill.eol  { background: rgba(220,38,38,.1);  color: var(--eol); }
+  .summary-pill.ok       { background: rgba(5,150,105,.1);  color: var(--ok); }
+  .summary-pill.extended { background: rgba(37,99,235,.1);  color: var(--extended); }
+  .summary-pill.warn     { background: rgba(217,119,6,.1);  color: var(--warn); }
+  .summary-pill.eol      { background: rgba(220,38,38,.1);  color: var(--eol); }
 
   /* ── Version rows inside card ── */
   .version-rows { display: flex; flex-direction: column; gap: .55rem; }
@@ -88,10 +90,11 @@
   .status-dot {
     width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
   }
-  .status-dot.ok      { background: var(--ok); }
-  .status-dot.warning { background: var(--warn); }
-  .status-dot.eol     { background: var(--eol); }
-  .status-dot.unknown { background: var(--unknown); }
+  .status-dot.ok       { background: var(--ok); }
+  .status-dot.extended { background: var(--extended); }
+  .status-dot.warning  { background: var(--warn); }
+  .status-dot.eol      { background: var(--eol); }
+  .status-dot.unknown  { background: var(--unknown); }
 
   /* ── Bar ── */
   .bar-track {
@@ -101,10 +104,11 @@
   .bar-fill {
     height: 100%; border-radius: 5px; transition: width .35s ease;
   }
-  .bar-fill.ok      { background: var(--ok); }
-  .bar-fill.warning { background: var(--warn); }
-  .bar-fill.eol     { background: var(--eol); }
-  .bar-fill.unknown { background: var(--unknown); }
+  .bar-fill.ok       { background: var(--ok); }
+  .bar-fill.extended { background: var(--extended); }
+  .bar-fill.warning  { background: var(--warn); }
+  .bar-fill.eol      { background: var(--eol); }
+  .bar-fill.unknown  { background: var(--unknown); }
 
   /* ── Count + end date ── */
   .version-right { text-align: right; }
@@ -116,8 +120,9 @@
     font-size: .6rem; color: var(--text-muted);
     margin-top: .1rem; white-space: nowrap;
   }
-  .version-enddate.warning { color: var(--warn); font-weight: 600; }
-  .version-enddate.eol     { color: var(--eol);  font-weight: 600; }
+  .version-enddate.extended { color: var(--extended); font-weight: 600; }
+  .version-enddate.warning  { color: var(--warn);     font-weight: 600; }
+  .version-enddate.eol      { color: var(--eol);      font-weight: 600; }
 </style>
 
 <div class="vv-root">
@@ -130,6 +135,7 @@
 <div class="legend-strip">
   <span class="fw-semibold me-1" style="font-size:.75rem;color:var(--text-muted)">{{ t('visibility.legend') }}</span>
   <div class="legend-item"><span class="legend-dot" style="background:var(--ok)"></span>{{ t('visibility.supported') }}</div>
+  <div class="legend-item"><span class="legend-dot" style="background:var(--extended)"></span>{{ t('visibility.extended_support') }}</div>
   <div class="legend-item"><span class="legend-dot" style="background:var(--warn)"></span>{{ t('visibility.approaching_eol') }} <span class="ms-1" style="font-size:.7rem;color:var(--text-muted)">({{ t('visibility.within_12mo') }})</span></div>
   <div class="legend-item"><span class="legend-dot" style="background:var(--eol)"></span>{{ t('visibility.out_of_support') }}</div>
 </div>
@@ -141,6 +147,7 @@
 <div class="client-grid">
   {% for c in clients %}
   {% set n_ok   = c.versions | selectattr('status','equalto','supported') | list | length %}
+  {% set n_ext  = c.versions | selectattr('status','equalto','extended')  | list | length %}
   {% set n_warn = c.versions | selectattr('status','equalto','warning')   | list | length %}
   {% set n_eol  = c.versions | selectattr('status','equalto','eol')       | list | length %}
 
@@ -151,6 +158,7 @@
       </div>
       <div class="client-summary-pills">
         {% if n_ok   > 0 %}<span class="summary-pill ok">{{ n_ok }} {{ t('visibility.supported') | lower }}</span>{% endif %}
+        {% if n_ext  > 0 %}<span class="summary-pill extended">{{ n_ext }} extended</span>{% endif %}
         {% if n_warn > 0 %}<span class="summary-pill warn">{{ n_warn }} ⚠ EOL soon</span>{% endif %}
         {% if n_eol  > 0 %}<span class="summary-pill eol">{{ n_eol }} ✗ EOL</span>{% endif %}
       </div>
@@ -162,21 +170,21 @@
       <div class="version-row">
 
         <div class="version-label">
-          <span class="status-dot {{ v.status if v.status in ('ok','warning','eol','unknown') else 'ok' }}
+          <span class="status-dot {{ v.status if v.status in ('ok','extended','warning','eol','unknown') else ('ok' if v.status == 'supported' else 'unknown') }}
                        {%- if v.status == 'supported' %} ok{% endif %}"></span>
           <span class="version-name">{{ v.version }}</span>
         </div>
 
         <div class="bar-track">
-          <div class="bar-fill {{ v.status if v.status in ('warning','eol','unknown') else 'ok' }}"
+          <div class="bar-fill {{ v.status if v.status in ('extended','warning','eol','unknown') else 'ok' }}"
                style="width:{{ pct }}%"></div>
         </div>
 
         <div class="version-right">
           <div class="version-count">{{ v.count }}</div>
           {% if v.end_date %}
-          <div class="version-enddate {{ v.status if v.status in ('warning','eol') else '' }}">
-            {{ 'ended' if v.status == 'eol' else 'ends' }} {{ v.end_date }}
+          <div class="version-enddate {{ v.status if v.status in ('extended','warning','eol') else '' }}">
+            {{ 'ended' if v.status == 'eol' else ('ext. ends' if v.status == 'extended' else 'ends') }} {{ v.end_date }}
           </div>
           {% endif %}
         </div>

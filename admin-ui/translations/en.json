@@ -142,6 +142,7 @@
 
   "visibility.versions_title": "Database Version Distribution",
   "visibility.supported": "Supported",
+  "visibility.extended_support": "Extended Support",
   "visibility.approaching_eol": "Approaching EOL",
   "visibility.out_of_support": "Out of Support",
   "visibility.total_servers": "Total Servers",
