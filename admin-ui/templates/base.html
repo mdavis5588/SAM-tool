@@ -235,6 +235,9 @@
       <a class="sidebar-link {% if request.endpoint == 'alerts' %}active{% endif %}"
          href="{{ url_for('alerts') }}"><i class="bi bi-exclamation-triangle"></i><span>{{ t('nav.alerts') }}</span></a>
 
+      <a class="sidebar-link {% if request.endpoint in ['compliance','compliance_client'] %}active{% endif %}"
+         href="{{ url_for('compliance') }}"><i class="bi bi-shield-check"></i><span>{{ t('nav.compliance') }}</span></a>
+
       <div class="sidebar-section-label">{{ t('nav.administration') }}</div>
       <a class="sidebar-link {% if request.endpoint == 'clients' %}active{% endif %}"
          href="{{ url_for('clients') }}"><i class="bi bi-people"></i><span>{{ t('nav.clients') }}</span></a>

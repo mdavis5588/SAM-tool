@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block title %}Compliance Dashboard — Oracle SAM{% endblock %}
+{% block content %}
+
+<style>
+  .viz-root {
+    --ok:         #1baf7a;   /* compliant — green */
+    --err:        #e34948;   /* non-compliant — red */
+    --warn:       #eda100;   /* partial */
+    --text-pri:   #0b0b0b;
+    --text-sec:   #52514e;
+    --text-muted: #898781;
+    --gridline:   #e1e0d9;
+    --surface:    #fcfcfb;
+    --track:      #e1e0d9;
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      --ok: #23c48e; --err: #f46a69; --warn: #f0b429;
+      --text-pri: #fff; --text-sec: #c3c2b7; --text-muted: #898781;
+      --gridline: #2c2c2a; --surface: #1a1a19; --track: #2c2c2a;
+    }
+  }
+
+  /* ── Grand KPI row ── */
+  .kpi-row {
+    display: flex; gap: 1.25rem; flex-wrap: wrap;
+    margin-bottom: 2rem; padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--gridline);
+  }
+  .kpi { display: flex; flex-direction: column; }
+  .kpi-label {
+    font-size: .68rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .07em; color: var(--text-muted); margin-bottom: .15rem;
+  }
+  .kpi-value {
+    font-size: 1.6rem; font-weight: 700; color: var(--text-pri);
+    line-height: 1; font-variant-numeric: tabular-nums;
+  }
+  .kpi-value.green { color: var(--ok); }
+  .kpi-value.red   { color: var(--err); }
+  .kpi-divider { width: 1px; background: var(--gridline); align-self: stretch; margin: .1rem 0; }
+
+  /* ── Section label ── */
+  .section-label {
+    font-size: .68rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .08em; color: var(--text-muted);
+    margin-bottom: .75rem; display: flex; align-items: center; gap: .4rem;
+  }
+  .section-label::after { content: ''; flex: 1; height: 1px; background: var(--gridline); }
+
+  /* ── Legend ── */
+  .legend-row {
+    display: flex; align-items: center; gap: 1.25rem;
+    margin-bottom: 1.25rem; flex-wrap: wrap;
+  }
+  .legend-item { display: flex; align-items: center; gap: .4rem; font-size: .78rem; color: var(--text-sec); }
+  .legend-swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+
+  /* ── Client rows ── */
+  .entity-list { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 2rem; }
+  .entity-row {
+    display: grid;
+    grid-template-columns: 180px 1fr 130px;
+    align-items: center; gap: 1.25rem;
+    padding: 1rem 1.1rem; border-radius: 8px;
+    border: 1px solid var(--gridline);
+    text-decoration: none; color: inherit;
+    transition: background .12s;
+  }
+  .entity-row:hover { background: rgba(0,0,0,.025); }
+  .entity-row.non-compliant { border-left: 3px solid var(--err); }
+  .entity-row.compliant     { border-left: 3px solid var(--ok); }
+
+  .entity-name { display: flex; align-items: center; gap: .6rem; }
+  .entity-name-text {
+    font-weight: 600; font-size: .92rem; color: var(--text-pri);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .entity-badge {
+    font-size: .67rem; color: var(--text-muted);
+    background: var(--track); border-radius: 20px;
+    padding: .1rem .45rem; white-space: nowrap; flex-shrink: 0;
+  }
+
+  /* ── Bar ── */
+  .bar-wrap { display: flex; flex-direction: column; gap: .35rem; }
+  .bar-track {
+    height: 8px; border-radius: 4px;
+    background: var(--track); overflow: hidden; display: flex;
+  }
+  .bar-seg { height: 100%; transition: opacity .15s; }
+  .bar-seg:first-child { border-radius: 4px 0 0 4px; }
+  .bar-seg:last-child  { border-radius: 0 4px 4px 0; }
+  .bar-seg:only-child  { border-radius: 4px; }
+  .bar-seg:hover { opacity: .75; }
+  .bar-labels {
+    display: flex; gap: .75rem; font-size: .72rem;
+    color: var(--text-muted); font-variant-numeric: tabular-nums;
+  }
+  .bar-label-item { display: flex; align-items: center; gap: .3rem; }
+  .bar-label-dot  { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── Score column ── */
+  .score-col { text-align: right; }
+  .score-ring {
+    display: inline-flex; flex-direction: column; align-items: flex-end;
+  }
+  .score-pct {
+    font-size: 1.35rem; font-weight: 700; line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .score-pct.s-high { color: var(--ok); }
+  .score-pct.s-mid  { color: var(--warn); }
+  .score-pct.s-low  { color: var(--err); }
+  .score-label { font-size: .68rem; color: var(--text-muted); margin-top: .2rem; }
+  .score-arrow { font-size: .8rem; color: var(--text-muted); margin-top: .3rem; }
+
+  /* ── Col header ── */
+  .col-header {
+    display: grid; grid-template-columns: 180px 1fr 130px;
+    gap: 1.25rem; padding: .2rem 1.1rem .5rem;
+    font-size: .67rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .07em; color: var(--text-muted);
+  }
+  .col-header span:last-child { text-align: right; }
+</style>
+
+<div class="viz-root">
+
+<div class="d-flex align-items-baseline gap-3 mb-4">
+  <h4 class="mb-0"><i class="bi bi-shield-check me-1"></i>{{ t('compliance.title') }}</h4>
+</div>
+
+{% if not summary %}
+<div class="alert alert-info">{{ t('compliance.none') }}</div>
+{% else %}
+
+{% set grand_total    = summary | sum(attribute='total_servers') %}
+{% set grand_noncomp  = summary | sum(attribute='non_compliant_servers') %}
+{% set grand_comp     = summary | sum(attribute='compliant_servers') %}
+{% set grand_short    = summary | sum(attribute='total_short') %}
+{% set grand_score    = (grand_comp / grand_total * 100) | round(1) if grand_total > 0 else 100.0 %}
+{% set fully_compliant_clients = summary | selectattr('non_compliant_servers', 'equalto', 0) | list | length %}
+
+<!-- ── Grand totals ── -->
+<div class="kpi-row">
+  <div class="kpi">
+    <span class="kpi-label">{{ t('compliance.overall_score') }}</span>
+    <span class="kpi-value {% if grand_score >= 90 %}green{% elif grand_score >= 70 %}{% else %}red{% endif %}">{{ grand_score }}%</span>
+  </div>
+  <div class="kpi-divider"></div>
+  <div class="kpi">
+    <span class="kpi-label">{{ t('compliance.fully_compliant_clients') }}</span>
+    <span class="kpi-value green">{{ fully_compliant_clients }} / {{ summary | length }}</span>
+  </div>
+  <div class="kpi-divider"></div>
+  <div class="kpi">
+    <span class="kpi-label">{{ t('compliance.servers_compliant') }}</span>
+    <span class="kpi-value">{{ grand_comp }} / {{ grand_total }}</span>
+  </div>
+  <div class="kpi-divider"></div>
+  <div class="kpi">
+    <span class="kpi-label">{{ t('compliance.licences_short') }}</span>
+    <span class="kpi-value {% if grand_short > 0 %}red{% else %}green{% endif %}">{{ grand_short }}</span>
+  </div>
+</div>
+
+<!-- ── Legend ── -->
+<div class="legend-row">
+  <span class="text-muted small fw-semibold me-1">{{ t('compliance.servers') }}:</span>
+  <div class="legend-item"><span class="legend-swatch" style="background:var(--ok)"></span>{{ t('compliance.compliant') }}</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:var(--err)"></span>{{ t('compliance.non_compliant') }}</div>
+</div>
+
+<!-- ── Client rows ── -->
+<div class="col-header">
+  <span>{{ t('label.client') }}</span>
+  <span>{{ t('compliance.servers') }}</span>
+  <span>{{ t('compliance.score') }}</span>
+</div>
+
+<div class="entity-list">
+{% for c in summary | sort(attribute='score') %}
+{% set ok_w  = ((c.compliant_servers     / c.total_servers * 100) | round(1)) if c.total_servers > 0 else 100 %}
+{% set err_w = ((c.non_compliant_servers / c.total_servers * 100) | round(1)) if c.total_servers > 0 else 0 %}
+
+<a href="{{ url_for('compliance_client', client_code=c.client_code) }}"
+   class="entity-row {% if c.non_compliant_servers > 0 %}non-compliant{% else %}compliant{% endif %}">
+
+  <div class="entity-name">
+    {% if c.non_compliant_servers > 0 %}
+      <i class="bi bi-exclamation-triangle-fill" style="color:var(--err);font-size:.9rem;flex-shrink:0"></i>
+    {% else %}
+      <i class="bi bi-shield-check" style="color:var(--ok);font-size:.9rem;flex-shrink:0"></i>
+    {% endif %}
+    <span class="entity-name-text">{{ c.client_name }}</span>
+    <span class="entity-badge">{{ c.total_servers }}s</span>
+  </div>
+
+  <div class="bar-wrap">
+    <div class="bar-track">
+      {% if ok_w > 0 %}<div class="bar-seg" style="width:{{ ok_w }}%;background:var(--ok)"
+        title="{{ t('compliance.compliant') }}: {{ c.compliant_servers }} servers"></div>{% endif %}
+      {% if err_w > 0 %}<div class="bar-seg" style="width:{{ err_w }}%;background:var(--err)"
+        title="{{ t('compliance.non_compliant') }}: {{ c.non_compliant_servers }} servers"></div>{% endif %}
+    </div>
+    <div class="bar-labels">
+      {% if c.compliant_servers > 0 %}
+      <div class="bar-label-item">
+        <span class="bar-label-dot" style="background:var(--ok)"></span>
+        {{ c.compliant_servers }} {{ t('compliance.compliant') | lower }}
+      </div>
+      {% endif %}
+      {% if c.non_compliant_servers > 0 %}
+      <div class="bar-label-item">
+        <span class="bar-label-dot" style="background:var(--err)"></span>
+        {{ c.non_compliant_servers }} {{ t('compliance.non_compliant') | lower }}
+        {% if c.total_short > 0 %}
+          <span class="ms-1 text-muted">({{ c.total_short }} {{ t('compliance.licences_short') | lower }})</span>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="score-col">
+    <div class="score-ring">
+      <span class="score-pct {% if c.score >= 90 %}s-high{% elif c.score >= 70 %}s-mid{% else %}s-low{% endif %}">
+        {{ c.score | int }}%
+      </span>
+      <span class="score-label">{{ t('compliance.score') }}</span>
+      <span class="score-arrow"><i class="bi bi-arrow-right-circle"></i> {{ t('action.view') }}</span>
+    </div>
+  </div>
+
+</a>
+{% endfor %}
+</div>
+
+{% endif %}
+</div>
+{% endblock %}

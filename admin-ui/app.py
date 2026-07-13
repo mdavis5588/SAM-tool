@@ -1620,6 +1620,120 @@ def add_contract_lines(csi_id):
 
 
 # ---------------------------------------------------------------------------
+# Compliance dashboard
+# ---------------------------------------------------------------------------
+@app.route("/compliance")
+@login_required
+def compliance():
+    active_clients = query(
+        "SELECT client_id, client_code, client_name, schema_name "
+        "FROM sam_admin.clients WHERE is_active ORDER BY client_name"
+    )
+    summary = []
+    for c in active_clients:
+        s = c["schema_name"]
+        try:
+            row = query(f"""
+                WITH per_server AS (
+                    SELECT
+                        srv.server_id,
+                        COALESCE(BOOL_OR(lp.compliance_status = 'under_licensed'), FALSE) AS is_non_compliant,
+                        COALESCE(SUM(lp.licences_required), 0) AS licences_required,
+                        COALESCE(SUM(lp.total_licensed), 0)    AS licences_assigned,
+                        COALESCE(SUM(GREATEST(lp.licences_required - lp.total_licensed, 0)), 0) AS licences_short
+                    FROM {s}.oracle_servers srv
+                    LEFT JOIN {s}.license_position lp ON lp.server_id = srv.server_id
+                    GROUP BY srv.server_id
+                )
+                SELECT
+                    COUNT(*)                             AS total_servers,
+                    COUNT(*) FILTER (WHERE is_non_compliant)  AS non_compliant_servers,
+                    COALESCE(SUM(licences_required), 0) AS total_required,
+                    COALESCE(SUM(licences_assigned), 0) AS total_assigned,
+                    COALESCE(SUM(licences_short), 0)    AS total_short
+                FROM per_server
+            """, fetchall=False)
+        except Exception as e:
+            app.logger.error("compliance summary query failed for %s: %s", s, e)
+            row = None
+        if not row:
+            continue
+        total    = int(row["total_servers"] or 0)
+        non_comp = int(row["non_compliant_servers"] or 0)
+        comp     = total - non_comp
+        score    = round(comp / total * 100, 1) if total > 0 else 100.0
+        summary.append({
+            "client_code":           c["client_code"],
+            "client_name":           c["client_name"],
+            "total_servers":         total,
+            "compliant_servers":     comp,
+            "non_compliant_servers": non_comp,
+            "total_required":        int(row["total_required"] or 0),
+            "total_assigned":        int(row["total_assigned"] or 0),
+            "total_short":           int(row["total_short"] or 0),
+            "score":                 score,
+        })
+    return render_template("compliance.html", summary=summary)
+
+
+@app.route("/compliance/<client_code>")
+@login_required
+def compliance_client(client_code):
+    client = query(
+        "SELECT client_id, client_code, client_name, schema_name "
+        "FROM sam_admin.clients WHERE client_code = %s",
+        (client_code,), fetchall=False
+    )
+    if not client:
+        flash("Client not found.", "danger")
+        return redirect(url_for("compliance"))
+    s = client["schema_name"]
+    try:
+        servers = query(f"""
+            SELECT
+                srv.server_id, srv.hostname, srv.environment,
+                COALESCE(BOOL_OR(lp.compliance_status = 'under_licensed'), FALSE) AS is_non_compliant,
+                COALESCE(SUM(lp.licences_required), 0) AS total_required,
+                COALESCE(SUM(lp.total_licensed), 0)    AS total_assigned,
+                COALESCE(SUM(GREATEST(lp.licences_required - lp.total_licensed, 0)), 0) AS total_short,
+                JSON_AGG(JSON_BUILD_OBJECT(
+                    'product',  COALESCE(lp.product_detail, lp.product_family),
+                    'required', lp.licences_required,
+                    'assigned', lp.total_licensed,
+                    'short',    GREATEST(lp.licences_required - lp.total_licensed, 0)
+                ) ORDER BY lp.product_family)
+                    FILTER (WHERE lp.compliance_status = 'under_licensed') AS issues
+            FROM {s}.oracle_servers srv
+            LEFT JOIN {s}.license_position lp ON lp.server_id = srv.server_id
+            GROUP BY srv.server_id, srv.hostname, srv.environment
+            ORDER BY is_non_compliant DESC NULLS LAST, srv.hostname
+        """)
+    except Exception as e:
+        app.logger.error("compliance_client query failed for %s: %s", s, e)
+        servers = []
+
+    for sv in servers:
+        sv = dict(sv)
+        issues = sv.get("issues")
+        if issues and isinstance(issues, str):
+            sv["issues"] = json.loads(issues)
+        elif not issues:
+            sv["issues"] = []
+
+    total    = len(servers)
+    non_comp = sum(1 for sv in servers if sv["is_non_compliant"])
+    comp     = total - non_comp
+    score    = round(comp / total * 100, 1) if total > 0 else 100.0
+    return render_template("compliance_client.html",
+                           client=client,
+                           servers=servers,
+                           total_servers=total,
+                           compliant_servers=comp,
+                           non_compliant_servers=non_comp,
+                           score=score)
+
+
+# ---------------------------------------------------------------------------
 # Compliance alerts
 # ---------------------------------------------------------------------------
 @app.route("/alerts")

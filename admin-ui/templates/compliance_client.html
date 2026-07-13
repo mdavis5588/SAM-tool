@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block title %}Compliance — {{ client.client_name }} — Oracle SAM{% endblock %}
+{% block content %}
+
+<style>
+  .viz-root {
+    --ok:         #1baf7a;
+    --err:        #e34948;
+    --warn:       #eda100;
+    --text-pri:   #0b0b0b;
+    --text-sec:   #52514e;
+    --text-muted: #898781;
+    --gridline:   #e1e0d9;
+    --surface:    #fcfcfb;
+    --track:      #e1e0d9;
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      --ok: #23c48e; --err: #f46a69; --warn: #f0b429;
+      --text-pri: #fff; --text-sec: #c3c2b7; --text-muted: #898781;
+      --gridline: #2c2c2a; --surface: #1a1a19; --track: #2c2c2a;
+    }
+  }
+
+  /* ── KPI strip ── */
+  .kpi-strip { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.75rem; }
+  .kpi-card {
+    flex: 1 1 130px; background: var(--surface);
+    border: 1px solid var(--gridline); border-radius: 10px;
+    padding: .85rem 1.1rem; position: relative; overflow: hidden;
+  }
+  .kpi-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  }
+  .kpi-card.green::before { background: var(--ok); }
+  .kpi-card.red::before   { background: var(--err); }
+  .kpi-card.grey::before  { background: var(--text-muted); }
+  .kpi-label {
+    font-size: .68rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--text-muted); margin-bottom: .25rem;
+  }
+  .kpi-value { font-size: 1.55rem; font-weight: 700; color: var(--text-pri); line-height: 1.1; }
+  .kpi-card.green .kpi-value { color: var(--ok); }
+  .kpi-card.red   .kpi-value { color: var(--err); }
+
+  /* ── Big score gauge ── */
+  .score-gauge {
+    display: flex; align-items: center; gap: 1.25rem;
+    margin-bottom: 1.75rem; padding: 1rem 1.25rem;
+    border-radius: 10px; border: 1px solid var(--gridline);
+    background: var(--surface);
+  }
+  .gauge-svg { flex-shrink: 0; }
+  .gauge-meta { flex: 1; }
+  .gauge-pct {
+    font-size: 2.2rem; font-weight: 800; line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .gauge-pct.high { color: var(--ok); }
+  .gauge-pct.mid  { color: var(--warn); }
+  .gauge-pct.low  { color: var(--err); }
+  .gauge-label { font-size: .78rem; color: var(--text-muted); margin-top: .2rem; }
+
+  /* ── Server cards ── */
+  .server-card {
+    border: 1px solid var(--gridline);
+    border-radius: 8px; margin-bottom: .6rem; overflow: hidden;
+  }
+  .server-card.ok  { border-left: 4px solid var(--ok); }
+  .server-card.err { border-left: 4px solid var(--err); }
+
+  .server-header {
+    display: grid; grid-template-columns: 1fr auto auto;
+    align-items: center; gap: 1rem;
+    padding: .8rem 1.1rem; cursor: pointer;
+    background: var(--surface); border: none; width: 100%; text-align: left;
+    transition: background .12s;
+  }
+  .server-header:hover { background: rgba(0,0,0,.025); }
+
+  .server-name {
+    font-weight: 700; font-size: .95rem; color: var(--text-pri);
+    display: flex; align-items: center; gap: .5rem;
+  }
+  .env-badge {
+    font-size: .66rem; font-weight: 600; padding: .1rem .4rem;
+    border-radius: 20px; text-transform: uppercase; letter-spacing: .04em;
+  }
+  .env-prod  { background: #fde8e8; color: #991b1b; }
+  .env-dev   { background: #d1fae5; color: #065f46; }
+  .env-test  { background: #fef3cd; color: #854d0e; }
+  .env-other { background: var(--track); color: var(--text-muted); }
+
+  .status-pill {
+    font-size: .75rem; font-weight: 700; padding: .25rem .65rem;
+    border-radius: 20px; white-space: nowrap;
+  }
+  .status-pill.ok  { background: rgba(27,175,122,.12); color: var(--ok); }
+  .status-pill.err { background: rgba(227,73,72,.12);  color: var(--err); }
+
+  .chevron { color: var(--text-muted); transition: transform .2s; font-size: .85rem; }
+  .server-header[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+  .server-header[aria-expanded="true"] { border-bottom: 1px solid var(--gridline); }
+
+  /* ── Issue table ── */
+  .issue-body { padding: .75rem 1.1rem 1rem; background: var(--surface); }
+  .issue-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  .issue-table th {
+    font-size: .67rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--text-muted);
+    padding: .35rem .5rem; border-bottom: 2px solid var(--gridline);
+    text-align: right; white-space: nowrap;
+  }
+  .issue-table th:first-child { text-align: left; }
+  .issue-table td {
+    padding: .4rem .5rem; border-bottom: 1px solid var(--gridline);
+    text-align: right; color: var(--text-sec);
+  }
+  .issue-table td:first-child { text-align: left; color: var(--text-pri); }
+  .issue-table tbody tr:last-child td { border-bottom: none; }
+  .short-badge {
+    display: inline-flex; align-items: center; gap: .25rem;
+    font-weight: 700; color: var(--err);
+  }
+  .edit-link {
+    font-size: .75rem; color: var(--text-muted);
+    text-decoration: none; white-space: nowrap;
+  }
+  .edit-link:hover { color: var(--text-pri); }
+</style>
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('compliance') }}">{{ t('compliance.title') }}</a></li>
+    <li class="breadcrumb-item active">{{ client.client_name }}</li>
+  </ol>
+</nav>
+
+<div class="d-flex align-items-center gap-2 mb-4">
+  <h4 class="mb-0"><i class="bi bi-building me-1"></i>{{ client.client_name }}</h4>
+  <span class="text-muted small">— {{ t('compliance.title') }}</span>
+</div>
+
+<div class="viz-root">
+
+<!-- ── Score gauge + KPI strip ── -->
+<div class="row g-3 mb-4 align-items-start">
+
+  <div class="col-auto">
+    <div class="score-gauge" style="min-width:220px">
+      <!-- SVG donut ring -->
+      {% set r = 36 %}
+      {% set circ = (2 * 3.14159 * r) | round(2) %}
+      {% set dash = (score / 100 * circ) | round(2) %}
+      {% set gap  = (circ - dash) | round(2) %}
+      <svg class="gauge-svg" width="90" height="90" viewBox="0 0 90 90" aria-hidden="true">
+        <circle cx="45" cy="45" r="{{ r }}" fill="none"
+                stroke="var(--track)" stroke-width="9"/>
+        <circle cx="45" cy="45" r="{{ r }}" fill="none"
+                stroke="{% if score >= 90 %}var(--ok){% elif score >= 70 %}var(--warn){% else %}var(--err){% endif %}"
+                stroke-width="9"
+                stroke-dasharray="{{ dash }} {{ gap }}"
+                stroke-dashoffset="{{ circ / 4 }}"
+                stroke-linecap="round"/>
+        <text x="45" y="49" text-anchor="middle"
+              font-size="14" font-weight="800"
+              fill="{% if score >= 90 %}var(--ok){% elif score >= 70 %}var(--warn){% else %}var(--err){% endif %}">
+          {{ score | int }}%
+        </text>
+      </svg>
+      <div class="gauge-meta">
+        <div class="gauge-pct {% if score >= 90 %}high{% elif score >= 70 %}mid{% else %}low{% endif %}">
+          {{ score | int }}%
+        </div>
+        <div class="gauge-label">{{ t('compliance.score') }}</div>
+        {% if non_compliant_servers == 0 %}
+        <div class="mt-1" style="font-size:.78rem;color:var(--ok);font-weight:600">
+          <i class="bi bi-shield-check"></i> {{ t('compliance.all_compliant') }}
+        </div>
+        {% else %}
+        <div class="mt-1" style="font-size:.78rem;color:var(--err)">
+          {{ non_compliant_servers }} {{ t('compliance.non_compliant') | lower }}
+          {{ t('compliance.servers') | lower }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="kpi-strip">
+      <div class="kpi-card grey">
+        <div class="kpi-label">{{ t('compliance.servers') }}</div>
+        <div class="kpi-value">{{ total_servers }}</div>
+      </div>
+      <div class="kpi-card green">
+        <div class="kpi-label">{{ t('compliance.compliant') }}</div>
+        <div class="kpi-value">{{ compliant_servers }}</div>
+      </div>
+      <div class="kpi-card {% if non_compliant_servers > 0 %}red{% else %}green{% endif %}">
+        <div class="kpi-label">{{ t('compliance.non_compliant') }}</div>
+        <div class="kpi-value">{{ non_compliant_servers }}</div>
+      </div>
+      {% set total_short = servers | sum(attribute='total_short') %}
+      <div class="kpi-card {% if total_short > 0 %}red{% else %}green{% endif %}">
+        <div class="kpi-label">{{ t('compliance.licences_short') }}</div>
+        <div class="kpi-value">{{ total_short | int }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Server list ── -->
+{% set nc = servers | selectattr('is_non_compliant') | list %}
+{% set ok = servers | rejectattr('is_non_compliant') | list %}
+
+{% if nc %}
+<div class="mb-1" style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--err);margin-bottom:.6rem">
+  <i class="bi bi-exclamation-triangle-fill me-1"></i>{{ t('compliance.non_compliant') }} ({{ nc | length }})
+</div>
+{% for sv in nc %}
+{% set card_id = "sv-" ~ loop.index %}
+<div class="server-card err">
+  <button class="server-header" type="button"
+          data-bs-toggle="collapse" data-bs-target="#{{ card_id }}"
+          aria-expanded="false" aria-controls="{{ card_id }}">
+    <div class="server-name">
+      <i class="bi bi-server" style="color:var(--err);font-size:.85rem"></i>
+      {{ sv.hostname }}
+      {% set env = (sv.environment or '') | lower %}
+      <span class="env-badge {% if 'prod' in env %}env-prod{% elif 'dev' in env %}env-dev{% elif 'test' in env or 'uat' in env %}env-test{% else %}env-other{% endif %}">
+        {{ sv.environment or 'unknown' }}
+      </span>
+    </div>
+    <span class="status-pill err">
+      <i class="bi bi-x-circle"></i>
+      {{ sv.issues | length }} issue{{ 's' if sv.issues | length != 1 }}
+      · {{ sv.total_short | int }} licence{{ 's' if sv.total_short | int != 1 }} short
+    </span>
+    <i class="bi bi-chevron-down chevron"></i>
+  </button>
+  <div class="collapse" id="{{ card_id }}">
+    <div class="issue-body">
+      <table class="issue-table">
+        <thead>
+          <tr>
+            <th>{{ t('label.product') }}</th>
+            <th>{{ t('compliance.required') }}</th>
+            <th>{{ t('label.assigned') }}</th>
+            <th>{{ t('compliance.short') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for issue in sv.issues %}
+          <tr>
+            <td>{{ issue.product | replace('oracle_','') | replace('_',' ') | title }}</td>
+            <td>{{ issue.required }}</td>
+            <td>{{ issue.assigned }}</td>
+            <td>
+              <span class="short-badge">
+                <i class="bi bi-exclamation-circle"></i> {{ issue.short }}
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="mt-2">
+        <a href="{{ url_for('edit_server', server_id=sv.server_id) }}" class="edit-link">
+          <i class="bi bi-pencil me-1"></i>{{ t('compliance.assign_licences') }}
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if ok %}
+<div class="mt-3 mb-1" style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--ok);margin-bottom:.6rem">
+  <i class="bi bi-shield-check me-1"></i>{{ t('compliance.compliant') }} ({{ ok | length }})
+</div>
+{% for sv in ok %}
+<div class="server-card ok">
+  <div class="server-header" style="cursor:default">
+    <div class="server-name">
+      <i class="bi bi-server" style="color:var(--ok);font-size:.85rem"></i>
+      {{ sv.hostname }}
+      {% set env = (sv.environment or '') | lower %}
+      <span class="env-badge {% if 'prod' in env %}env-prod{% elif 'dev' in env %}env-dev{% elif 'test' in env or 'uat' in env %}env-test{% else %}env-other{% endif %}">
+        {{ sv.environment or 'unknown' }}
+      </span>
+    </div>
+    <span class="status-pill ok">
+      <i class="bi bi-check-circle"></i> {{ t('compliance.all_compliant') }}
+    </span>
+    <a href="{{ url_for('edit_server', server_id=sv.server_id) }}"
+       class="edit-link" style="justify-self:end">
+      <i class="bi bi-pencil"></i>
+    </a>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if not servers %}
+<div class="alert alert-info">{{ t('servers.none') }}</div>
+{% endif %}
+
+</div>
+
+<script>
+  document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(btn => {
+    const target = document.querySelector(btn.dataset.bsTarget);
+    if (target) {
+      target.addEventListener('show.bs.collapse',  () => btn.setAttribute('aria-expanded','true'));
+      target.addEventListener('hide.bs.collapse',  () => btn.setAttribute('aria-expanded','false'));
+    }
+  });
+</script>
+{% endblock %}
