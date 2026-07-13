@@ -3,144 +3,195 @@
 {% block content %}
 
 <style>
-  .viz-root {
-    --s1:         #6d28d9;   /* oracle database / client-locked — dark purple */
-    --s2:         #6da7ec;   /* weblogic / middleware — light blue */
-    --s3:         #1baf7a;   /* java / coherence — green */
-    --s4:         #eda100;   /* other — amber */
-    --text-pri:   #0b0b0b;
+  .ls-root {
+    --s1:         #6d28d9;
+    --s2:         #2563eb;
+    --s3:         #059669;
+    --s4:         #d97706;
+    --text-pri:   #0f0e0d;
     --text-sec:   #52514e;
-    --text-muted: #898781;
-    --gridline:   #e1e0d9;
-    --border:     rgba(11,11,11,0.10);
-    --surface:    #fcfcfb;
-    --track:      #e1e0d9;
+    --text-muted: #8a8884;
+    --surface:    #ffffff;
+    --border:     #e4e2dc;
+    --bg:         #f4f6f8;
+    --track:      #e4e2dc;
+    --section-bg: #f4f6f8;
   }
   @media (prefers-color-scheme: dark) {
-    .viz-root {
-      --s1: #7c3aed; --s2: #86b6ef; --s3: #23c48e; --s4: #f0b429;
-      --text-pri: #fff; --text-sec: #c3c2b7; --text-muted: #898781;
-      --gridline: #2c2c2a; --border: rgba(255,255,255,0.10);
-      --surface: #1a1a19; --track: #2c2c2a;
+    .ls-root {
+      --s1: #8b5cf6; --s2: #60a5fa; --s3: #34d399; --s4: #fbbf24;
+      --text-pri: #f0eeeb; --text-sec: #c3c2b7; --text-muted: #898781;
+      --surface: #1e1e1d; --border: #2e2e2b; --bg: #141413;
+      --track: #2e2e2b; --section-bg: #181817;
     }
   }
+  :root[data-theme="dark"]  .ls-root { --s1:#8b5cf6;--s2:#60a5fa;--s3:#34d399;--s4:#fbbf24;--text-pri:#f0eeeb;--text-sec:#c3c2b7;--text-muted:#898781;--surface:#1e1e1d;--border:#2e2e2b;--bg:#141413;--track:#2e2e2b;--section-bg:#181817; }
+  :root[data-theme="light"] .ls-root { --s1:#6d28d9;--s2:#2563eb;--s3:#059669;--s4:#d97706;--text-pri:#0f0e0d;--text-sec:#52514e;--text-muted:#8a8884;--surface:#ffffff;--border:#e4e2dc;--bg:#f4f6f8;--track:#e4e2dc;--section-bg:#f4f6f8; }
 
-  /* ── Section label ── */
-  .section-label {
-    font-size: .68rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: .08em;
+  /* ── Section header ── */
+  .ls-section {
+    display: flex; align-items: center; gap: .55rem;
+    font-size: .7rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .09em;
     color: var(--text-muted);
-    margin-bottom: .75rem;
-    display: flex; align-items: center; gap: .4rem;
-  }
-  .section-label::after {
-    content: ''; flex: 1; height: 1px; background: var(--gridline);
+    margin: 0 0 1rem;
+    padding: .6rem .9rem;
+    background: var(--section-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
   }
 
-  /* ── Legend ── */
-  .legend-row {
-    display: flex; align-items: center; gap: 1.25rem;
-    margin-bottom: 1.25rem; flex-wrap: wrap;
-  }
-  .legend-item { display: flex; align-items: center; gap: .4rem; font-size: .78rem; color: var(--text-sec); }
-  .legend-swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
-
-  /* ── Entity rows ── */
-  .entity-list { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 2rem; }
-
-  .entity-row {
+  /* ── Tile grid ── */
+  .tile-grid {
     display: grid;
-    grid-template-columns: 180px 1fr 110px;
-    align-items: center;
-    gap: 1.25rem;
-    padding: 1rem 1.1rem;
-    border-radius: 8px;
-    border: 1px solid var(--gridline);
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+  }
+
+  /* ── Individual tile ── */
+  .tile {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem 1.1rem 1rem;
     text-decoration: none;
     color: inherit;
-    transition: background .12s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .85rem;
+    transition: box-shadow .18s, transform .18s, border-color .18s;
+    cursor: pointer;
   }
-  .entity-row:hover { background: rgba(109,40,217,.04); }
-
-  .entity-name {
-    display: flex; align-items: center; gap: .6rem;
-  }
-  .entity-name-text {
-    font-weight: 600; font-size: .92rem; color: var(--text-pri);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .entity-badge {
-    font-size: .67rem; color: var(--text-muted);
-    background: var(--track); border-radius: 20px;
-    padding: .1rem .45rem; white-space: nowrap; flex-shrink: 0;
+  .tile:hover {
+    box-shadow: 0 4px 18px rgba(0,0,0,.1);
+    transform: translateY(-2px);
+    border-color: var(--s1);
+    color: inherit;
   }
 
-  /* ── Stacked bar ── */
-  .bar-wrap { display: flex; flex-direction: column; gap: .35rem; }
-  .bar-track {
-    height: 8px; border-radius: 4px;
-    background: var(--track); overflow: hidden; display: flex;
+  /* ── Tile header ── */
+  .tile-header {
+    width: 100%;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: .4rem;
   }
-  .bar-seg { height: 100%; transition: opacity .15s; }
-  .bar-seg:first-child { border-radius: 4px 0 0 4px; }
-  .bar-seg:last-child  { border-radius: 0 4px 4px 0; }
-  .bar-seg:only-child  { border-radius: 4px; }
-  .bar-seg:hover { opacity: .75; }
-  .bar-labels {
-    display: flex; gap: .75rem; flex-wrap: wrap;
-    font-size: .72rem; color: var(--text-muted);
+  .tile-name {
+    font-weight: 700;
+    font-size: .88rem;
+    color: var(--text-pri);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tile-count {
+    font-size: .65rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--track);
+    border-radius: 20px;
+    padding: .1rem .42rem;
+    flex-shrink: 0;
+  }
+
+  /* ── Donut ── */
+  .donut-wrap {
+    position: relative;
+    width: 92px;
+    height: 92px;
+    flex-shrink: 0;
+  }
+  .donut {
+    width: 92px;
+    height: 92px;
+    border-radius: 50%;
+  }
+  /* hollow centre */
+  .donut-hole {
+    position: absolute;
+    inset: 22%;
+    border-radius: 50%;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .donut-total {
+    font-size: .95rem;
+    font-weight: 800;
+    color: var(--text-pri);
+    line-height: 1;
     font-variant-numeric: tabular-nums;
   }
-  .bar-label-item { display: flex; align-items: center; gap: .3rem; }
-  .bar-label-dot  { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-
-  /* ── Right col ── */
-  .entity-total { text-align: right; }
-  .entity-total-value {
-    font-size: 1.15rem; font-weight: 700;
-    color: var(--s1); font-variant-numeric: tabular-nums; line-height: 1;
+  .donut-label {
+    font-size: .52rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-top: 1px;
   }
-  .entity-total-label { font-size: .68rem; color: var(--text-muted); margin-top: .2rem; }
-  .entity-arrow { font-size: .8rem; color: var(--text-muted); margin-top: .35rem; }
 
-  /* ── Col header ── */
-  .col-header {
-    display: grid; grid-template-columns: 180px 1fr 110px;
-    gap: 1.25rem; padding: .2rem 1.1rem .5rem;
-    font-size: .67rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted);
+  /* ── Product pills ── */
+  .pill-row {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: .3rem;
   }
-  .col-header span:last-child { text-align: right; }
+  .pill-item {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    font-size: .72rem;
+    color: var(--text-sec);
+  }
+  .pill-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .pill-name { flex: 1; }
+  .pill-qty {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--text-pri);
+  }
+
+  /* ── Tile footer ── */
+  .tile-footer {
+    width: 100%;
+    padding-top: .7rem;
+    border-top: 1px solid var(--border);
+    font-size: .72rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: .3rem;
+  }
+  .tile:hover .tile-footer { color: var(--s1); }
 </style>
 
-<div class="viz-root">
+<div class="ls-root">
 
 <div class="d-flex align-items-baseline gap-3 mb-4">
   <h4 class="mb-0"><i class="bi bi-bar-chart-line me-1"></i>{{ t('licence_summary.title') }}</h4>
 </div>
 
-<!-- ── Legend ── -->
-<div class="legend-row">
-  <span class="text-muted small fw-semibold me-1">{{ t('label.product') }} family:</span>
-  <div class="legend-item"><span class="legend-swatch" style="background:var(--s1)"></span>Database</div>
-  <div class="legend-item"><span class="legend-swatch" style="background:var(--s2)"></span>WebLogic / Middleware</div>
-  <div class="legend-item"><span class="legend-swatch" style="background:var(--s3)"></span>Java / Coherence</div>
-  <div class="legend-item"><span class="legend-swatch" style="background:var(--s4)"></span>Other</div>
-</div>
-
 <!-- ── Client-locked section ── -->
 {% if clients %}
-<div class="section-label">
-  <i class="bi bi-lock-fill" style="color:var(--s1)"></i> {{ t('licence_summary.client_locked') }}
+<div class="ls-section">
+  <i class="bi bi-lock-fill" style="color:var(--s1)"></i>
+  {{ t('licence_summary.client_locked') }}
+  <span style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">{{ clients | length }} client{{ 's' if clients | length != 1 }}</span>
 </div>
 
-<div class="col-header">
-  <span>{{ t('label.client') }}</span>
-  <span>{{ t('licence_summary.qty_by_family') }}</span>
-  <span>{{ t('label.quantity') }}</span>
-</div>
-
-<div class="entity-list">
+<div class="tile-grid">
   {% for client in clients %}
   {% set ns = namespace(db=0, wl=0, java=0, other=0, total=0) %}
   {% for l in client.lines %}
@@ -155,58 +206,87 @@
       {% set ns.other = ns.other + l.total_qty %}
     {% endif %}
   {% endfor %}
-  {% set db_w    = ((ns.db    / ns.total * 100) | round(1)) if ns.total > 0 else 0 %}
-  {% set wl_w    = ((ns.wl    / ns.total * 100) | round(1)) if ns.total > 0 else 0 %}
-  {% set java_w  = ((ns.java  / ns.total * 100) | round(1)) if ns.total > 0 else 0 %}
-  {% set other_w = ((ns.other / ns.total * 100) | round(1)) if ns.total > 0 else 0 %}
 
-  <a href="{{ url_for('licence_summary_client', client_code=client.client_code) }}" class="entity-row">
+  {# cumulative stops for conic-gradient #}
+  {% set db_p    = ((ns.db    / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
+  {% set wl_p    = ((ns.wl    / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
+  {% set java_p  = ((ns.java  / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
+  {% set other_p = ((ns.other / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
+  {% set s1 = db_p %}
+  {% set s2 = (s1 + wl_p)   | round(2) %}
+  {% set s3 = (s2 + java_p) | round(2) %}
 
-    <div class="entity-name">
-      <i class="bi bi-building" style="color:var(--s1);font-size:.9rem;flex-shrink:0"></i>
-      <span class="entity-name-text">{{ client.client_name or client.client_code }}</span>
-      <span class="entity-badge">{{ client.lines | length }}p</span>
+  <a href="{{ url_for('licence_summary_client', client_code=client.client_code) }}" class="tile">
+
+    <div class="tile-header">
+      <span class="tile-name">{{ client.client_name or client.client_code }}</span>
+      <span class="tile-count">{{ client.lines | length }}p</span>
     </div>
 
-    <div class="bar-wrap">
-      <div class="bar-track">
-        {% if db_w > 0 %}<div class="bar-seg" style="width:{{ db_w }}%;background:var(--s1)"
-          title="Database: {{ ns.db | int }} licences"></div>{% endif %}
-        {% if wl_w > 0 %}<div class="bar-seg" style="width:{{ wl_w }}%;background:var(--s2)"
-          title="WebLogic/Middleware: {{ ns.wl | int }} licences"></div>{% endif %}
-        {% if java_w > 0 %}<div class="bar-seg" style="width:{{ java_w }}%;background:var(--s3)"
-          title="Java/Coherence: {{ ns.java | int }} licences"></div>{% endif %}
-        {% if other_w > 0 %}<div class="bar-seg" style="width:{{ other_w }}%;background:var(--s4)"
-          title="Other: {{ ns.other | int }} licences"></div>{% endif %}
-      </div>
-      <div class="bar-labels">
-        {% if ns.db > 0 %}<div class="bar-label-item">
-          <span class="bar-label-dot" style="background:var(--s1)"></span>{{ ns.db | int }} DB</div>{% endif %}
-        {% if ns.wl > 0 %}<div class="bar-label-item">
-          <span class="bar-label-dot" style="background:var(--s2)"></span>{{ ns.wl | int }} WL</div>{% endif %}
-        {% if ns.java > 0 %}<div class="bar-label-item">
-          <span class="bar-label-dot" style="background:var(--s3)"></span>{{ ns.java | int }} Java</div>{% endif %}
-        {% if ns.other > 0 %}<div class="bar-label-item">
-          <span class="bar-label-dot" style="background:var(--s4)"></span>{{ ns.other | int }} Other</div>{% endif %}
+    <div class="donut-wrap">
+      {% if ns.total > 0 %}
+      <div class="donut" style="background: conic-gradient(
+        {% if ns.db > 0 %}var(--s1) 0% {{ s1 }}%{% if ns.wl > 0 or ns.java > 0 or ns.other > 0 %},{% endif %}{% endif %}
+        {% if ns.wl > 0 %}var(--s2) {{ s1 }}% {{ s2 }}%{% if ns.java > 0 or ns.other > 0 %},{% endif %}{% endif %}
+        {% if ns.java > 0 %}var(--s3) {{ s2 }}% {{ s3 }}%{% if ns.other > 0 %},{% endif %}{% endif %}
+        {% if ns.other > 0 %}var(--s4) {{ s3 }}% 100%{% endif %}
+      )"></div>
+      {% else %}
+      <div class="donut" style="background: var(--track)"></div>
+      {% endif %}
+      <div class="donut-hole">
+        <span class="donut-total">{{ "{:,}".format(ns.total | int) }}</span>
+        <span class="donut-label">{{ t('licence_summary.licences') }}</span>
       </div>
     </div>
 
-    <div class="entity-total">
-      <div class="entity-total-value">{{ "{:,}".format(ns.total | int) }}</div>
-      <div class="entity-total-label">{{ t('licence_summary.licences') }}</div>
-      <div class="entity-arrow"><i class="bi bi-arrow-right-circle"></i> {{ t('licence_summary.view_detail') }}</div>
+    <div class="pill-row">
+      {% if ns.db > 0 %}
+      <div class="pill-item">
+        <span class="pill-dot" style="background:var(--s1)"></span>
+        <span class="pill-name">{{ t('licence_summary.db') }}</span>
+        <span class="pill-qty">{{ "{:,}".format(ns.db | int) }}</span>
+      </div>
+      {% endif %}
+      {% if ns.wl > 0 %}
+      <div class="pill-item">
+        <span class="pill-dot" style="background:var(--s2)"></span>
+        <span class="pill-name">WebLogic</span>
+        <span class="pill-qty">{{ "{:,}".format(ns.wl | int) }}</span>
+      </div>
+      {% endif %}
+      {% if ns.java > 0 %}
+      <div class="pill-item">
+        <span class="pill-dot" style="background:var(--s3)"></span>
+        <span class="pill-name">Java</span>
+        <span class="pill-qty">{{ "{:,}".format(ns.java | int) }}</span>
+      </div>
+      {% endif %}
+      {% if ns.other > 0 %}
+      <div class="pill-item">
+        <span class="pill-dot" style="background:var(--s4)"></span>
+        <span class="pill-name">Other</span>
+        <span class="pill-qty">{{ "{:,}".format(ns.other | int) }}</span>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="tile-footer">
+      {{ t('licence_summary.view_detail') }} <i class="bi bi-arrow-right"></i>
     </div>
 
   </a>
   {% endfor %}
 </div>
+
 {% else %}
 <p class="text-muted mb-4">{{ t('licence_summary.none_client') }}</p>
 {% endif %}
 
 <!-- ── Shared pool section ── -->
-<div class="section-label">
-  <i class="bi bi-share" style="color:var(--s2)"></i> {{ t('licence_summary.shared_pool') }}
+<div class="ls-section" style="margin-top:.5rem">
+  <i class="bi bi-share" style="color:var(--s2)"></i>
+  {{ t('licence_summary.shared_pool') }}
 </div>
 
 {% if shared_lines %}
@@ -223,53 +303,73 @@
     {% set ns.other = ns.other + l.total_qty %}
   {% endif %}
 {% endfor %}
-{% set db_w    = ((ns.db    / ns.total * 100) | round(1)) if ns.total > 0 else 0 %}
-{% set wl_w    = ((ns.wl    / ns.total * 100) | round(1)) if ns.total > 0 else 0 %}
-{% set java_w  = ((ns.java  / ns.total * 100) | round(1)) if ns.total > 0 else 0 %}
-{% set other_w = ((ns.other / ns.total * 100) | round(1)) if ns.total > 0 else 0 %}
 
-<div class="col-header">
-  <span>{{ t('licence_summary.pool') }}</span>
-  <span>{{ t('licence_summary.qty_by_family') }}</span>
-  <span>{{ t('label.quantity') }}</span>
-</div>
+{% set db_p    = ((ns.db    / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
+{% set wl_p    = ((ns.wl    / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
+{% set java_p  = ((ns.java  / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
+{% set other_p = ((ns.other / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
+{% set s1 = db_p %}
+{% set s2 = (s1 + wl_p)   | round(2) %}
+{% set s3 = (s2 + java_p) | round(2) %}
 
-<div class="entity-list">
-  <a href="{{ url_for('licence_summary_shared') }}" class="entity-row">
+<div class="tile-grid">
+  <a href="{{ url_for('licence_summary_shared') }}" class="tile">
 
-    <div class="entity-name">
-      <i class="bi bi-people-fill" style="color:var(--s2);font-size:.9rem;flex-shrink:0"></i>
-      <span class="entity-name-text">{{ t('licence_summary.shared_pool_label') }}</span>
-      <span class="entity-badge">{{ shared_lines | length }}p</span>
+    <div class="tile-header">
+      <span class="tile-name">{{ t('licence_summary.shared_pool_label') }}</span>
+      <span class="tile-count">{{ shared_lines | length }}p</span>
     </div>
 
-    <div class="bar-wrap">
-      <div class="bar-track">
-        {% if db_w > 0 %}<div class="bar-seg" style="width:{{ db_w }}%;background:var(--s1)"
-          title="Database: {{ ns.db | int }} licences"></div>{% endif %}
-        {% if wl_w > 0 %}<div class="bar-seg" style="width:{{ wl_w }}%;background:var(--s2)"
-          title="WebLogic/Middleware: {{ ns.wl | int }} licences"></div>{% endif %}
-        {% if java_w > 0 %}<div class="bar-seg" style="width:{{ java_w }}%;background:var(--s3)"
-          title="Java/Coherence: {{ ns.java | int }} licences"></div>{% endif %}
-        {% if other_w > 0 %}<div class="bar-seg" style="width:{{ other_w }}%;background:var(--s4)"
-          title="Other: {{ ns.other | int }} licences"></div>{% endif %}
-      </div>
-      <div class="bar-labels">
-        {% if ns.db > 0 %}<div class="bar-label-item">
-          <span class="bar-label-dot" style="background:var(--s1)"></span>{{ ns.db | int }} DB</div>{% endif %}
-        {% if ns.wl > 0 %}<div class="bar-label-item">
-          <span class="bar-label-dot" style="background:var(--s2)"></span>{{ ns.wl | int }} WL</div>{% endif %}
-        {% if ns.java > 0 %}<div class="bar-label-item">
-          <span class="bar-label-dot" style="background:var(--s3)"></span>{{ ns.java | int }} Java</div>{% endif %}
-        {% if ns.other > 0 %}<div class="bar-label-item">
-          <span class="bar-label-dot" style="background:var(--s4)"></span>{{ ns.other | int }} Other</div>{% endif %}
+    <div class="donut-wrap">
+      {% if ns.total > 0 %}
+      <div class="donut" style="background: conic-gradient(
+        {% if ns.db > 0 %}var(--s1) 0% {{ s1 }}%{% if ns.wl > 0 or ns.java > 0 or ns.other > 0 %},{% endif %}{% endif %}
+        {% if ns.wl > 0 %}var(--s2) {{ s1 }}% {{ s2 }}%{% if ns.java > 0 or ns.other > 0 %},{% endif %}{% endif %}
+        {% if ns.java > 0 %}var(--s3) {{ s2 }}% {{ s3 }}%{% if ns.other > 0 %},{% endif %}{% endif %}
+        {% if ns.other > 0 %}var(--s4) {{ s3 }}% 100%{% endif %}
+      )"></div>
+      {% else %}
+      <div class="donut" style="background: var(--track)"></div>
+      {% endif %}
+      <div class="donut-hole">
+        <span class="donut-total">{{ "{:,}".format(ns.total | int) }}</span>
+        <span class="donut-label">{{ t('licence_summary.licences') }}</span>
       </div>
     </div>
 
-    <div class="entity-total">
-      <div class="entity-total-value" style="color:var(--s2)">{{ "{:,}".format(ns.total | int) }}</div>
-      <div class="entity-total-label">{{ t('licence_summary.licences') }}</div>
-      <div class="entity-arrow"><i class="bi bi-arrow-right-circle"></i> {{ t('licence_summary.view_detail') }}</div>
+    <div class="pill-row">
+      {% if ns.db > 0 %}
+      <div class="pill-item">
+        <span class="pill-dot" style="background:var(--s1)"></span>
+        <span class="pill-name">{{ t('licence_summary.db') }}</span>
+        <span class="pill-qty">{{ "{:,}".format(ns.db | int) }}</span>
+      </div>
+      {% endif %}
+      {% if ns.wl > 0 %}
+      <div class="pill-item">
+        <span class="pill-dot" style="background:var(--s2)"></span>
+        <span class="pill-name">WebLogic</span>
+        <span class="pill-qty">{{ "{:,}".format(ns.wl | int) }}</span>
+      </div>
+      {% endif %}
+      {% if ns.java > 0 %}
+      <div class="pill-item">
+        <span class="pill-dot" style="background:var(--s3)"></span>
+        <span class="pill-name">Java</span>
+        <span class="pill-qty">{{ "{:,}".format(ns.java | int) }}</span>
+      </div>
+      {% endif %}
+      {% if ns.other > 0 %}
+      <div class="pill-item">
+        <span class="pill-dot" style="background:var(--s4)"></span>
+        <span class="pill-name">Other</span>
+        <span class="pill-qty">{{ "{:,}".format(ns.other | int) }}</span>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="tile-footer">
+      {{ t('licence_summary.view_detail') }} <i class="bi bi-arrow-right"></i>
     </div>
 
   </a>
