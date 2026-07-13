@@ -1943,7 +1943,8 @@ def export_lms():
         ("Processor Details", "CPU socket / core / factor data per server"),
         ("Oracle Instances", "Oracle DB instances with edition and version"),
         ("Options", "v$option flags per instance"),
-        ("Licence Position", "Calculated licence requirements per product"),
+        ("Licence Position", "Calculated licence requirements per product per server"),
+        ("CSI Coverage", "Per-server/product breakdown: which CSI covers each licence requirement"),
         ("CSI Contracts", "All CSI contract headers and entitlement totals"),
         ("SE2 Violations", "Servers violating SE2 socket or RAC node limits"),
         ("CPU Validation", "Servers with unrecognised CPU models"),
@@ -2070,7 +2071,65 @@ def export_lms():
             for cell in ws6[ws6.max_row]:
                 cell.fill = danger_fill
 
-    # Sheet 7: CSI Contracts
+    # Sheet 7: CSI Coverage — per-server/product/CSI breakdown across all clients
+    active_clients = query(
+        "SELECT client_name, schema_name FROM sam_admin.clients WHERE is_active ORDER BY client_name"
+    )
+    coverage_rows = []
+    for cl in active_clients:
+        s = cl["schema_name"]
+        try:
+            rows = query(f"""
+                SELECT
+                    sv.hostname,
+                    COALESCE(m.product_detail, m.product_family::TEXT) AS product,
+                    lp.licences_required,
+                    cs.csi_number,
+                    cs.contract_name,
+                    COALESCE(m.licences_consumed, 0) AS licences_from_csi
+                FROM {s}.server_csi_map m
+                JOIN {s}.oracle_servers sv  ON sv.server_id  = m.server_id  AND sv.is_active
+                JOIN shared.csi_contracts cs ON cs.csi_id    = m.csi_id
+                LEFT JOIN {s}.license_position lp
+                       ON lp.server_id      = m.server_id
+                      AND lp.product_family = m.product_family
+                      AND COALESCE(lp.product_detail,'') = COALESCE(m.product_detail,'')
+                ORDER BY sv.hostname, product, cs.csi_number
+            """)
+            for r in rows:
+                coverage_rows.append({
+                    "client_name":       cl["client_name"],
+                    "hostname":          r["hostname"],
+                    "product":           r["product"],
+                    "licences_required": r["licences_required"],
+                    "csi_number":        r["csi_number"],
+                    "contract_name":     r["contract_name"],
+                    "licences_from_csi": r["licences_from_csi"],
+                })
+        except Exception as e:
+            app.logger.warning("CSI coverage query failed for %s: %s", s, e)
+
+    ws_cov = wb.create_sheet("CSI Coverage")
+    cov_cols = ["Client", "Hostname", "Product", "Licences Required",
+                "CSI Number", "Contract Name", "Licences from CSI"]
+    ws_cov.append(cov_cols)
+    for cell in ws_cov[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+    for r in coverage_rows:
+        ws_cov.append([
+            r["client_name"], r["hostname"], r["product"],
+            r["licences_required"], r["csi_number"],
+            r["contract_name"], r["licences_from_csi"],
+        ])
+    for col in ws_cov.columns:
+        ws_cov.column_dimensions[col[0].column_letter].width = max(
+            len(str(col[0].value or "")),
+            max((len(str(c.value or "")) for c in col[1:]), default=0)
+        ) + 4
+
+    # Sheet 8: CSI Contracts
     csi_data = query("""
         SELECT cs.csi_number, cs.contract_name, cs.purchase_date,
                cs.support_start, cs.support_expiry, cs.is_ula, cs.ula_expiry,
