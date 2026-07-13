@@ -44,7 +44,7 @@
   /* ── Tile grid ── */
   .tile-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 1rem;
     margin-bottom: 2.5rem;
   }
@@ -54,12 +54,13 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 1.1rem 1.1rem .9rem;
+    padding: 1.25rem 1.1rem 1rem;
     text-decoration: none;
     color: inherit;
     display: flex;
     flex-direction: column;
-    gap: .75rem;
+    align-items: center;
+    gap: .85rem;
     transition: box-shadow .18s, transform .18s, border-color .18s;
     cursor: pointer;
   }
@@ -72,24 +73,19 @@
 
   /* ── Tile header ── */
   .tile-header {
+    width: 100%;
     display: flex;
-    align-items: center;
+    align-items: baseline;
     justify-content: space-between;
-    gap: .5rem;
+    gap: .4rem;
   }
   .tile-name {
     font-weight: 700;
-    font-size: .92rem;
+    font-size: .88rem;
     color: var(--text-pri);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-  .tile-header-right {
-    display: flex;
-    align-items: center;
-    gap: .4rem;
-    flex-shrink: 0;
   }
   .tile-count {
     font-size: .65rem;
@@ -98,54 +94,78 @@
     background: var(--track);
     border-radius: 20px;
     padding: .1rem .42rem;
+    flex-shrink: 0;
   }
 
-  /* ── Scope badge ── */
-  .tile-scope-badge {
-    font-size: .6rem;
-    font-weight: 600;
-    color: var(--s1);
-    background: rgba(109,40,217,.08);
-    border: 1px solid rgba(109,40,217,.18);
-    border-radius: 20px;
-    padding: .1rem .45rem;
-    letter-spacing: .02em;
+  /* ── Donut ── */
+  .donut-wrap {
+    position: relative;
+    width: 92px;
+    height: 92px;
+    flex-shrink: 0;
   }
-
-  /* ── Product sub-tiles ── */
-  .product-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: .45rem;
+  .donut {
+    width: 92px;
+    height: 92px;
+    border-radius: 50%;
   }
-  .product-card {
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    padding: .5rem .6rem;
-    border-left-width: 3px;
+  /* hollow centre */
+  .donut-hole {
+    position: absolute;
+    inset: 22%;
+    border-radius: 50%;
+    background: var(--surface);
     display: flex;
     flex-direction: column;
-    gap: .1rem;
-    min-width: 0;
+    align-items: center;
+    justify-content: center;
   }
-  .product-card-qty {
-    font-size: 1.1rem;
+  .donut-total {
+    font-size: .95rem;
     font-weight: 800;
     color: var(--text-pri);
     line-height: 1;
     font-variant-numeric: tabular-nums;
   }
-  .product-card-name {
-    font-size: .65rem;
+  .donut-label {
+    font-size: .52rem;
     color: var(--text-muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-top: 1px;
+  }
+
+  /* ── Product pills ── */
+  .pill-row {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: .3rem;
+  }
+  .pill-item {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    font-size: .72rem;
+    color: var(--text-sec);
+  }
+  .pill-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .pill-name { flex: 1; }
+  .pill-qty {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--text-pri);
   }
 
   /* ── Tile footer ── */
   .tile-footer {
-    padding-top: .6rem;
+    width: 100%;
+    padding-top: .7rem;
     border-top: 1px solid var(--border);
     font-size: .72rem;
     color: var(--text-muted);
@@ -163,39 +183,6 @@
   <h4 class="mb-0"><i class="bi bi-bar-chart-line me-1"></i>{{ t('licence_summary.title') }}</h4>
 </div>
 
-{# Colour palette cycling per product — 10 distinct hues #}
-{% set palette = ['#6d28d9','#2563eb','#059669','#d97706','#dc2626','#0891b2','#7c3aed','#65a30d','#c2410c','#0369a1'] %}
-
-{%- macro product_tile(lines, total, href, title, badge_label) %}
-  <a href="{{ href }}" class="tile">
-
-    <div class="tile-header">
-      <span class="tile-name">{{ title }}</span>
-      <div class="tile-header-right">
-        {% if badge_label %}
-        <span class="tile-scope-badge"><i class="bi bi-lock-fill"></i> {{ badge_label }}</span>
-        {% endif %}
-        <span class="tile-count">{{ lines | length }}p</span>
-      </div>
-    </div>
-
-    <div class="product-grid">
-      {% for l in lines %}
-      <div class="product-card"
-           style="border-left-color:{{ palette[loop.index0 % (palette | length)] }}">
-        <span class="product-card-qty">{{ "{:,}".format(l.total_qty | int) }}</span>
-        <span class="product-card-name" title="{{ l.product_name }}">{{ l.product_name }}</span>
-      </div>
-      {% endfor %}
-    </div>
-
-    <div class="tile-footer">
-      {{ t('licence_summary.view_detail') }} <i class="bi bi-arrow-right"></i>
-    </div>
-
-  </a>
-{%- endmacro %}
-
 <!-- ── Client-locked section ── -->
 {% if clients %}
 <div class="ls-section">
@@ -206,13 +193,89 @@
 
 <div class="tile-grid">
   {% for client in clients %}
-  {% set total = client.lines | sum(attribute='total_qty') %}
-  {{ product_tile(
-       client.lines, total,
-       url_for('licence_summary_client', client_code=client.client_code),
-       client.client_name or client.client_code,
-       t('licence_summary.locked_only')
-     ) }}
+  {% set ns = namespace(db=0, wl=0, java=0, other=0, total=0) %}
+  {% for l in client.lines %}
+    {% set ns.total = ns.total + l.total_qty %}
+    {% if l.product_family == 'oracle_database' %}
+      {% set ns.db = ns.db + l.total_qty %}
+    {% elif l.product_family in ('oracle_weblogic', 'oracle_middleware') %}
+      {% set ns.wl = ns.wl + l.total_qty %}
+    {% elif l.product_family in ('oracle_java', 'oracle_coherence') %}
+      {% set ns.java = ns.java + l.total_qty %}
+    {% else %}
+      {% set ns.other = ns.other + l.total_qty %}
+    {% endif %}
+  {% endfor %}
+
+  {# cumulative stops for conic-gradient #}
+  {% set db_p    = ((ns.db    / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
+  {% set wl_p    = ((ns.wl    / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
+  {% set java_p  = ((ns.java  / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
+  {% set other_p = ((ns.other / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
+  {% set s1 = db_p %}
+  {% set s2 = (s1 + wl_p)   | round(2) %}
+  {% set s3 = (s2 + java_p) | round(2) %}
+
+  <a href="{{ url_for('licence_summary_client', client_code=client.client_code) }}" class="tile">
+
+    <div class="tile-header">
+      <span class="tile-name">{{ client.client_name or client.client_code }}</span>
+      <span class="tile-count">{{ client.lines | length }}p</span>
+    </div>
+
+    <div class="donut-wrap">
+      {% if ns.total > 0 %}
+      <div class="donut" style="background: conic-gradient(
+        {% if ns.db > 0 %}var(--s1) 0% {{ s1 }}%{% if ns.wl > 0 or ns.java > 0 or ns.other > 0 %},{% endif %}{% endif %}
+        {% if ns.wl > 0 %}var(--s2) {{ s1 }}% {{ s2 }}%{% if ns.java > 0 or ns.other > 0 %},{% endif %}{% endif %}
+        {% if ns.java > 0 %}var(--s3) {{ s2 }}% {{ s3 }}%{% if ns.other > 0 %},{% endif %}{% endif %}
+        {% if ns.other > 0 %}var(--s4) {{ s3 }}% 100%{% endif %}
+      )"></div>
+      {% else %}
+      <div class="donut" style="background: var(--track)"></div>
+      {% endif %}
+      <div class="donut-hole">
+        <span class="donut-total">{{ "{:,}".format(ns.total | int) }}</span>
+        <span class="donut-label">{{ t('licence_summary.licences') }}</span>
+      </div>
+    </div>
+
+    <div class="pill-row">
+      {% if ns.db > 0 %}
+      <div class="pill-item">
+        <span class="pill-dot" style="background:var(--s1)"></span>
+        <span class="pill-name">{{ t('licence_summary.db') }}</span>
+        <span class="pill-qty">{{ "{:,}".format(ns.db | int) }}</span>
+      </div>
+      {% endif %}
+      {% if ns.wl > 0 %}
+      <div class="pill-item">
+        <span class="pill-dot" style="background:var(--s2)"></span>
+        <span class="pill-name">WebLogic</span>
+        <span class="pill-qty">{{ "{:,}".format(ns.wl | int) }}</span>
+      </div>
+      {% endif %}
+      {% if ns.java > 0 %}
+      <div class="pill-item">
+        <span class="pill-dot" style="background:var(--s3)"></span>
+        <span class="pill-name">Java</span>
+        <span class="pill-qty">{{ "{:,}".format(ns.java | int) }}</span>
+      </div>
+      {% endif %}
+      {% if ns.other > 0 %}
+      <div class="pill-item">
+        <span class="pill-dot" style="background:var(--s4)"></span>
+        <span class="pill-name">Other</span>
+        <span class="pill-qty">{{ "{:,}".format(ns.other | int) }}</span>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="tile-footer">
+      {{ t('licence_summary.view_detail') }} <i class="bi bi-arrow-right"></i>
+    </div>
+
+  </a>
   {% endfor %}
 </div>
 
@@ -227,14 +290,89 @@
 </div>
 
 {% if shared_lines %}
-{% set shared_total = shared_lines | sum(attribute='total_qty') %}
+{% set ns = namespace(db=0, wl=0, java=0, other=0, total=0) %}
+{% for l in shared_lines %}
+  {% set ns.total = ns.total + l.total_qty %}
+  {% if l.product_family == 'oracle_database' %}
+    {% set ns.db = ns.db + l.total_qty %}
+  {% elif l.product_family in ('oracle_weblogic', 'oracle_middleware') %}
+    {% set ns.wl = ns.wl + l.total_qty %}
+  {% elif l.product_family in ('oracle_java', 'oracle_coherence') %}
+    {% set ns.java = ns.java + l.total_qty %}
+  {% else %}
+    {% set ns.other = ns.other + l.total_qty %}
+  {% endif %}
+{% endfor %}
+
+{% set db_p    = ((ns.db    / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
+{% set wl_p    = ((ns.wl    / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
+{% set java_p  = ((ns.java  / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
+{% set other_p = ((ns.other / ns.total * 100) | round(2)) if ns.total > 0 else 0 %}
+{% set s1 = db_p %}
+{% set s2 = (s1 + wl_p)   | round(2) %}
+{% set s3 = (s2 + java_p) | round(2) %}
+
 <div class="tile-grid">
-  {{ product_tile(
-       shared_lines, shared_total,
-       url_for('licence_summary_shared'),
-       t('licence_summary.shared_pool_label'),
-       none
-     ) }}
+  <a href="{{ url_for('licence_summary_shared') }}" class="tile">
+
+    <div class="tile-header">
+      <span class="tile-name">{{ t('licence_summary.shared_pool_label') }}</span>
+      <span class="tile-count">{{ shared_lines | length }}p</span>
+    </div>
+
+    <div class="donut-wrap">
+      {% if ns.total > 0 %}
+      <div class="donut" style="background: conic-gradient(
+        {% if ns.db > 0 %}var(--s1) 0% {{ s1 }}%{% if ns.wl > 0 or ns.java > 0 or ns.other > 0 %},{% endif %}{% endif %}
+        {% if ns.wl > 0 %}var(--s2) {{ s1 }}% {{ s2 }}%{% if ns.java > 0 or ns.other > 0 %},{% endif %}{% endif %}
+        {% if ns.java > 0 %}var(--s3) {{ s2 }}% {{ s3 }}%{% if ns.other > 0 %},{% endif %}{% endif %}
+        {% if ns.other > 0 %}var(--s4) {{ s3 }}% 100%{% endif %}
+      )"></div>
+      {% else %}
+      <div class="donut" style="background: var(--track)"></div>
+      {% endif %}
+      <div class="donut-hole">
+        <span class="donut-total">{{ "{:,}".format(ns.total | int) }}</span>
+        <span class="donut-label">{{ t('licence_summary.licences') }}</span>
+      </div>
+    </div>
+
+    <div class="pill-row">
+      {% if ns.db > 0 %}
+      <div class="pill-item">
+        <span class="pill-dot" style="background:var(--s1)"></span>
+        <span class="pill-name">{{ t('licence_summary.db') }}</span>
+        <span class="pill-qty">{{ "{:,}".format(ns.db | int) }}</span>
+      </div>
+      {% endif %}
+      {% if ns.wl > 0 %}
+      <div class="pill-item">
+        <span class="pill-dot" style="background:var(--s2)"></span>
+        <span class="pill-name">WebLogic</span>
+        <span class="pill-qty">{{ "{:,}".format(ns.wl | int) }}</span>
+      </div>
+      {% endif %}
+      {% if ns.java > 0 %}
+      <div class="pill-item">
+        <span class="pill-dot" style="background:var(--s3)"></span>
+        <span class="pill-name">Java</span>
+        <span class="pill-qty">{{ "{:,}".format(ns.java | int) }}</span>
+      </div>
+      {% endif %}
+      {% if ns.other > 0 %}
+      <div class="pill-item">
+        <span class="pill-dot" style="background:var(--s4)"></span>
+        <span class="pill-name">Other</span>
+        <span class="pill-qty">{{ "{:,}".format(ns.other | int) }}</span>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="tile-footer">
+      {{ t('licence_summary.view_detail') }} <i class="bi bi-arrow-right"></i>
+    </div>
+
+  </a>
 </div>
 {% else %}
 <p class="text-muted">{{ t('licence_summary.none_shared') }}</p>
