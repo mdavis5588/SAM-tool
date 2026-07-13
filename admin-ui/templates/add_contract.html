@@ -47,6 +47,19 @@
   <form method="post">
     <input type="hidden" name="action" value="save_header">
 
+    <!-- ── ULA toggle (top) ── -->
+    <div class="mb-4 p-3 rounded border d-flex align-items-center gap-3"
+         style="border-color:#e3e6ea" id="ulaToggleRow">
+      <div class="form-check form-switch mb-0">
+        <input class="form-check-input" type="checkbox" id="isUlaToggle"
+               name="is_ula" value="1" style="width:2.5em;height:1.3em">
+        <label class="form-check-label fw-semibold ms-1" for="isUlaToggle">
+          <i class="bi bi-infinity me-1" style="color:#7c3aed"></i>Unlimited Licence Agreement (ULA)
+        </label>
+      </div>
+      <span class="text-muted" style="font-size:.8rem">Toggle on if this contract is a ULA</span>
+    </div>
+
     <!-- ── Identity ── -->
     <div class="row g-3 mb-3">
       <div class="col-md-5">
@@ -94,24 +107,13 @@
         <div class="field-label">{{ t('add_contract.purchase_date') }}</div>
         <input type="date" name="purchase_date" class="form-control">
       </div>
-      <div class="col-md-4">
+      <div class="col-md-4 non-ula-date">
         <div class="field-label">{{ t('add_contract.support_start') }}</div>
         <input type="date" name="support_start" class="form-control">
       </div>
-      <div class="col-md-4">
+      <div class="col-md-4 non-ula-date">
         <div class="field-label">{{ t('add_contract.support_expiry') }}</div>
         <input type="date" name="support_expiry" class="form-control">
-      </div>
-    </div>
-
-    <!-- ── ULA ── -->
-    <div class="mb-3">
-      <div class="form-check form-switch">
-        <input class="form-check-input" type="checkbox" id="isUlaToggle"
-               name="is_ula" value="1">
-        <label class="form-check-label fw-semibold" for="isUlaToggle">
-          Unlimited Licence Agreement (ULA)
-        </label>
       </div>
     </div>
 
@@ -226,12 +228,24 @@
   // ── ULA fields ──────────────────────────────────────────────────────────
   const ulaToggle  = document.getElementById('isUlaToggle');
   const ulaFields  = document.getElementById('ulaFields');
+  const ulaRow     = document.getElementById('ulaToggleRow');
   const tagsDiv    = document.getElementById('productTags');
   const customInp  = document.getElementById('customProduct');
 
-  ulaToggle.addEventListener('change', () => {
-    ulaFields.style.display = ulaToggle.checked ? '' : 'none';
-  });
+  function applyUlaState() {
+    const on = ulaToggle.checked;
+    ulaFields.style.display = on ? '' : 'none';
+    // Hide / show support start & expiry
+    document.querySelectorAll('.non-ula-date').forEach(el => {
+      el.style.display = on ? 'none' : '';
+    });
+    // Highlight toggle row
+    ulaRow.style.borderColor = on ? '#7c3aed' : '#e3e6ea';
+    ulaRow.style.background  = on ? 'rgba(124,58,237,.04)' : '';
+  }
+
+  ulaToggle.addEventListener('change', applyUlaState);
+  applyUlaState();
 
   const products = new Set();
 
