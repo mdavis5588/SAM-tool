@@ -647,7 +647,7 @@ BEGIN
   PERFORM shared.add_csi_line(
     p_csi_id         => v_csi,
     p_product_name   => 'Oracle Coherence',
-    p_product_family => 'oracle_weblogic',
+    p_product_family => 'oracle_coherence',
     p_metric         => 'processor',
     p_quantity       => 128,
     p_unit_price     => 23000.00,
@@ -763,3 +763,80 @@ BEGIN
     p_annual_support => 40480.00
   );
 END $$;
+
+
+-- ===========================================================================
+-- SERVER → CSI MAPPINGS
+-- Map the WLS servers to the contracts above.
+-- Each block is idempotent via ON CONFLICT DO NOTHING.
+-- ===========================================================================
+
+-- CSI F (ORD-2024-ACM-WLS-01): Acme prod WLS cluster + OSB gateway
+INSERT INTO client_acme.server_csi_map (server_id, csi_id, product_family)
+SELECT s.server_id, c.csi_id, 'oracle_weblogic'
+FROM client_acme.oracle_servers s
+CROSS JOIN shared.csi_contracts c
+WHERE s.hostname IN ('wls-prod-01', 'wls-prod-02', 'wls-prod-03', 'wls-dr-01')
+  AND c.vendor_reference = 'ORD-2024-ACM-WLS-01'
+  AND NOT EXISTS (
+    SELECT 1 FROM client_acme.server_csi_map m
+    WHERE m.server_id = s.server_id AND m.csi_id = c.csi_id AND m.product_family = 'oracle_weblogic'
+  );
+
+-- CSI G (ORD-2024-GBX-WLS-01): Globex prod WLS servers
+INSERT INTO client_globex.server_csi_map (server_id, csi_id, product_family)
+SELECT s.server_id, c.csi_id, 'oracle_weblogic'
+FROM client_globex.oracle_servers s
+CROSS JOIN shared.csi_contracts c
+WHERE s.hostname IN ('gbx-wls-prod-01', 'gbx-wls-prod-02', 'gbx-wls-dr-01')
+  AND c.vendor_reference = 'ORD-2024-GBX-WLS-01'
+  AND NOT EXISTS (
+    SELECT 1 FROM client_globex.server_csi_map m
+    WHERE m.server_id = s.server_id AND m.csi_id = c.csi_id AND m.product_family = 'oracle_weblogic'
+  );
+
+-- CSI H (ORD-2023-SHARED-WLS-01): Shared non-prod pool → acme + globex UAT
+INSERT INTO client_acme.server_csi_map (server_id, csi_id, product_family)
+SELECT s.server_id, c.csi_id, 'oracle_weblogic'
+FROM client_acme.oracle_servers s
+CROSS JOIN shared.csi_contracts c
+WHERE s.hostname = 'wls-uat-01'
+  AND c.vendor_reference = 'ORD-2023-SHARED-WLS-01'
+  AND NOT EXISTS (
+    SELECT 1 FROM client_acme.server_csi_map m
+    WHERE m.server_id = s.server_id AND m.csi_id = c.csi_id AND m.product_family = 'oracle_weblogic'
+  );
+
+INSERT INTO client_globex.server_csi_map (server_id, csi_id, product_family)
+SELECT s.server_id, c.csi_id, 'oracle_weblogic'
+FROM client_globex.oracle_servers s
+CROSS JOIN shared.csi_contracts c
+WHERE s.hostname = 'gbx-wls-uat-01'
+  AND c.vendor_reference = 'ORD-2023-SHARED-WLS-01'
+  AND NOT EXISTS (
+    SELECT 1 FROM client_globex.server_csi_map m
+    WHERE m.server_id = s.server_id AND m.csi_id = c.csi_id AND m.product_family = 'oracle_weblogic'
+  );
+
+-- CSI I (ORD-2024-SHARED-WLS-02): Shared prod overflow → acme + globex prod nodes
+INSERT INTO client_acme.server_csi_map (server_id, csi_id, product_family)
+SELECT s.server_id, c.csi_id, 'oracle_weblogic'
+FROM client_acme.oracle_servers s
+CROSS JOIN shared.csi_contracts c
+WHERE s.hostname IN ('wls-prod-01', 'wls-prod-02')
+  AND c.vendor_reference = 'ORD-2024-SHARED-WLS-02'
+  AND NOT EXISTS (
+    SELECT 1 FROM client_acme.server_csi_map m
+    WHERE m.server_id = s.server_id AND m.csi_id = c.csi_id AND m.product_family = 'oracle_weblogic'
+  );
+
+INSERT INTO client_globex.server_csi_map (server_id, csi_id, product_family)
+SELECT s.server_id, c.csi_id, 'oracle_weblogic'
+FROM client_globex.oracle_servers s
+CROSS JOIN shared.csi_contracts c
+WHERE s.hostname IN ('gbx-wls-prod-01', 'gbx-wls-prod-02')
+  AND c.vendor_reference = 'ORD-2024-SHARED-WLS-02'
+  AND NOT EXISTS (
+    SELECT 1 FROM client_globex.server_csi_map m
+    WHERE m.server_id = s.server_id AND m.csi_id = c.csi_id AND m.product_family = 'oracle_weblogic'
+  );
