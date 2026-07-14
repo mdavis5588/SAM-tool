@@ -1417,6 +1417,130 @@ def renewal_calendar():
                            beyond=beyond)
 
 
+@app.route("/cost-optimisation")
+@login_required
+def cost_optimisation():
+    today = date.today()
+
+    # All active standard (non-ULA) entitlement lines with cost info
+    line_rows = query("""
+        SELECT l.line_id, l.csi_id, l.line_number, l.product_name,
+               l.product_family::TEXT AS product_family,
+               l.license_metric::TEXT AS license_metric,
+               l.quantity, l.unit_price, l.total_price, l.annual_support_cost,
+               cs.csi_number, cs.contract_name, cs.currency, cs.status,
+               cs.support_expiry, cs.is_ula,
+               oc.client_name AS owning_client
+        FROM shared.license_entitlement_lines l
+        JOIN shared.csi_contracts cs ON cs.csi_id = l.csi_id
+        LEFT JOIN sam_admin.clients oc ON oc.client_id = cs.owning_client_id
+        WHERE l.is_active AND NOT cs.is_ula AND cs.status = 'active'
+        ORDER BY l.annual_support_cost DESC NULLS LAST, l.total_price DESC NULLS LAST
+    """)
+
+    # Build consumed map (same pattern as contracts())
+    active_schemas = [
+        r["schema_name"] for r in query(
+            "SELECT schema_name FROM sam_admin.clients WHERE is_active ORDER BY schema_name"
+        )
+    ]
+    consumed_entries_by_csi = {}
+    if active_schemas:
+        union_sql = " UNION ALL ".join(
+            f"SELECT csi_id, product_family::TEXT, COALESCE(product_detail,'') AS product_detail, "
+            f"COALESCE(SUM(licences_consumed), 0) AS consumed "
+            f"FROM {s}.server_csi_map GROUP BY csi_id, product_family, product_detail"
+            for s in active_schemas
+        )
+        for r in query(
+            f"SELECT csi_id, product_family, product_detail, SUM(consumed) AS total "
+            f"FROM ({union_sql}) t GROUP BY csi_id, product_family, product_detail"
+        ):
+            consumed_entries_by_csi.setdefault(r["csi_id"], []).append(
+                (r["product_family"], r["product_detail"], r["total"])
+            )
+
+    # Annotate each line with consumed/available/utilisation
+    annotated = []
+    for l in line_rows:
+        consumed = sum(
+            amt for fam, det, amt in consumed_entries_by_csi.get(l["csi_id"], [])
+            if _is_compatible_product(l["product_family"], det or None,
+                                      l["product_family"], l["product_name"])
+        )
+        qty = l["quantity"] or 0
+        util_pct = int(consumed / qty * 100) if qty else 0
+        waste_licences = max(qty - consumed, 0)
+        # Estimate wasted annual cost (pro-rate annual_support_cost by unused fraction)
+        wasted_cost = None
+        if qty and l["annual_support_cost"]:
+            wasted_cost = float(l["annual_support_cost"]) * (waste_licences / qty)
+        elif qty and l["total_price"]:
+            wasted_cost = float(l["total_price"]) * (waste_licences / qty)
+        annotated.append(dict(l,
+                              consumed=consumed,
+                              available=waste_licences,
+                              util_pct=util_pct,
+                              wasted_cost=wasted_cost))
+
+    # Bucket findings
+    unused   = [r for r in annotated if r["quantity"] and r["consumed"] == 0]
+    low_util = [r for r in annotated if r["quantity"] and 0 < r["util_pct"] < 50]
+    # Sort each bucket: most costly waste first
+    unused.sort(key=lambda r: r["wasted_cost"] or 0, reverse=True)
+    low_util.sort(key=lambda r: r["wasted_cost"] or 0, reverse=True)
+
+    # Contracts with no entitlement lines (active, non-ULA)
+    empty_contracts = query("""
+        SELECT cs.csi_id, cs.csi_number, cs.contract_name, cs.currency,
+               oc.client_name AS owning_client
+        FROM shared.csi_contracts cs
+        LEFT JOIN sam_admin.clients oc ON oc.client_id = cs.owning_client_id
+        LEFT JOIN shared.license_entitlement_lines l
+               ON l.csi_id = cs.csi_id AND l.is_active
+        WHERE cs.status = 'active' AND NOT cs.is_ula
+        GROUP BY cs.csi_id, cs.csi_number, cs.contract_name, cs.currency, oc.client_name
+        HAVING COUNT(l.line_id) = 0
+        ORDER BY cs.contract_name
+    """)
+
+    # ULAs expiring within 12 months — check server assignment counts
+    ula_risks = []
+    ula_contracts = query("""
+        SELECT cs.csi_id, cs.csi_number, cs.contract_name, cs.ula_expiry, cs.currency,
+               oc.client_name AS owning_client, oc.schema_name
+        FROM shared.csi_contracts cs
+        LEFT JOIN sam_admin.clients oc ON oc.client_id = cs.owning_client_id
+        WHERE cs.is_ula AND cs.status = 'active'
+          AND cs.ula_expiry BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '12 months'
+        ORDER BY cs.ula_expiry
+    """)
+    for ula in ula_contracts:
+        server_count = 0
+        if ula["schema_name"]:
+            s = ula["schema_name"]
+            row = query(
+                f"SELECT COUNT(DISTINCT server_id) AS cnt FROM {s}.server_csi_map WHERE csi_id = %s",
+                (ula["csi_id"],), fetchall=False
+            )
+            server_count = row["cnt"] if row else 0
+        days = (ula["ula_expiry"] - today).days
+        ula_risks.append(dict(ula, server_count=server_count, days=days))
+
+    # Summary totals
+    total_wasted_cost = sum((r["wasted_cost"] or 0) for r in unused + low_util)
+    total_unused_licences = sum(r["available"] for r in unused)
+
+    return render_template("cost_optimisation.html",
+                           today=today,
+                           unused=unused,
+                           low_util=low_util,
+                           empty_contracts=empty_contracts,
+                           ula_risks=ula_risks,
+                           total_wasted_cost=total_wasted_cost,
+                           total_unused_licences=total_unused_licences)
+
+
 @app.route("/contracts")
 @login_required
 def contracts():
