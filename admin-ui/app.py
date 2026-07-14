@@ -280,6 +280,12 @@ def weblogic_servers():
 
     def _wls_query(s, client_code=None, client_name=None):
         results = query(f"""
+            WITH ula_servers AS (
+                SELECT DISTINCT m.server_id
+                FROM {s}.server_csi_map m
+                JOIN shared.csi_contracts cs ON cs.csi_id = m.csi_id
+                WHERE cs.is_ula
+            )
             SELECT
                 sv.server_id,
                 sv.hostname,
@@ -292,7 +298,7 @@ def weblogic_servers():
                 d.wls_version,
                 d.admin_server_host,
                 d.admin_server_port,
-                COUNT(DISTINCT ms.wls_ms_id)     AS managed_server_count,
+                COUNT(DISTINCT ms.managed_server_id) AS managed_server_count,
                 COUNT(DISTINCT ms.cluster_name)
                   FILTER (WHERE ms.cluster_name IS NOT NULL) AS cluster_count,
                 STRING_AGG(DISTINCT ms.cluster_name, ', '
@@ -302,18 +308,21 @@ def weblogic_servers():
                  WHERE ip.domain_id = d.domain_id)           AS product_count,
                 lp.licences_required,
                 lp.total_licensed,
-                lp.compliance_status
+                lp.compliance_status,
+                (ula_servers.server_id IS NOT NULL)          AS has_ula
             FROM {s}.oracle_servers sv
             JOIN {s}.wls_domains d ON d.server_id = sv.server_id AND d.is_active
             LEFT JOIN {s}.wls_managed_servers ms ON ms.domain_id = d.domain_id
             LEFT JOIN {s}.license_position lp
                    ON lp.server_id = sv.server_id
                   AND lp.product_family = 'oracle_weblogic'
+            LEFT JOIN ula_servers ON ula_servers.server_id = sv.server_id
             WHERE sv.is_active
             GROUP BY sv.server_id, sv.hostname, sv.environment, sv.datacenter,
                      sv.last_seen, d.domain_id, d.domain_name, d.wls_edition,
                      d.wls_version, d.admin_server_host, d.admin_server_port,
-                     lp.licences_required, lp.total_licensed, lp.compliance_status
+                     lp.licences_required, lp.total_licensed, lp.compliance_status,
+                     ula_servers.server_id
             ORDER BY sv.hostname, d.domain_name
         """)
         for r in results:
