@@ -95,6 +95,19 @@
     color: var(--text-muted);
     margin-top: auto;
   }
+  .family-header {
+    width: 100%;
+    display: flex; align-items: center; gap: .5rem;
+    font-size: .68rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .09em;
+    color: var(--text-muted);
+    padding: .5rem .75rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 1.5rem 0 .75rem;
+  }
+  .family-header:first-of-type { margin-top: 0; }
 </style>
 
 <nav aria-label="breadcrumb" class="mb-3">
@@ -110,71 +123,48 @@
 <p class="text-muted small mb-4">{{ subtitle }} — click a tile to see server assignments</p>
 
 {% if lines %}
-<div class="viz-root row g-3">
-  {% for line in lines %}
+{% set db_lines = lines | selectattr('product_family', 'equalto', 'oracle_database') | list %}
+{% set mw_lines = lines | rejectattr('product_family', 'equalto', 'oracle_database') | list %}
+
+<div class="viz-root">
+
+{% if db_lines %}
+<div class="family-header">
+  <i class="bi bi-database" style="color:#2563eb"></i> Database Products
+  <span style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;font-size:.72rem">{{ db_lines | length }} product{{ 's' if db_lines | length != 1 }}</span>
+</div>
+<div class="row g-3 mb-2">
+  {% for line in db_lines %}
   {% set total    = line.total_qty | int %}
   {% set assigned = [line.assigned_qty | int, total] | min %}
   {% set free     = line.unassigned_qty | int %}
   {% set pct      = ((assigned / total * 100) | round(0) | int) if total > 0 else 0 %}
-  {# Donut: circumference of r=38 circle = 2π×38 ≈ 238.8 #}
   {% set circ38 = 238.8 %}
   {% set dash38 = (assigned / total * circ38) | round(3) if total > 0 else 0 %}
-  {% set modal_id = "modal-" ~ loop.index %}
-
+  {% set modal_id = "modal-db-" ~ loop.index %}
   <div class="col-6 col-md-4 col-lg-3">
     <a class="product-card shadow-sm h-100 d-flex"
        data-bs-toggle="modal" data-bs-target="#{{ modal_id }}" role="button">
-
-      <!-- Product name -->
       <div class="prod-name">
         {% set n = line.product_name.lower() %}
         {% set fam = line.product_family | default('') %}
-        {% if 'weblogic suite' in n %}
-          <i class="bi bi-boxes me-1" style="color:#7c3aed"></i>
-        {% elif 'weblogic' in n and 'enterprise' in n %}
-          <i class="bi bi-boxes me-1" style="color:#2563eb"></i>
-        {% elif 'weblogic' in n %}
-          <i class="bi bi-boxes me-1" style="color:#6366f1"></i>
-        {% elif 'coherence' in n %}
-          <i class="bi bi-cpu me-1" style="color:#059669"></i>
-        {% elif 'soa suite' in n or 'service bus' in n or 'osb' in n %}
-          <i class="bi bi-diagram-3 me-1" style="color:#0891b2"></i>
-        {% elif 'identity' in n or 'oam' in n or 'oig' in n %}
-          <i class="bi bi-person-badge me-1" style="color:#7c3aed"></i>
-        {% elif fam == 'oracle_weblogic' or fam == 'oracle_coherence' %}
-          <i class="bi bi-boxes me-1" style="color:#6366f1"></i>
-        {% elif 'enterprise' in n %}
-          <i class="bi bi-database-fill text-primary me-1"></i>
-        {% elif 'standard' in n %}
-          <i class="bi bi-database text-secondary me-1"></i>
-        {% elif 'diagnostic' in n %}
-          <i class="bi bi-activity text-info me-1"></i>
-        {% elif 'tuning' in n %}
-          <i class="bi bi-sliders text-warning me-1"></i>
-        {% elif 'partition' in n %}
-          <i class="bi bi-layout-split text-success me-1"></i>
-        {% elif 'security' in n %}
-          <i class="bi bi-shield-lock text-danger me-1"></i>
-        {% elif 'compression' in n %}
-          <i class="bi bi-file-zip text-secondary me-1"></i>
-        {% elif 'vault' in n %}
-          <i class="bi bi-lock text-danger me-1"></i>
-        {% else %}
-          <i class="bi bi-puzzle text-muted me-1"></i>
-        {% endif %}
+        {% if 'enterprise' in n %}<i class="bi bi-database-fill text-primary me-1"></i>
+        {% elif 'standard' in n %}<i class="bi bi-database text-secondary me-1"></i>
+        {% elif 'diagnostic' in n %}<i class="bi bi-activity text-info me-1"></i>
+        {% elif 'tuning' in n %}<i class="bi bi-sliders text-warning me-1"></i>
+        {% elif 'partition' in n %}<i class="bi bi-layout-split text-success me-1"></i>
+        {% elif 'security' in n %}<i class="bi bi-shield-lock text-danger me-1"></i>
+        {% elif 'compression' in n %}<i class="bi bi-file-zip text-secondary me-1"></i>
+        {% elif 'vault' in n %}<i class="bi bi-lock text-danger me-1"></i>
+        {% else %}<i class="bi bi-puzzle text-muted me-1"></i>{% endif %}
         {{ line.product_name }}
       </div>
-
-      <!-- Donut chart -->
       <div class="donut-wrap">
         <svg viewBox="0 0 100 100" width="120" height="120" aria-hidden="true">
-          <circle cx="50" cy="50" r="38"
-                  fill="none" stroke="var(--unassigned)" stroke-width="14"/>
+          <circle cx="50" cy="50" r="38" fill="none" stroke="var(--unassigned)" stroke-width="14"/>
           {% if assigned > 0 and total > 0 %}
-          <circle cx="50" cy="50" r="38"
-                  fill="none" stroke="var(--assigned)" stroke-width="14"
-                  stroke-linecap="butt"
-                  stroke-dasharray="{{ dash38 }} {{ circ38 }}"
+          <circle cx="50" cy="50" r="38" fill="none" stroke="var(--assigned)" stroke-width="14"
+                  stroke-linecap="butt" stroke-dasharray="{{ dash38 }} {{ circ38 }}"
                   transform="rotate(-90 50 50)"/>
           {% endif %}
           <circle cx="50" cy="50" r="31" fill="none" stroke="var(--surface)" stroke-width="2"/>
@@ -185,43 +175,22 @@
           <span class="donut-label">used</span>
         </div>
       </div>
-
-      <!-- Stats -->
       <div class="w-100">
-        <div class="stat-row">
-          <span>Total</span>
-          <span class="val">{{ total }}</span>
-        </div>
-        <div class="stat-row">
-          <span>Assigned</span>
-          <span class="val assigned">{{ assigned }}</span>
-        </div>
-        <div class="stat-row">
-          <span>Unassigned</span>
-          <span class="val free">{{ free }}</span>
-        </div>
+        <div class="stat-row"><span>Total</span><span class="val">{{ total }}</span></div>
+        <div class="stat-row"><span>Assigned</span><span class="val assigned">{{ assigned }}</span></div>
+        <div class="stat-row"><span>Unassigned</span><span class="val free">{{ free }}</span></div>
       </div>
-
       <div class="click-hint"><i class="bi bi-info-circle me-1"></i>Click for server detail</div>
     </a>
   </div>
-
-  <!-- Modal for this product -->
-  <div class="modal fade" id="{{ modal_id }}" tabindex="-1"
-       aria-labelledby="{{ modal_id }}-label" aria-hidden="true">
+  <!-- Modal -->
+  <div class="modal fade" id="{{ modal_id }}" tabindex="-1" aria-labelledby="{{ modal_id }}-label" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title" id="{{ modal_id }}-label">
             {% set n = line.product_name.lower() %}
-            {% set fam = line.product_family | default('') %}
-            {% if 'weblogic suite' in n %}<i class="bi bi-boxes me-2" style="color:#7c3aed"></i>
-            {% elif 'weblogic' in n and 'enterprise' in n %}<i class="bi bi-boxes me-2" style="color:#2563eb"></i>
-            {% elif 'weblogic' in n %}<i class="bi bi-boxes me-2" style="color:#6366f1"></i>
-            {% elif 'coherence' in n %}<i class="bi bi-cpu me-2" style="color:#059669"></i>
-            {% elif 'soa suite' in n or 'service bus' in n %}<i class="bi bi-diagram-3 me-2" style="color:#0891b2"></i>
-            {% elif fam == 'oracle_weblogic' or fam == 'oracle_coherence' %}<i class="bi bi-boxes me-2" style="color:#6366f1"></i>
-            {% elif 'enterprise' in n %}<i class="bi bi-database-fill text-primary me-2"></i>
+            {% if 'enterprise' in n %}<i class="bi bi-database-fill text-primary me-2"></i>
             {% elif 'standard' in n %}<i class="bi bi-database text-secondary me-2"></i>
             {% elif 'diagnostic' in n %}<i class="bi bi-activity text-info me-2"></i>
             {% elif 'tuning' in n %}<i class="bi bi-sliders text-warning me-2"></i>
@@ -233,30 +202,22 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body p-0">
-          <!-- Summary bar -->
           <div class="px-3 py-2 border-bottom d-flex gap-4 small text-muted bg-light">
             <span>Total: <strong class="text-dark">{{ total }}</strong></span>
             <span>Assigned: <strong style="color:#2a78d6">{{ assigned }}</strong></span>
             <span>Unassigned: <strong class="text-muted">{{ free }}</strong></span>
           </div>
-
           {% if line.servers %}
           <table class="table table-sm table-hover mb-0">
             <thead class="table-dark">
-              <tr>
-                <th>Server</th>
-                <th class="text-end">Licences Assigned</th>
-                <th class="text-end">% of Total</th>
-              </tr>
+              <tr><th>Server</th><th class="text-end">Licences Assigned</th><th class="text-end">% of Total</th></tr>
             </thead>
             <tbody>
               {% for sv in line.servers %}
               {% set sv_pct = ((sv.consumed / total * 100) | round(1)) if total > 0 else 0 %}
               <tr>
                 <td><i class="bi bi-server text-muted me-1"></i>{{ sv.hostname }}</td>
-                <td class="text-end">
-                  <span class="badge bg-primary">{{ sv.consumed }}</span>
-                </td>
+                <td class="text-end"><span class="badge bg-primary">{{ sv.consumed }}</span></td>
                 <td class="text-end text-muted small">{{ sv_pct }}%</td>
               </tr>
               {% endfor %}
@@ -264,20 +225,128 @@
           </table>
           {% else %}
           <div class="px-3 py-4 text-center text-muted">
-            <i class="bi bi-inbox fs-4 d-block mb-2"></i>
-            No licences assigned to any server yet.
+            <i class="bi bi-inbox fs-4 d-block mb-2"></i>No licences assigned to any server yet.
           </div>
           {% endif %}
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-sm btn-secondary"
-                  data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
         </div>
       </div>
     </div>
   </div>
-
   {% endfor %}
+</div>
+{% endif %}
+
+{% if mw_lines %}
+<div class="family-header">
+  <i class="bi bi-boxes" style="color:#7c3aed"></i> Middleware &amp; Platform Products
+  <span style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;font-size:.72rem">{{ mw_lines | length }} product{{ 's' if mw_lines | length != 1 }}</span>
+</div>
+<div class="row g-3 mb-2">
+  {% for line in mw_lines %}
+  {% set total    = line.total_qty | int %}
+  {% set assigned = [line.assigned_qty | int, total] | min %}
+  {% set free     = line.unassigned_qty | int %}
+  {% set pct      = ((assigned / total * 100) | round(0) | int) if total > 0 else 0 %}
+  {% set circ38 = 238.8 %}
+  {% set dash38 = (assigned / total * circ38) | round(3) if total > 0 else 0 %}
+  {% set modal_id = "modal-mw-" ~ loop.index %}
+  <div class="col-6 col-md-4 col-lg-3">
+    <a class="product-card shadow-sm h-100 d-flex"
+       data-bs-toggle="modal" data-bs-target="#{{ modal_id }}" role="button">
+      <div class="prod-name">
+        {% set n = line.product_name.lower() %}
+        {% set fam = line.product_family | default('') %}
+        {% if 'weblogic suite' in n %}<i class="bi bi-boxes me-1" style="color:#7c3aed"></i>
+        {% elif 'weblogic' in n and 'enterprise' in n %}<i class="bi bi-boxes me-1" style="color:#2563eb"></i>
+        {% elif 'weblogic' in n %}<i class="bi bi-boxes me-1" style="color:#6366f1"></i>
+        {% elif 'coherence' in n %}<i class="bi bi-cpu me-1" style="color:#059669"></i>
+        {% elif 'soa suite' in n or 'service bus' in n or 'osb' in n %}<i class="bi bi-diagram-3 me-1" style="color:#0891b2"></i>
+        {% elif 'identity' in n or 'oam' in n or 'oig' in n %}<i class="bi bi-person-badge me-1" style="color:#7c3aed"></i>
+        {% else %}<i class="bi bi-boxes me-1" style="color:#6366f1"></i>{% endif %}
+        {{ line.product_name }}
+      </div>
+      <div class="donut-wrap">
+        <svg viewBox="0 0 100 100" width="120" height="120" aria-hidden="true">
+          <circle cx="50" cy="50" r="38" fill="none" stroke="var(--unassigned)" stroke-width="14"/>
+          {% if assigned > 0 and total > 0 %}
+          <circle cx="50" cy="50" r="38" fill="none" stroke="#7c3aed" stroke-width="14"
+                  stroke-linecap="butt" stroke-dasharray="{{ dash38 }} {{ circ38 }}"
+                  transform="rotate(-90 50 50)"/>
+          {% endif %}
+          <circle cx="50" cy="50" r="31" fill="none" stroke="var(--surface)" stroke-width="2"/>
+          <circle cx="50" cy="50" r="45" fill="none" stroke="var(--surface)" stroke-width="2"/>
+        </svg>
+        <div class="donut-center">
+          <span class="donut-pct" style="color:#7c3aed">{{ pct }}%</span>
+          <span class="donut-label">used</span>
+        </div>
+      </div>
+      <div class="w-100">
+        <div class="stat-row"><span>Total</span><span class="val">{{ total }}</span></div>
+        <div class="stat-row"><span>Assigned</span><span class="val" style="color:#7c3aed">{{ assigned }}</span></div>
+        <div class="stat-row"><span>Unassigned</span><span class="val free">{{ free }}</span></div>
+      </div>
+      <div class="click-hint"><i class="bi bi-info-circle me-1"></i>Click for server detail</div>
+    </a>
+  </div>
+  <!-- Modal -->
+  <div class="modal fade" id="{{ modal_id }}" tabindex="-1" aria-labelledby="{{ modal_id }}-label" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="{{ modal_id }}-label">
+            {% set n = line.product_name.lower() %}
+            {% if 'weblogic suite' in n %}<i class="bi bi-boxes me-2" style="color:#7c3aed"></i>
+            {% elif 'weblogic' in n and 'enterprise' in n %}<i class="bi bi-boxes me-2" style="color:#2563eb"></i>
+            {% elif 'weblogic' in n %}<i class="bi bi-boxes me-2" style="color:#6366f1"></i>
+            {% elif 'coherence' in n %}<i class="bi bi-cpu me-2" style="color:#059669"></i>
+            {% elif 'soa suite' in n or 'service bus' in n %}<i class="bi bi-diagram-3 me-2" style="color:#0891b2"></i>
+            {% else %}<i class="bi bi-boxes me-2" style="color:#6366f1"></i>{% endif %}
+            {{ line.product_name }}
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-0">
+          <div class="px-3 py-2 border-bottom d-flex gap-4 small text-muted bg-light">
+            <span>Total: <strong class="text-dark">{{ total }}</strong></span>
+            <span>Assigned: <strong style="color:#7c3aed">{{ assigned }}</strong></span>
+            <span>Unassigned: <strong class="text-muted">{{ free }}</strong></span>
+          </div>
+          {% if line.servers %}
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-dark">
+              <tr><th>Server</th><th class="text-end">Licences Assigned</th><th class="text-end">% of Total</th></tr>
+            </thead>
+            <tbody>
+              {% for sv in line.servers %}
+              {% set sv_pct = ((sv.consumed / total * 100) | round(1)) if total > 0 else 0 %}
+              <tr>
+                <td><i class="bi bi-server text-muted me-1"></i>{{ sv.hostname }}</td>
+                <td class="text-end"><span class="badge" style="background:#7c3aed">{{ sv.consumed }}</span></td>
+                <td class="text-end text-muted small">{{ sv_pct }}%</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <div class="px-3 py-4 text-center text-muted">
+            <i class="bi bi-inbox fs-4 d-block mb-2"></i>No licences assigned to any server yet.
+          </div>
+          {% endif %}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 </div>
 
 <!-- Accessible table view -->
