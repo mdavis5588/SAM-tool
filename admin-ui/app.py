@@ -2783,12 +2783,13 @@ def audit_readiness():
         try:
             rows = query(f"""
                 SELECT %s AS client_name, hostname, environment::TEXT,
-                       product_detail, licences_required,
+                       product_detail, product_family::TEXT AS product_family,
+                       licences_required,
                        COALESCE(total_licensed, 0) AS total_licensed,
                        licences_required - COALESCE(total_licensed, 0) AS shortfall
                 FROM {s}.license_position
                 WHERE compliance_status = 'under_licensed'
-                ORDER BY shortfall DESC
+                ORDER BY product_family, shortfall DESC
             """, (cl["client_name"],))
             licence_gaps.extend(rows)
         except Exception:
@@ -2801,7 +2802,11 @@ def audit_readiness():
         try:
             rows = query(f"""
                 SELECT %s AS client_name, sv.hostname, sv.environment::TEXT,
-                       sv.datacenter
+                       sv.datacenter,
+                       CASE WHEN EXISTS (
+                           SELECT 1 FROM {s}.wls_domains d
+                           WHERE d.server_id = sv.server_id AND d.is_active
+                       ) THEN 'middleware' ELSE 'database' END AS server_type
                 FROM {s}.oracle_servers sv
                 WHERE sv.is_active
                   AND NOT EXISTS (
