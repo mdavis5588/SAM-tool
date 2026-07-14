@@ -159,23 +159,6 @@ def login_required(f):
     return decorated
 
 
-@app.route("/debug/ula-check")
-@login_required
-def debug_ula_check():
-    rows = query("""
-        SELECT cs.csi_id, cs.csi_number, cs.contract_name,
-               cs.is_ula, cs.status, cs.sharing_policy,
-               cs.owning_client_id,
-               c.client_code, c.schema_name
-        FROM shared.csi_contracts cs
-        LEFT JOIN sam_admin.clients c ON c.client_id = cs.owning_client_id
-        WHERE cs.is_ula
-        ORDER BY cs.csi_id
-    """)
-    clients = query("SELECT client_id, client_code, schema_name FROM sam_admin.clients ORDER BY client_code")
-    import json as _json
-    return f"<pre>{_json.dumps([dict(r) for r in rows], default=str, indent=2)}\n\nClients:\n{_json.dumps([dict(c) for c in clients], default=str, indent=2)}</pre>"
-
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -487,56 +470,19 @@ def edit_server(server_id):
                 flash("That licence line no longer exists for this server.", "danger")
                 return redirect(url_for("edit_server", server_id=server_id))
 
-            # Check whether this CSI covers the assigned product — either via
-            # entitlement lines (standard contracts) or ula_covered_products (ULAs).
-            csi_is_ula = query(
-                "SELECT is_ula FROM shared.csi_contracts WHERE csi_id = %s",
-                (csi_id,), fetchall=False
+            # Check whether this CSI covers the assigned product (standard contracts only;
+            # ULAs are handled separately via the assign_ula action)
+            entitlement_lines = query(
+                "SELECT product_name, product_family::TEXT AS product_family "
+                "FROM shared.license_entitlement_lines WHERE csi_id = %s AND is_active",
+                (csi_id,)
             )
-            if csi_is_ula and csi_is_ula["is_ula"]:
-                # ULAs are only assignable if they are client-locked to this client
-                ula_owner = query(
-                    """SELECT c.client_code, cs.sharing_policy
-                       FROM shared.csi_contracts cs
-                       JOIN sam_admin.clients c ON c.client_id = cs.owning_client_id
-                       WHERE cs.csi_id = %s""",
-                    (csi_id,), fetchall=False
-                )
-                server_client = query(
-                    "SELECT client_code FROM sam_admin.clients WHERE schema_name = %s",
-                    (schema,), fetchall=False
-                )
-                server_code = server_client["client_code"] if server_client else None
-                if (not ula_owner
-                        or ula_owner["sharing_policy"] != "client_locked"
-                        or ula_owner["client_code"] != server_code):
-                    flash("ULAs can only be assigned to servers belonging to the ULA's owning client.", "danger")
-                    return redirect(url_for("edit_server", server_id=server_id))
-
-                ula_covered = query(
-                    "SELECT product_name FROM shared.ula_covered_products WHERE csi_id = %s",
-                    (csi_id,)
-                )
-                # No covered products = ULA covers everything; otherwise match by family/name
-                if ula_covered and not any(
-                    _ula_product_matches_family(r["product_name"], family)
-                    for r in ula_covered
-                ):
-                    flash("This ULA does not cover this product family — "
-                          "pick a contract that matches.", "danger")
-                    return redirect(url_for("edit_server", server_id=server_id))
-            else:
-                entitlement_lines = query(
-                    "SELECT product_name, product_family::TEXT AS product_family "
-                    "FROM shared.license_entitlement_lines WHERE csi_id = %s AND is_active",
-                    (csi_id,)
-                )
-                if not any(_is_compatible_product(family, product_detail,
-                                                   l["product_family"], l["product_name"])
-                           for l in entitlement_lines):
-                    flash("That CSI contract doesn't cover this product/edition — "
-                          "pick a contract that matches.", "danger")
-                    return redirect(url_for("edit_server", server_id=server_id))
+            if not any(_is_compatible_product(family, product_detail,
+                                               l["product_family"], l["product_name"])
+                       for l in entitlement_lines):
+                flash("That CSI contract doesn't cover this product/edition — "
+                      "pick a contract that matches.", "danger")
+                return redirect(url_for("edit_server", server_id=server_id))
 
             # Enforce client_locked CSIs — cannot be assigned to a different client's server
             csi_policy = query(
@@ -650,6 +596,42 @@ def edit_server(server_id):
             execute(f"DELETE FROM {schema}.server_csi_map WHERE map_id = %s", (map_id,))
             flash("CSI assignment removed.", "success")
 
+        elif action == "assign_ula":
+            csi_id = request.form.get("csi_id")
+            family = request.form.get("product_family")
+            # Validate this is actually a client-locked ULA belonging to this client
+            server_client = query(
+                "SELECT client_code FROM sam_admin.clients WHERE schema_name = %s",
+                (schema,), fetchall=False
+            )
+            server_code = server_client["client_code"] if server_client else None
+            ula_row = query(
+                """SELECT cs.is_ula, cs.sharing_policy, c.client_code
+                   FROM shared.csi_contracts cs
+                   JOIN sam_admin.clients c ON c.client_id = cs.owning_client_id
+                   WHERE cs.csi_id = %s""",
+                (csi_id,), fetchall=False
+            )
+            if (not ula_row or not ula_row["is_ula"]
+                    or ula_row["sharing_policy"] != "client_locked"
+                    or ula_row["client_code"] != server_code):
+                flash("Invalid ULA selection.", "danger")
+                return redirect(url_for("edit_server", server_id=server_id))
+            # Remove all existing individual CSI assignments for this family
+            execute(
+                f"DELETE FROM {schema}.server_csi_map "
+                f"WHERE server_id = %s AND product_family = %s",
+                (server_id, family)
+            )
+            # Insert the ULA assignment (NULL licences_consumed = unlimited)
+            execute(f"""
+                INSERT INTO {schema}.server_csi_map
+                  (server_id, csi_id, product_family, product_detail,
+                   licences_consumed, notes, assigned_by)
+                VALUES (%s, %s, %s, NULL, NULL, NULL, %s)
+            """, (server_id, csi_id, family, ADMIN_USER))
+            flash("Server assigned to ULA — individual CSI assignments removed.", "success")
+
         elif action == "save_contacts":
             client_row = query(
                 "SELECT client_id FROM sam_admin.clients WHERE schema_name = %s",
@@ -723,7 +705,7 @@ def edit_server(server_id):
         SELECT m.map_id, m.csi_id, m.product_family, m.product_detail,
                m.licences_consumed, m.notes, m.assigned_by, m.effective_date,
                cs.csi_number, cs.contract_name, cs.support_expiry,
-               cs.status AS contract_status
+               cs.status AS contract_status, cs.is_ula
         FROM {schema}.server_csi_map m
         JOIN shared.csi_contracts cs ON cs.csi_id = m.csi_id
         WHERE m.server_id = %s
@@ -804,10 +786,9 @@ def edit_server(server_id):
     for (csi_id, detail), amt in consumed_by_csi_detail.items():
         consumed_entries_by_csi.setdefault(csi_id, []).append((detail, amt))
 
-    # Only client-locked ULAs owned by this client
+    # Client-locked ULAs owned by this client, grouped by applicable licence line
     ula_contracts = query("""
-        SELECT cs.csi_id, cs.csi_number, cs.contract_name, cs.support_expiry,
-               cs.sharing_policy, cs.ula_expiry, c.client_code AS owning_client
+        SELECT cs.csi_id, cs.csi_number, cs.contract_name, cs.ula_expiry
         FROM shared.csi_contracts cs
         JOIN sam_admin.clients c ON c.client_id = cs.owning_client_id
         WHERE cs.is_ula AND cs.status = 'active'
@@ -815,16 +796,16 @@ def edit_server(server_id):
           AND c.client_code = %s
         ORDER BY cs.csi_number
     """, (server_client_code,))
-    # Covered products per ULA (empty list = covers everything)
-    ula_covered_products = {}
+    _ula_covered = {}
     for u in ula_contracts:
         rows = query(
             "SELECT product_name FROM shared.ula_covered_products WHERE csi_id = %s",
             (u["csi_id"],)
         )
-        ula_covered_products[u["csi_id"]] = [r["product_name"] for r in rows]
+        _ula_covered[u["csi_id"]] = [r["product_name"] for r in rows]
 
     compatible_csis_by_line = {}
+    ula_by_line = {}   # line_key -> list of applicable ULA dicts
     for row in licence_position:
         key = f"{row['product_family']}|{row['product_detail'] or ''}"
         matches = {}
@@ -833,7 +814,6 @@ def edit_server(server_id):
                                        l["product_family"], l["product_name"]):
                 if l["csi_id"] not in matches:
                     qty = line_qty.get((l["csi_id"], l["product_name"]), 0)
-                    # Sum consumed entries for this CSI that match this product type
                     consumed = sum(
                         amt for det, amt in consumed_entries_by_csi.get(l["csi_id"], [])
                         if _is_compatible_product(
@@ -843,28 +823,19 @@ def edit_server(server_id):
                     matches[l["csi_id"]] = dict(l,
                         csi_total_qty=qty,
                         csi_consumed=consumed,
-                        csi_available=max(qty - consumed, 0),
-                        is_ula=False
+                        csi_available=max(qty - consumed, 0)
                     )
-        # Add applicable ULAs for this licence line
+        compatible_csis_by_line[key] = list(matches.values())
+
+        # Applicable ULAs for this licence line (shown separately, not in the CSI dropdown)
+        applicable_ulas = []
         for u in ula_contracts:
-            if u["csi_id"] in matches:
-                continue
-            covered = ula_covered_products[u["csi_id"]]
-            # No covered products = covers all families; otherwise check family match
+            covered = _ula_covered[u["csi_id"]]
             if not covered or any(
                 _ula_product_matches_family(p, row["product_family"]) for p in covered
             ):
-                matches[u["csi_id"]] = dict(u,
-                    product_family=row["product_family"],
-                    product_name=u["contract_name"],
-                    csi_total_qty=None,
-                    csi_consumed=None,
-                    csi_available=None,  # unlimited
-                    unit_price=None,
-                    is_ula=True
-                )
-        compatible_csis_by_line[key] = list(matches.values())
+                applicable_ulas.append(u)
+        ula_by_line[key] = applicable_ulas
 
         already = consumed_by_line.get((row["product_family"], row["product_detail"]), 0)
         row["already_consumed"] = already
@@ -922,6 +893,7 @@ def edit_server(server_id):
                            instances=instances,
                            assignments=assignments,
                            compatible_csis_by_line=compatible_csis_by_line,
+                           ula_by_line=ula_by_line,
                            licence_position=licence_position,
                            java_installations=java_installations,
                            se2_violations=se2_violations,

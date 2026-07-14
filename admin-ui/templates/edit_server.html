@@ -272,14 +272,63 @@
 
       <div class="card-body p-0">
 
-        <!-- Assigned CSIs for this line -->
+        <!-- Split assignments: ULA vs individual CSIs -->
         {% set line_maps = [] %}
+        {% set ula_maps  = [] %}
         {% for a in assignments %}
           {% if a.product_family == row.product_family and a.product_detail == row.product_detail %}
-            {% set _ = line_maps.append(a) %}
+            {% if a.is_ula %}
+              {% set _ = ula_maps.append(a) %}
+            {% else %}
+              {% set _ = line_maps.append(a) %}
+            {% endif %}
           {% endif %}
         {% endfor %}
 
+        <!-- ULA assignment section -->
+        {% set line_ulas = ula_by_line.get(line_key, []) %}
+        {% if ula_maps %}
+        <!-- Already covered by a ULA -->
+        {% for a in ula_maps %}
+        <div class="d-flex align-items-center gap-2 px-3 py-2"
+             style="background:rgba(124,58,237,.07);border-bottom:1px solid rgba(124,58,237,.15)">
+          <i class="bi bi-infinity text-purple" style="color:#7c3aed;font-size:1rem"></i>
+          <span style="font-size:.85rem">
+            <strong style="color:#7c3aed">ULA Coverage</strong>
+            &nbsp;—&nbsp; {{ a.contract_name }}
+            {% if a.csi_number %}<code class="ms-1" style="font-size:.75rem">{{ a.csi_number }}</code>{% endif %}
+          </span>
+          <form method="post" class="ms-auto" onsubmit="return confirm('Remove ULA assignment?')">
+            <input type="hidden" name="action" value="remove_csi">
+            <input type="hidden" name="map_id" value="{{ a.map_id }}">
+            <button type="submit" class="btn btn-sm btn-outline-danger py-0">
+              <i class="bi bi-x-lg"></i> Remove ULA
+            </button>
+          </form>
+        </div>
+        {% endfor %}
+        {% elif line_ulas %}
+        <!-- ULA(s) available but not yet assigned -->
+        <div class="px-3 py-2 d-flex align-items-center gap-2 flex-wrap"
+             style="background:rgba(124,58,237,.05);border-bottom:1px solid rgba(124,58,237,.12)">
+          <span class="text-muted" style="font-size:.8rem"><i class="bi bi-infinity me-1" style="color:#7c3aed"></i>ULA available:</span>
+          {% for u in line_ulas %}
+          <form method="post" class="d-inline">
+            <input type="hidden" name="action" value="assign_ula">
+            <input type="hidden" name="product_family" value="{{ row.product_family }}">
+            <input type="hidden" name="csi_id" value="{{ u.csi_id }}">
+            <button type="submit" class="btn btn-sm py-0"
+                    style="background:rgba(124,58,237,.12);color:#7c3aed;border:1px solid rgba(124,58,237,.3);font-size:.78rem"
+                    onclick="return confirm('Assign to ULA {{ u.contract_name }}? This will remove all individual CSI assignments for this product family.')">
+              <i class="bi bi-infinity me-1"></i>{{ u.csi_number or u.contract_name }}{% if u.ula_expiry %} · expires {{ u.ula_expiry }}{% endif %}
+            </button>
+          </form>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Individual CSI assignments (hidden when covered by ULA) -->
+        {% if not ula_maps %}
         {% if line_maps %}
         <table class="table table-sm mb-0">
           <thead class="table-light">
@@ -323,7 +372,7 @@
         <div class="px-3 py-2 text-muted small">No CSI assigned to this line.</div>
         {% endif %}
 
-        <!-- Inline: add another CSI to this line -->
+        <!-- Add individual CSI -->
         {% set line_csis = compatible_csis_by_line.get(line_key, []) %}
         {% set line_full = row.remaining_capacity is not none and row.remaining_capacity <= 0 %}
         {% set line_locked = (not line_csis) or line_full %}
@@ -347,20 +396,8 @@
               <label class="form-label form-label-sm mb-1">Add CSI Contract</label>
               <select name="csi_id" class="form-select form-select-sm" required {% if line_locked %}disabled{% endif %}>
                 <option value="">— select —</option>
-                {# Split into ULA, client-locked standard, and shared pool #}
-                {% set ula_csis    = line_csis | selectattr('is_ula') | list %}
-                {% set locked_csis = line_csis | rejectattr('is_ula') | selectattr('sharing_policy', 'equalto', 'client_locked') | list %}
-                {% set shared_csis = line_csis | rejectattr('is_ula') | rejectattr('sharing_policy', 'equalto', 'client_locked') | list %}
-                {% if ula_csis %}
-                <optgroup label="∞ ULA — Unlimited Licence Agreement">
-                  {% for c in ula_csis %}
-                  <option value="{{ c.csi_id }}" style="color:#7c3aed;font-weight:600">
-                    {{ c.csi_number or 'No CSI#' }} &nbsp;|&nbsp; ULA
-                    {%- if c.ula_expiry %} &nbsp;|&nbsp; expires {{ c.ula_expiry }}{% endif %}
-                  </option>
-                  {% endfor %}
-                </optgroup>
-                {% endif %}
+                {% set locked_csis = line_csis | selectattr('sharing_policy', 'equalto', 'client_locked') | list %}
+                {% set shared_csis = line_csis | rejectattr('sharing_policy', 'equalto', 'client_locked') | list %}
                 {% if locked_csis %}
                 <optgroup label="★ Client-Locked — use first">
                   {% for c in locked_csis %}
@@ -404,6 +441,7 @@
             </div>
           </form>
         </div>
+        {% endif %}{# end if not ula_maps #}
 
       </div>
     </div>
