@@ -124,14 +124,23 @@ def _edition_class(text):
     return None
 
 
+_DB_ULA_KEYWORDS = frozenset([
+    "database", "oracle db",
+    "enterprise edition", "standard edition", "personal edition",
+    "tuning pack", "diagnostics pack", "diagnostic pack",
+    "partitioning", "real application clusters", "multitenant",
+    "active data guard", "data guard", "goldengate",
+    "advanced security", "label security", "database vault",
+    "olap", "spatial", "spatial and graph",
+])
+
 def _ula_product_matches_family(ula_product_name, server_family):
     """Return True if a ULA covered-product name applies to the server's product family."""
     pn = (ula_product_name or "").lower()
     if server_family == "oracle_database":
-        return "database" in pn or "oracle db" in pn
+        return any(kw in pn for kw in _DB_ULA_KEYWORDS)
     if server_family == "oracle_weblogic":
         return "weblogic" in pn
-    # Fallback: check if the family keyword appears in the product name
     return server_family.replace("_", " ") in pn
 
 
