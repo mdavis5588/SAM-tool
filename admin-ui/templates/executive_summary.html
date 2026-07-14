@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Executive Summary — Oracle SAM{% endblock %}
+{% block title %}{{ t('exec_summary.title') }}{% endblock %}
 {% block content %}
 
 <style>
@@ -151,18 +151,18 @@
 <!-- ── Page header ──────────────────────────────────────────────────────────── -->
 <div class="exec-header">
   <div>
-    <h4><i class="bi bi-graph-up me-2"></i>Oracle SAM — Executive Summary</h4>
-    <div class="sub">{{ today.strftime('%d %B %Y') }} &nbsp;·&nbsp; All active clients</div>
+    <h4><i class="bi bi-graph-up me-2"></i>{{ t('exec_summary.header') }}</h4>
+    <div class="sub">{{ today.strftime('%d %B %Y') }} &nbsp;·&nbsp; {{ t('exec_summary.all_clients') }}</div>
   </div>
   <div class="d-flex align-items-center gap-2">
     <span class="overall-pill {{ overall_rag }}">
-      {% if overall_rag == 'green' %}<i class="bi bi-shield-fill-check"></i>Compliant
-      {% elif overall_rag == 'amber' %}<i class="bi bi-exclamation-triangle-fill"></i>Attention Required
-      {% else %}<i class="bi bi-x-octagon-fill"></i>Action Required
+      {% if overall_rag == 'green' %}<i class="bi bi-shield-fill-check"></i>{{ t('exec_summary.compliant') }}
+      {% elif overall_rag == 'amber' %}<i class="bi bi-exclamation-triangle-fill"></i>{{ t('exec_summary.attention_required') }}
+      {% else %}<i class="bi bi-x-octagon-fill"></i>{{ t('exec_summary.action_required') }}
       {% endif %}
     </span>
     <button onclick="window.print()" class="btn btn-sm btn-outline-light no-print">
-      <i class="bi bi-printer me-1"></i>Print
+      <i class="bi bi-printer me-1"></i>{{ t('action.print') }}
     </button>
   </div>
 </div>
@@ -172,20 +172,20 @@
   <div class="kpi">
     <span class="kpi-icon text-primary">📋</span>
     <span class="kpi-num accent">{{ contract_stats.total_contracts }}</span>
-    <span class="kpi-lbl">Total Contracts</span>
-    <span class="kpi-sub">{{ contract_stats.ula_count }} ULA · {{ contract_stats.standard_count }} Standard</span>
+    <span class="kpi-lbl">{{ t('exec_summary.kpi_total_contracts') }}</span>
+    <span class="kpi-sub">{{ contract_stats.ula_count }} {{ t('exec_summary.ulas') }} · {{ contract_stats.standard_count }} {{ t('exec_summary.standard') }}</span>
   </div>
   <div class="kpi">
     <span class="kpi-icon">🖥️</span>
     <span class="kpi-num {% if gap_servers > 0 %}red{% else %}green{% endif %}">{{ total_servers }}</span>
-    <span class="kpi-lbl">Licensed Positions</span>
-    <span class="kpi-sub">{{ gap_servers }} gap{{ 's' if gap_servers != 1 }} · {{ unassigned_servers }} unassigned</span>
+    <span class="kpi-lbl">{{ t('exec_summary.kpi_licensed_positions') }}</span>
+    <span class="kpi-sub">{{ gap_servers }} {{ t('exec_summary.gap_one') if gap_servers == 1 else t('exec_summary.gap_many') }} · {{ unassigned_servers }} {{ t('exec_summary.unassigned_lc') }}</span>
   </div>
   <div class="kpi">
     <span class="kpi-icon">✅</span>
     <span class="kpi-num green">{{ overall_score }}%</span>
-    <span class="kpi-lbl">Compliance Score</span>
-    <span class="kpi-sub">{{ compliant_servers }} of {{ total_servers }} positions</span>
+    <span class="kpi-lbl">{{ t('exec_summary.kpi_compliance_score') }}</span>
+    <span class="kpi-sub">{{ compliant_servers }} {{ t('exec_summary.kpi_of') }} {{ total_servers }} {{ t('exec_summary.kpi_positions') }}</span>
   </div>
   <div class="kpi">
     <span class="kpi-icon">💰</span>
@@ -194,16 +194,16 @@
         ${{ '{:,.0f}'.format(contract_stats.total_support_cost) }}
       {% else %}—{% endif %}
     </span>
-    <span class="kpi-lbl">Annual Support Cost</span>
-    <span class="kpi-sub">Across all active contracts</span>
+    <span class="kpi-lbl">{{ t('exec_summary.kpi_annual_support') }}</span>
+    <span class="kpi-sub">{{ t('exec_summary.kpi_across_all') }}</span>
   </div>
   <div class="kpi">
     <span class="kpi-icon">⚠️</span>
     <span class="kpi-num {% if (contract_stats.expiring_90d or 0) + (contract_stats.ula_expiring_90d or 0) > 0 %}amber{% else %}green{% endif %}">
       {{ (contract_stats.expiring_90d or 0) + (contract_stats.ula_expiring_90d or 0) }}
     </span>
-    <span class="kpi-lbl">Expiring in 90 Days</span>
-    <span class="kpi-sub">{{ contract_stats.expired_count }} already expired</span>
+    <span class="kpi-lbl">{{ t('exec_summary.kpi_expiring_90d') }}</span>
+    <span class="kpi-sub">{{ contract_stats.expired_count }} {{ t('exec_summary.kpi_already_expired') }}</span>
   </div>
 </div>
 
@@ -215,9 +215,8 @@
 
     <!-- Compliance gauge -->
     <div class="ex-card">
-      <div class="ex-card-header"><i class="bi bi-shield-check"></i>Compliance Posture</div>
+      <div class="ex-card-header"><i class="bi bi-shield-check"></i>{{ t('exec_summary.compliance_posture') }}</div>
       <div class="gauge-wrap">
-        <!-- SVG arc gauge -->
         <div class="gauge-arc">
           <svg viewBox="0 0 160 90" width="160" height="90" style="overflow:visible">
             <path d="M10,80 A70,70 0 0,1 150,80" fill="none" stroke="var(--border)" stroke-width="12" stroke-linecap="round"/>
@@ -234,13 +233,13 @@
         <div class="gauge-num {% if overall_rag == 'green' %}text-success{% elif overall_rag == 'amber' %}text-warning{% else %}text-danger{% endif %}">
           {{ overall_score }}%
         </div>
-        <div class="gauge-sub">{{ compliant_servers }} compliant · {{ gap_servers }} gaps · {{ unassigned_servers }} unassigned</div>
+        <div class="gauge-sub">{{ compliant_servers }} {{ t('exec_summary.compliant_lc') }} · {{ gap_servers }} {{ t('exec_summary.gaps_lc') }} · {{ unassigned_servers }} {{ t('exec_summary.unassigned_lc') }}</div>
       </div>
 
       <!-- Licence utilisation bars -->
       <div class="prog-row">
         <div class="prog-label">
-          <span>Licences Required</span>
+          <span>{{ t('exec_summary.licences_required') }}</span>
           <span>{{ '{:,.0f}'.format(total_licences_req) }}</span>
         </div>
         <div class="prog-track">
@@ -249,7 +248,7 @@
       </div>
       <div class="prog-row" style="padding-top:0">
         <div class="prog-label">
-          <span>Licences Licensed</span>
+          <span>{{ t('exec_summary.licences_licensed') }}</span>
           <span>{{ '{:,.0f}'.format(total_licences_lic) }}</span>
         </div>
         <div class="prog-track">
@@ -262,7 +261,7 @@
 
     <!-- Per-client RAG -->
     <div class="ex-card">
-      <div class="ex-card-header"><i class="bi bi-people"></i>Client Compliance</div>
+      <div class="ex-card-header"><i class="bi bi-people"></i>{{ t('exec_summary.client_compliance') }}</div>
       {% for cl in client_rows %}
       <div class="client-row">
         <span class="rag-dot {{ cl.rag }}"></span>
@@ -271,11 +270,11 @@
           <div class="score-fill" style="width:{{ cl.score }}%;background:{% if cl.rag == 'green' %}var(--g){% elif cl.rag == 'amber' %}var(--a){% else %}var(--r){% endif %}"></div>
         </div>
         <span class="client-score">{{ cl.score }}%</span>
-        {% if cl.gaps %}<span class="badge" style="background:var(--r-lo);color:var(--r);font-size:.65rem">{{ cl.gaps }} gap{{ 's' if cl.gaps != 1 }}</span>{% endif %}
-        {% if cl.unassigned %}<span class="badge" style="background:var(--a-lo);color:var(--a);font-size:.65rem">{{ cl.unassigned }} unassigned</span>{% endif %}
+        {% if cl.gaps %}<span class="badge" style="background:var(--r-lo);color:var(--r);font-size:.65rem">{{ cl.gaps }} {{ t('exec_summary.gap_one') if cl.gaps == 1 else t('exec_summary.gap_many') }}</span>{% endif %}
+        {% if cl.unassigned %}<span class="badge" style="background:var(--a-lo);color:var(--a);font-size:.65rem">{{ cl.unassigned }} {{ t('exec_summary.unassigned_lc') }}</span>{% endif %}
       </div>
       {% else %}
-      <div class="p-3 text-muted" style="font-size:.875rem">No active clients.</div>
+      <div class="p-3 text-muted" style="font-size:.875rem">{{ t('exec_summary.no_clients') }}</div>
       {% endfor %}
     </div>
 
@@ -286,29 +285,29 @@
 
     <!-- Contract portfolio breakdown -->
     <div class="ex-card">
-      <div class="ex-card-header"><i class="bi bi-file-earmark-text"></i>Contract Portfolio</div>
+      <div class="ex-card-header"><i class="bi bi-file-earmark-text"></i>{{ t('exec_summary.portfolio') }}</div>
       <div class="stat-pair">
         <div class="stat-half">
           <div class="n">{{ contract_stats.active_count }}</div>
-          <div class="l">Active</div>
+          <div class="l">{{ t('label.active') }}</div>
         </div>
         <div class="stat-half">
           <div class="n" style="color:{% if contract_stats.expired_count %}var(--r){% else %}var(--txt){% endif %}">{{ contract_stats.expired_count }}</div>
-          <div class="l">Expired</div>
+          <div class="l">{{ t('label.expired') }}</div>
         </div>
         <div class="stat-half">
           <div class="n" style="color:var(--acc)">{{ contract_stats.ula_count }}</div>
-          <div class="l">ULAs</div>
+          <div class="l">{{ t('exec_summary.ulas') }}</div>
         </div>
         <div class="stat-half">
           <div class="n">{{ contract_stats.standard_count }}</div>
-          <div class="l">Standard</div>
+          <div class="l">{{ t('exec_summary.standard') }}</div>
         </div>
         <div class="stat-half">
           <div class="n" style="color:{% if (contract_stats.expiring_90d or 0) + (contract_stats.ula_expiring_90d or 0) %}var(--a){% else %}var(--txt){% endif %}">
             {{ (contract_stats.expiring_90d or 0) + (contract_stats.ula_expiring_90d or 0) }}
           </div>
-          <div class="l">Exp. 90 Days</div>
+          <div class="l">{{ t('exec_summary.exp_90d') }}</div>
         </div>
       </div>
       <div class="stat-pair" style="border-top:1px solid var(--border)">
@@ -318,7 +317,7 @@
               ${{ '{:,.0f}'.format(contract_stats.total_licence_value) }}
             {% else %}—{% endif %}
           </div>
-          <div class="l">Total Licence Value</div>
+          <div class="l">{{ t('exec_summary.total_licence_value') }}</div>
         </div>
         <div class="stat-half">
           <div class="n" style="color:var(--acc)">
@@ -326,14 +325,14 @@
               ${{ '{:,.0f}'.format(contract_stats.total_support_cost) }}
             {% else %}—{% endif %}
           </div>
-          <div class="l">Annual Support Cost</div>
+          <div class="l">{{ t('exec_summary.annual_support_cost') }}</div>
         </div>
       </div>
     </div>
 
     <!-- Renewal calendar -->
     <div class="ex-card">
-      <div class="ex-card-header"><i class="bi bi-calendar-event"></i>Upcoming Renewals — Next 12 Months</div>
+      <div class="ex-card-header"><i class="bi bi-calendar-event"></i>{{ t('exec_summary.renewals_header') }}</div>
       {% if upcoming_renewals %}
         {% for r in upcoming_renewals %}
         {% set days = (r.expiry_date - today).days %}
@@ -355,7 +354,7 @@
         </div>
         {% endfor %}
       {% else %}
-        <div class="p-3 text-muted" style="font-size:.875rem">No contracts renewing in the next 12 months.</div>
+        <div class="p-3 text-muted" style="font-size:.875rem">{{ t('exec_summary.no_renewals') }}</div>
       {% endif %}
     </div>
 
@@ -365,7 +364,7 @@
 <!-- ── Top products ───────────────────────────────────────────────────────────── -->
 {% if top_products %}
 <div class="ex-card">
-  <div class="ex-card-header"><i class="bi bi-bar-chart"></i>Top Products by Licence Count</div>
+  <div class="ex-card-header"><i class="bi bi-bar-chart"></i>{{ t('exec_summary.top_products') }}</div>
   {% set max_qty = top_products[0].total_qty or 1 %}
   {% for p in top_products %}
   <div class="prod-row">
@@ -376,7 +375,7 @@
     <span class="prod-qty">{{ '{:,.0f}'.format(p.total_qty or 0) }}</span>
     {% if p.total_support %}
     <span style="font-size:.75rem;color:var(--txt2);width:110px;text-align:right;font-variant-numeric:tabular-nums">
-      ${{ '{:,.0f}'.format(p.total_support) }}/yr support
+      ${{ '{:,.0f}'.format(p.total_support) }}{{ t('exec_summary.yr_support') }}
     </span>
     {% endif %}
   </div>
@@ -386,13 +385,13 @@
 
 <!-- ── Footer ────────────────────────────────────────────────────────────────── -->
 <div class="d-flex justify-content-between align-items-center mt-2 no-print" style="font-size:.75rem;color:var(--txt2)">
-  <span>Generated {{ today.strftime('%d %B %Y') }} · Oracle SAM Tool</span>
+  <span>{{ t('exec_summary.generated_prefix') }} {{ today.strftime('%d %B %Y') }} {{ t('exec_summary.generated_suffix') }}</span>
   <div class="d-flex gap-2">
     <a href="{{ url_for('audit_readiness') }}" class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-clipboard2-pulse me-1"></i>Audit Readiness
+      <i class="bi bi-clipboard2-pulse me-1"></i>{{ t('exec_summary.audit_readiness_btn') }}
     </a>
     <a href="{{ url_for('export_lms') }}" class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-file-earmark-excel me-1"></i>LMS Export
+      <i class="bi bi-file-earmark-excel me-1"></i>{{ t('exec_summary.lms_export_btn') }}
     </a>
   </div>
 </div>

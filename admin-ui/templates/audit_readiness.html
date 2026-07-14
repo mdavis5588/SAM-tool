@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Audit Readiness Report — Oracle SAM{% endblock %}
+{% block title %}{{ t('audit_readiness.title') }} — Oracle SAM{% endblock %}
 {% block content %}
 
 <style>
@@ -69,25 +69,25 @@
 <!-- Page header -->
 <div class="d-flex align-items-center justify-content-between mb-4">
   <div>
-    <h4 class="mb-0"><i class="bi bi-clipboard2-pulse me-2"></i>Audit Readiness Report</h4>
-    <div class="text-muted" style="font-size:.82rem">Generated {{ today.strftime('%d %B %Y') }} — point-in-time snapshot</div>
+    <h4 class="mb-0"><i class="bi bi-clipboard2-pulse me-2"></i>{{ t('audit_readiness.title') }}</h4>
+    <div class="text-muted" style="font-size:.82rem">{{ t('audit_readiness.generated_prefix') }} {{ today.strftime('%d %B %Y') }} — {{ t('audit_readiness.snapshot') }}</div>
   </div>
   <div class="d-flex gap-2 align-items-center">
     {% if total_issues == 0 %}
     <span class="badge rag-green" style="font-size:.85rem;padding:.4rem .9rem">
-      <i class="bi bi-shield-fill-check me-1"></i>Audit Ready
+      <i class="bi bi-shield-fill-check me-1"></i>{{ t('audit_readiness.audit_ready') }}
     </span>
     {% elif total_issues <= 5 %}
     <span class="badge rag-amber" style="font-size:.85rem;padding:.4rem .9rem">
-      <i class="bi bi-exclamation-triangle me-1"></i>{{ total_issues }} issue{{ 's' if total_issues != 1 }}
+      <i class="bi bi-exclamation-triangle me-1"></i>{{ total_issues }} {{ t('audit_readiness.issue_one') if total_issues == 1 else t('audit_readiness.issue_many') }}
     </span>
     {% else %}
     <span class="badge rag-red" style="font-size:.85rem;padding:.4rem .9rem">
-      <i class="bi bi-x-octagon me-1"></i>{{ total_issues }} issues — not ready
+      <i class="bi bi-x-octagon me-1"></i>{{ total_issues }} {{ t('audit_readiness.issue_many') }} — {{ t('audit_readiness.not_ready') }}
     </span>
     {% endif %}
     <button onclick="window.print()" class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-printer me-1"></i>Print
+      <i class="bi bi-printer me-1"></i>{{ t('action.print') }}
     </button>
   </div>
 </div>
@@ -106,22 +106,22 @@
         <div class="row g-0 text-center" style="border-top:1px solid #e3e6ea">
           <div class="col border-end summary-stat">
             <div class="num {% if cl.gaps > 0 %}text-danger{% endif %}">{{ cl.gaps }}</div>
-            <div class="lbl">Gaps</div>
+            <div class="lbl">{{ t('audit_readiness.gaps') }}</div>
           </div>
           <div class="col border-end summary-stat">
             <div class="num {% if cl.unassigned > 0 %}text-warning{% endif %}">{{ cl.unassigned }}</div>
-            <div class="lbl">Unassigned</div>
+            <div class="lbl">{{ t('label.unassigned') }}</div>
           </div>
           <div class="col summary-stat">
             <div class="num">{{ cl.total_positions }}</div>
-            <div class="lbl">Positions</div>
+            <div class="lbl">{{ t('audit_readiness.positions') }}</div>
           </div>
         </div>
       </div>
     </div>
   </div>
   {% else %}
-  <div class="col"><p class="text-muted">No active clients found.</p></div>
+  <div class="col"><p class="text-muted">{{ t('audit_readiness.no_clients') }}</p></div>
   {% endfor %}
 </div>
 
@@ -129,9 +129,9 @@
 <div class="section-card shadow-sm">
   <div class="section-header {% if licence_gaps %}crit{% else %}ok{% endif %}">
     <i class="bi bi-exclamation-octagon{% if not licence_gaps %}-fill text-success{% endif %}"></i>
-    Licence Gaps — Under-licensed Positions
+    {{ t('audit_readiness.licence_gaps_title') }}
     <span class="issue-count {% if licence_gaps %}rag-red{% else %}rag-green{% endif %}">
-      {{ licence_gaps | length }} issue{{ 's' if licence_gaps | length != 1 }}
+      {{ licence_gaps | length }} {{ t('audit_readiness.issue_one') if licence_gaps | length == 1 else t('audit_readiness.issue_many') }}
     </span>
   </div>
   {% if licence_gaps %}
@@ -139,9 +139,13 @@
     <table class="table table-sm table-striped mb-0">
       <thead class="table-light">
         <tr>
-          <th>Client</th><th>Hostname</th><th>Environment</th>
-          <th>Product</th><th class="text-end">Required</th>
-          <th class="text-end">Licensed</th><th class="text-end">Shortfall</th>
+          <th>{{ t('label.client') }}</th>
+          <th>{{ t('label.hostname') }}</th>
+          <th>{{ t('label.environment') }}</th>
+          <th>{{ t('label.product') }}</th>
+          <th class="text-end">{{ t('compliance.required') }}</th>
+          <th class="text-end">{{ t('audit_readiness.licensed') }}</th>
+          <th class="text-end">{{ t('audit_readiness.shortfall') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -161,7 +165,7 @@
   </div>
   {% else %}
   <div class="p-3 text-success" style="font-size:.875rem">
-    <i class="bi bi-check-circle-fill me-1"></i>No under-licensed positions detected.
+    <i class="bi bi-check-circle-fill me-1"></i>{{ t('audit_readiness.no_gaps') }}
   </div>
   {% endif %}
 </div>
@@ -170,16 +174,21 @@
 <div class="section-card shadow-sm">
   <div class="section-header {% if unassigned_servers %}crit{% else %}ok{% endif %}">
     <i class="bi bi-server{% if not unassigned_servers %} text-success{% endif %}"></i>
-    Servers with No CSI Assignment
+    {{ t('audit_readiness.unassigned_servers_title') }}
     <span class="issue-count {% if unassigned_servers %}rag-red{% else %}rag-green{% endif %}">
-      {{ unassigned_servers | length }} server{{ 's' if unassigned_servers | length != 1 }}
+      {{ unassigned_servers | length }} {{ t('audit_readiness.server_one') if unassigned_servers | length == 1 else t('audit_readiness.server_many') }}
     </span>
   </div>
   {% if unassigned_servers %}
   <div class="table-responsive">
     <table class="table table-sm table-striped mb-0">
       <thead class="table-light">
-        <tr><th>Client</th><th>Hostname</th><th>Environment</th><th>Datacenter</th></tr>
+        <tr>
+          <th>{{ t('label.client') }}</th>
+          <th>{{ t('label.hostname') }}</th>
+          <th>{{ t('label.environment') }}</th>
+          <th>{{ t('label.datacenter') }}</th>
+        </tr>
       </thead>
       <tbody>
         {% for r in unassigned_servers %}
@@ -195,7 +204,7 @@
   </div>
   {% else %}
   <div class="p-3 text-success" style="font-size:.875rem">
-    <i class="bi bi-check-circle-fill me-1"></i>All active servers have a CSI assignment.
+    <i class="bi bi-check-circle-fill me-1"></i>{{ t('audit_readiness.all_assigned') }}
   </div>
   {% endif %}
 </div>
@@ -204,16 +213,23 @@
 <div class="section-card shadow-sm">
   <div class="section-header {% if contract_risks %}warn{% else %}ok{% endif %}">
     <i class="bi bi-calendar-x{% if not contract_risks %} text-success{% endif %}"></i>
-    Contracts Expired or Expiring Within 90 Days
+    {{ t('audit_readiness.contract_risks_title') }}
     <span class="issue-count {% if contract_risks %}rag-amber{% else %}rag-green{% endif %}">
-      {{ contract_risks | length }} contract{{ 's' if contract_risks | length != 1 }}
+      {{ contract_risks | length }} {{ t('audit_readiness.contract_one') if contract_risks | length == 1 else t('audit_readiness.contract_many') }}
     </span>
   </div>
   {% if contract_risks %}
   <div class="table-responsive">
     <table class="table table-sm table-striped mb-0">
       <thead class="table-light">
-        <tr><th>Client</th><th>CSI</th><th>Contract</th><th>Type</th><th>Expiry</th><th>Risk</th></tr>
+        <tr>
+          <th>{{ t('label.client') }}</th>
+          <th>CSI</th>
+          <th>{{ t('label.contract') }}</th>
+          <th>{{ t('label.type') }}</th>
+          <th>{{ t('audit_readiness.expiry') }}</th>
+          <th>{{ t('audit_readiness.risk') }}</th>
+        </tr>
       </thead>
       <tbody>
         {% for r in contract_risks %}
@@ -225,7 +241,7 @@
             {% if r.is_ula %}
             <span class="badge" style="background:rgba(124,58,237,.15);color:#7c3aed">ULA</span>
             {% else %}
-            <span class="badge bg-secondary">Standard</span>
+            <span class="badge bg-secondary">{{ t('exec_summary.standard') }}</span>
             {% endif %}
           </td>
           <td>
@@ -238,9 +254,9 @@
           </td>
           <td>
             {% if r.risk_type in ('expired','ula_expired') %}
-            <span class="badge rag-red">Expired</span>
+            <span class="badge rag-red">{{ t('audit_readiness.expired_badge') }}</span>
             {% else %}
-            <span class="badge rag-amber">Expiring soon</span>
+            <span class="badge rag-amber">{{ t('audit_readiness.expiring_soon') }}</span>
             {% endif %}
           </td>
         </tr>
@@ -250,7 +266,7 @@
   </div>
   {% else %}
   <div class="p-3 text-success" style="font-size:.875rem">
-    <i class="bi bi-check-circle-fill me-1"></i>No contracts expiring within 90 days.
+    <i class="bi bi-check-circle-fill me-1"></i>{{ t('audit_readiness.no_contract_risks') }}
   </div>
   {% endif %}
 </div>
@@ -259,16 +275,21 @@
 <div class="section-card shadow-sm">
   <div class="section-header {% if empty_contracts %}warn{% else %}ok{% endif %}">
     <i class="bi bi-file-earmark-x{% if not empty_contracts %} text-success{% endif %}"></i>
-    Contracts with No Entitlement Lines
+    {{ t('audit_readiness.empty_contracts_title') }}
     <span class="issue-count {% if empty_contracts %}rag-amber{% else %}rag-green{% endif %}">
-      {{ empty_contracts | length }} contract{{ 's' if empty_contracts | length != 1 }}
+      {{ empty_contracts | length }} {{ t('audit_readiness.contract_one') if empty_contracts | length == 1 else t('audit_readiness.contract_many') }}
     </span>
   </div>
   {% if empty_contracts %}
   <div class="table-responsive">
     <table class="table table-sm table-striped mb-0">
       <thead class="table-light">
-        <tr><th>Client</th><th>CSI</th><th>Contract</th><th></th></tr>
+        <tr>
+          <th>{{ t('label.client') }}</th>
+          <th>CSI</th>
+          <th>{{ t('label.contract') }}</th>
+          <th></th>
+        </tr>
       </thead>
       <tbody>
         {% for r in empty_contracts %}
@@ -276,7 +297,7 @@
           <td>{{ r.owning_client or '—' }}</td>
           <td><code>{{ r.csi_number or '—' }}</code></td>
           <td>{{ r.contract_name }}</td>
-          <td><a href="{{ url_for('contract_detail', csi_id=r.csi_id) }}" class="btn btn-sm btn-outline-primary py-0">Add lines</a></td>
+          <td><a href="{{ url_for('contract_detail', csi_id=r.csi_id) }}" class="btn btn-sm btn-outline-primary py-0">{{ t('audit_readiness.add_lines') }}</a></td>
         </tr>
         {% endfor %}
       </tbody>
@@ -284,7 +305,7 @@
   </div>
   {% else %}
   <div class="p-3 text-success" style="font-size:.875rem">
-    <i class="bi bi-check-circle-fill me-1"></i>All contracts have entitlement lines.
+    <i class="bi bi-check-circle-fill me-1"></i>{{ t('audit_readiness.all_have_lines') }}
   </div>
   {% endif %}
 </div>
@@ -293,16 +314,21 @@
 <div class="section-card shadow-sm">
   <div class="section-header {% if ula_scope_violations %}crit{% else %}ok{% endif %}">
     <i class="bi bi-infinity{% if not ula_scope_violations %} text-success{% endif %}"></i>
-    ULA Scope Violations — Products Outside ULA Coverage
+    {{ t('audit_readiness.ula_violations_title') }}
     <span class="issue-count {% if ula_scope_violations %}rag-red{% else %}rag-green{% endif %}">
-      {{ ula_scope_violations | length }} violation{{ 's' if ula_scope_violations | length != 1 }}
+      {{ ula_scope_violations | length }} {{ t('audit_readiness.violation_one') if ula_scope_violations | length == 1 else t('audit_readiness.violation_many') }}
     </span>
   </div>
   {% if ula_scope_violations %}
   <div class="table-responsive">
     <table class="table table-sm table-striped mb-0">
       <thead class="table-light">
-        <tr><th>Client</th><th>ULA Contract</th><th>Hostname</th><th>Out-of-scope Product</th></tr>
+        <tr>
+          <th>{{ t('label.client') }}</th>
+          <th>{{ t('audit_readiness.ula_contract_col') }}</th>
+          <th>{{ t('label.hostname') }}</th>
+          <th>{{ t('audit_readiness.out_of_scope') }}</th>
+        </tr>
       </thead>
       <tbody>
         {% for r in ula_scope_violations %}
@@ -318,7 +344,7 @@
   </div>
   {% else %}
   <div class="p-3 text-success" style="font-size:.875rem">
-    <i class="bi bi-check-circle-fill me-1"></i>No ULA scope violations detected.
+    <i class="bi bi-check-circle-fill me-1"></i>{{ t('audit_readiness.no_violations') }}
   </div>
   {% endif %}
 </div>
