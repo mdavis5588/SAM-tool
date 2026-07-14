@@ -241,49 +241,84 @@
     <!-- ULA toggle — appears once between licence summary and CSI cards -->
     {% set server_ula_assignment = assignments | selectattr('is_ula') | list | first | default(none) %}
 
-    {% if server_ula_assignment %}
-    <!-- ULA is active: show banner, hide all CSI cards -->
-    <div class="d-flex align-items-center gap-3 mb-3 px-3 py-3 rounded-3"
-         style="background:rgba(124,58,237,.08);border:1.5px solid rgba(124,58,237,.25)">
-      <i class="bi bi-infinity" style="color:#7c3aed;font-size:1.4rem;flex-shrink:0"></i>
-      <div class="flex-grow-1">
-        <div class="fw-bold" style="color:#7c3aed">ULA Coverage Active</div>
-        <div style="font-size:.83rem;color:#64748b">
-          {{ server_ula_assignment.contract_name }}
-          {% if server_ula_assignment.csi_number %}
-            &nbsp;·&nbsp;<code style="font-size:.75rem">{{ server_ula_assignment.csi_number }}</code>
-          {% endif %}
-          &nbsp;·&nbsp;All product families covered
-        </div>
-      </div>
-      <form method="post" onsubmit="return confirm('Remove ULA? You will need to re-add individual CSI assignments.')">
+    {% if server_ula_assignment or all_server_ulas %}
+    <div class="mb-3 px-3 py-2 rounded-3"
+         style="border:1.5px solid {% if server_ula_assignment %}rgba(124,58,237,.35){% else %}rgba(124,58,237,.18){% endif %};
+                background:{% if server_ula_assignment %}rgba(124,58,237,.08){% else %}rgba(124,58,237,.03){% endif %}">
+
+      {% if server_ula_assignment %}
+      <!-- Toggle ON — ULA active -->
+      <form method="post" id="removeUlaForm"
+            onsubmit="return confirm('Remove ULA? You will need to re-add individual CSI assignments.')">
         <input type="hidden" name="action" value="remove_ula">
-        <button type="submit" class="btn btn-sm btn-outline-danger">
-          <i class="bi bi-x-lg me-1"></i>Remove ULA
-        </button>
+        <div class="d-flex align-items-center gap-3">
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="ulaToggleSwitch"
+                   checked style="width:2.5em;height:1.3em;cursor:pointer"
+                   onchange="document.getElementById('removeUlaForm').submit()">
+            <label class="form-check-label fw-semibold ms-1" for="ulaToggleSwitch" style="color:#7c3aed;cursor:pointer">
+              <i class="bi bi-infinity me-1"></i>Assigned to ULA
+            </label>
+          </div>
+          <span style="font-size:.82rem;color:#64748b">
+            {{ server_ula_assignment.contract_name }}
+            {% if server_ula_assignment.csi_number %}
+              &nbsp;·&nbsp;<code style="font-size:.75rem">{{ server_ula_assignment.csi_number }}</code>
+            {% endif %}
+          </span>
+        </div>
       </form>
-    </div>
 
-    {% else %}
+      {% else %}
+      <!-- Toggle OFF — ULA available -->
+      <div class="d-flex align-items-center gap-3 flex-wrap">
+        <div class="form-check form-switch mb-0">
+          <input class="form-check-input" type="checkbox" id="ulaToggleSwitch"
+                 style="width:2.5em;height:1.3em;cursor:pointer"
+                 onchange="document.getElementById('ulaPickerRow').style.display = this.checked ? '' : 'none'">
+          <label class="form-check-label fw-semibold ms-1" for="ulaToggleSwitch" style="color:#7c3aed;cursor:pointer">
+            <i class="bi bi-infinity me-1"></i>Assign to ULA
+          </label>
+        </div>
+        <span class="text-muted" style="font-size:.8rem">Toggle on to cover this server under a ULA</span>
+      </div>
+      <div id="ulaPickerRow" style="display:none" class="mt-2">
+        {% if all_server_ulas | length == 1 %}
+        <form method="post">
+          <input type="hidden" name="action" value="assign_ula">
+          <input type="hidden" name="csi_id" value="{{ all_server_ulas[0].csi_id }}">
+          <div class="d-flex align-items-center gap-2">
+            <span style="font-size:.82rem;color:#64748b">
+              {{ all_server_ulas[0].contract_name }}
+              {% if all_server_ulas[0].csi_number %}<code class="ms-1" style="font-size:.75rem">{{ all_server_ulas[0].csi_number }}</code>{% endif %}
+              {% if all_server_ulas[0].ula_expiry %}&nbsp;· expires {{ all_server_ulas[0].ula_expiry }}{% endif %}
+            </span>
+            <button type="submit" class="btn btn-sm btn-primary"
+                    onclick="return confirm('Assign this server to ULA \'{{ all_server_ulas[0].contract_name }}\'?\n\nThis will remove all individual CSI assignments.')">
+              Confirm
+            </button>
+          </div>
+        </form>
+        {% else %}
+        <form method="post" class="d-flex align-items-center gap-2 flex-wrap">
+          <input type="hidden" name="action" value="assign_ula">
+          <select name="csi_id" class="form-select form-select-sm" style="max-width:320px" required>
+            <option value="">— select ULA —</option>
+            {% for u in all_server_ulas %}
+            <option value="{{ u.csi_id }}">
+              {{ u.contract_name }}{% if u.csi_number %} · {{ u.csi_number }}{% endif %}{% if u.ula_expiry %} · expires {{ u.ula_expiry }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn btn-sm btn-primary"
+                  onclick="return confirm('Assign this server to the selected ULA?\n\nThis will remove all individual CSI assignments.')">
+            Confirm
+          </button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
 
-    {% if all_server_ulas %}
-    <!-- ULA available: show chooser above CSI cards -->
-    <div class="d-flex align-items-center gap-3 mb-3 px-3 py-2 rounded-3 flex-wrap"
-         style="background:rgba(124,58,237,.04);border:1.5px solid rgba(124,58,237,.18)">
-      <span style="font-size:.82rem;font-weight:600;color:#7c3aed;flex-shrink:0">
-        <i class="bi bi-infinity me-1"></i>ULA Available
-      </span>
-      {% for u in all_server_ulas %}
-      <form method="post" class="d-inline">
-        <input type="hidden" name="action" value="assign_ula">
-        <input type="hidden" name="csi_id" value="{{ u.csi_id }}">
-        <button type="submit" class="btn btn-sm"
-                style="background:rgba(124,58,237,.12);color:#7c3aed;border:1.5px solid rgba(124,58,237,.3);font-size:.8rem"
-                onclick="return confirm('Assign this server to ULA \'{{ u.contract_name }}\'?\n\nThis will remove all individual CSI assignments.')">
-          <i class="bi bi-infinity me-1"></i>{{ u.csi_number or u.contract_name }}{% if u.ula_expiry %} · expires {{ u.ula_expiry }}{% endif %}
-        </button>
-      </form>
-      {% endfor %}
     </div>
     {% endif %}
 
