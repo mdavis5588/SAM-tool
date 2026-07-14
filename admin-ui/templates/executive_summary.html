@@ -1,0 +1,400 @@
+{% extends "base.html" %}
+{% block title %}Executive Summary — Oracle SAM{% endblock %}
+{% block content %}
+
+<style>
+  /* ── Tokens ── */
+  :root {
+    --acc:    #0ea5e9;
+    --acc-lo: rgba(14,165,233,.1);
+    --g:      #16a34a; --g-lo: rgba(22,163,74,.12);
+    --a:      #d97706; --a-lo: rgba(217,119,6,.12);
+    --r:      #dc2626; --r-lo: rgba(220,38,38,.12);
+    --neu:    #64748b;
+    --border: #e2e8f0;
+    --card:   #ffffff;
+    --page:   #f8fafc;
+    --txt:    #0f172a;
+    --txt2:   #64748b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --border: #1e293b; --card: #1e293b; --page: #0f172a;
+      --txt: #f1f5f9; --txt2: #94a3b8;
+      --acc-lo: rgba(14,165,233,.15);
+      --g-lo: rgba(22,163,74,.15); --a-lo: rgba(217,119,6,.15); --r-lo: rgba(220,38,38,.15);
+    }
+  }
+  :root[data-theme="dark"]  {
+    --border: #1e293b; --card: #1e293b; --page: #0f172a;
+    --txt: #f1f5f9; --txt2: #94a3b8;
+  }
+  :root[data-theme="light"] { --border:#e2e8f0; --card:#fff; --page:#f8fafc; --txt:#0f172a; --txt2:#64748b; }
+
+  body { background: var(--page); }
+
+  /* ── Page header ── */
+  .exec-header {
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+    border-radius: 12px;
+    padding: 1.5rem 2rem;
+    margin-bottom: 1.5rem;
+    display: flex; align-items: center; justify-content: space-between;
+    color: #fff;
+  }
+  .exec-header h4 { color: #fff; margin: 0; font-size: 1.15rem; font-weight: 700; }
+  .exec-header .sub { color: #94a3b8; font-size: .78rem; margin-top: .2rem; }
+  .overall-pill {
+    display: inline-flex; align-items: center; gap: .5rem;
+    padding: .5rem 1.1rem; border-radius: 30px; font-weight: 700; font-size: .88rem;
+  }
+  .overall-pill.green { background: var(--g-lo); color: var(--g); border: 1.5px solid var(--g); }
+  .overall-pill.amber { background: var(--a-lo); color: var(--a); border: 1.5px solid var(--a); }
+  .overall-pill.red   { background: var(--r-lo); color: var(--r); border: 1.5px solid var(--r); }
+
+  /* ── KPI strip ── */
+  .kpi-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+  @media (max-width: 900px) { .kpi-strip { grid-template-columns: repeat(3, 1fr); } }
+  .kpi {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1rem 1.2rem;
+    display: flex; flex-direction: column; gap: .25rem;
+  }
+  .kpi-icon { font-size: 1.1rem; margin-bottom: .1rem; }
+  .kpi-num  {
+    font-size: 1.9rem; font-weight: 800; line-height: 1;
+    font-variant-numeric: tabular-nums; color: var(--txt);
+  }
+  .kpi-num.accent { color: var(--acc); }
+  .kpi-num.green  { color: var(--g);   }
+  .kpi-num.amber  { color: var(--a);   }
+  .kpi-num.red    { color: var(--r);   }
+  .kpi-lbl { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--txt2); }
+  .kpi-sub  { font-size: .72rem; color: var(--txt2); margin-top: .1rem; }
+
+  /* ── Cards ── */
+  .ex-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; margin-bottom: 1.25rem;
+  }
+  .ex-card-header {
+    padding: .65rem 1rem;
+    font-weight: 700; font-size: .78rem;
+    text-transform: uppercase; letter-spacing: .06em;
+    color: var(--txt2);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: .5rem;
+  }
+
+  /* ── Gauge ── */
+  .gauge-wrap { padding: 1.5rem 1rem 1rem; text-align: center; }
+  .gauge-arc  { position: relative; width: 160px; height: 80px; margin: 0 auto .75rem; overflow: visible; }
+  .gauge-num  { font-size: 2.4rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .gauge-sub  { font-size: .75rem; color: var(--txt2); margin-top: .15rem; }
+
+  /* ── Progress bar ── */
+  .prog-row { padding: .5rem 1rem; display: flex; flex-direction: column; gap: .15rem; }
+  .prog-label { display: flex; justify-content: space-between; font-size: .75rem; color: var(--txt2); }
+  .prog-track { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .prog-fill  { height: 100%; border-radius: 3px; transition: width .4s; }
+
+  /* ── Client table ── */
+  .client-row { display: flex; align-items: center; gap: .6rem; padding: .55rem 1rem; border-bottom: 1px solid var(--border); }
+  .client-row:last-child { border-bottom: none; }
+  .rag-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .rag-dot.green { background: var(--g); }
+  .rag-dot.amber { background: var(--a); }
+  .rag-dot.red   { background: var(--r); }
+  .client-name   { font-size: .83rem; font-weight: 600; flex: 1; color: var(--txt); }
+  .client-score  { font-size: .78rem; font-variant-numeric: tabular-nums; color: var(--txt2); }
+  .score-bar { width: 80px; height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .score-fill { height: 100%; border-radius: 3px; }
+
+  /* ── Stat pair ── */
+  .stat-pair { display: flex; gap: 0; }
+  .stat-half { flex: 1; padding: 1rem; text-align: center; border-right: 1px solid var(--border); }
+  .stat-half:last-child { border-right: none; }
+  .stat-half .n { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--txt); }
+  .stat-half .l { font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: var(--txt2); margin-top: .15rem; }
+
+  /* ── Renewal timeline ── */
+  .renewal-row {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .55rem 1rem; border-bottom: 1px solid var(--border); font-size: .82rem;
+  }
+  .renewal-row:last-child { border-bottom: none; }
+  .renewal-date { font-variant-numeric: tabular-nums; font-weight: 600; width: 80px; flex-shrink: 0; color: var(--txt); }
+  .renewal-name { flex: 1; color: var(--txt); }
+  .renewal-cost { font-variant-numeric: tabular-nums; color: var(--txt2); text-align: right; white-space: nowrap; }
+  .days-badge {
+    font-size: .68rem; font-weight: 700; padding: .1rem .45rem;
+    border-radius: 20px; white-space: nowrap; flex-shrink: 0;
+  }
+  .days-badge.crit  { background: var(--r-lo); color: var(--r); }
+  .days-badge.warn  { background: var(--a-lo); color: var(--a); }
+  .days-badge.ok    { background: var(--g-lo); color: var(--g); }
+
+  /* ── Top products ── */
+  .prod-row { display: flex; align-items: center; gap: .75rem; padding: .5rem 1rem; border-bottom: 1px solid var(--border); }
+  .prod-row:last-child { border-bottom: none; }
+  .prod-name { flex: 1; font-size: .82rem; color: var(--txt); }
+  .prod-qty  { font-size: .82rem; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--acc); width: 50px; text-align: right; }
+  .prod-bar  { width: 100px; height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .prod-fill { height: 100%; border-radius: 3px; background: var(--acc); }
+
+  @media print {
+    .exec-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .no-print { display: none !important; }
+  }
+</style>
+
+<!-- ── Page header ──────────────────────────────────────────────────────────── -->
+<div class="exec-header">
+  <div>
+    <h4><i class="bi bi-graph-up me-2"></i>Oracle SAM — Executive Summary</h4>
+    <div class="sub">{{ today.strftime('%d %B %Y') }} &nbsp;·&nbsp; All active clients</div>
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    <span class="overall-pill {{ overall_rag }}">
+      {% if overall_rag == 'green' %}<i class="bi bi-shield-fill-check"></i>Compliant
+      {% elif overall_rag == 'amber' %}<i class="bi bi-exclamation-triangle-fill"></i>Attention Required
+      {% else %}<i class="bi bi-x-octagon-fill"></i>Action Required
+      {% endif %}
+    </span>
+    <button onclick="window.print()" class="btn btn-sm btn-outline-light no-print">
+      <i class="bi bi-printer me-1"></i>Print
+    </button>
+  </div>
+</div>
+
+<!-- ── KPI strip ─────────────────────────────────────────────────────────────── -->
+<div class="kpi-strip">
+  <div class="kpi">
+    <span class="kpi-icon text-primary">📋</span>
+    <span class="kpi-num accent">{{ contract_stats.total_contracts }}</span>
+    <span class="kpi-lbl">Total Contracts</span>
+    <span class="kpi-sub">{{ contract_stats.ula_count }} ULA · {{ contract_stats.standard_count }} Standard</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-icon">🖥️</span>
+    <span class="kpi-num {% if gap_servers > 0 %}red{% else %}green{% endif %}">{{ total_servers }}</span>
+    <span class="kpi-lbl">Licensed Positions</span>
+    <span class="kpi-sub">{{ gap_servers }} gap{{ 's' if gap_servers != 1 }} · {{ unassigned_servers }} unassigned</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-icon">✅</span>
+    <span class="kpi-num green">{{ overall_score }}%</span>
+    <span class="kpi-lbl">Compliance Score</span>
+    <span class="kpi-sub">{{ compliant_servers }} of {{ total_servers }} positions</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-icon">💰</span>
+    <span class="kpi-num accent">
+      {% if contract_stats.total_support_cost %}
+        ${{ '{:,.0f}'.format(contract_stats.total_support_cost) }}
+      {% else %}—{% endif %}
+    </span>
+    <span class="kpi-lbl">Annual Support Cost</span>
+    <span class="kpi-sub">Across all active contracts</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-icon">⚠️</span>
+    <span class="kpi-num {% if (contract_stats.expiring_90d or 0) + (contract_stats.ula_expiring_90d or 0) > 0 %}amber{% else %}green{% endif %}">
+      {{ (contract_stats.expiring_90d or 0) + (contract_stats.ula_expiring_90d or 0) }}
+    </span>
+    <span class="kpi-lbl">Expiring in 90 Days</span>
+    <span class="kpi-sub">{{ contract_stats.expired_count }} already expired</span>
+  </div>
+</div>
+
+<!-- ── Main two-column body ──────────────────────────────────────────────────── -->
+<div class="row g-3 mb-3">
+
+  <!-- Left: Compliance -->
+  <div class="col-lg-5">
+
+    <!-- Compliance gauge -->
+    <div class="ex-card">
+      <div class="ex-card-header"><i class="bi bi-shield-check"></i>Compliance Posture</div>
+      <div class="gauge-wrap">
+        <!-- SVG arc gauge -->
+        <div class="gauge-arc">
+          <svg viewBox="0 0 160 90" width="160" height="90" style="overflow:visible">
+            <path d="M10,80 A70,70 0 0,1 150,80" fill="none" stroke="var(--border)" stroke-width="12" stroke-linecap="round"/>
+            {% set pct = overall_score / 100 %}
+            {% set arc_len = 220 %}
+            {% set filled = (pct * arc_len) | int %}
+            <path d="M10,80 A70,70 0 0,1 150,80" fill="none"
+                  stroke="{% if overall_rag == 'green' %}var(--g){% elif overall_rag == 'amber' %}var(--a){% else %}var(--r){% endif %}"
+                  stroke-width="12" stroke-linecap="round"
+                  stroke-dasharray="{{ filled }} {{ arc_len }}"
+                  pathLength="{{ arc_len }}"/>
+          </svg>
+        </div>
+        <div class="gauge-num {% if overall_rag == 'green' %}text-success{% elif overall_rag == 'amber' %}text-warning{% else %}text-danger{% endif %}">
+          {{ overall_score }}%
+        </div>
+        <div class="gauge-sub">{{ compliant_servers }} compliant · {{ gap_servers }} gaps · {{ unassigned_servers }} unassigned</div>
+      </div>
+
+      <!-- Licence utilisation bars -->
+      <div class="prog-row">
+        <div class="prog-label">
+          <span>Licences Required</span>
+          <span>{{ '{:,.0f}'.format(total_licences_req) }}</span>
+        </div>
+        <div class="prog-track">
+          <div class="prog-fill" style="width:100%;background:var(--border)"></div>
+        </div>
+      </div>
+      <div class="prog-row" style="padding-top:0">
+        <div class="prog-label">
+          <span>Licences Licensed</span>
+          <span>{{ '{:,.0f}'.format(total_licences_lic) }}</span>
+        </div>
+        <div class="prog-track">
+          {% set util = [((total_licences_lic / total_licences_req * 100) | int), 100] | min if total_licences_req else 0 %}
+          <div class="prog-fill" style="width:{{ util }}%;background:{% if util >= 100 %}var(--g){% elif util >= 80 %}var(--a){% else %}var(--r){% endif %}"></div>
+        </div>
+      </div>
+      <div style="height:.5rem"></div>
+    </div>
+
+    <!-- Per-client RAG -->
+    <div class="ex-card">
+      <div class="ex-card-header"><i class="bi bi-people"></i>Client Compliance</div>
+      {% for cl in client_rows %}
+      <div class="client-row">
+        <span class="rag-dot {{ cl.rag }}"></span>
+        <span class="client-name">{{ cl.client_name }}</span>
+        <div class="score-bar">
+          <div class="score-fill" style="width:{{ cl.score }}%;background:{% if cl.rag == 'green' %}var(--g){% elif cl.rag == 'amber' %}var(--a){% else %}var(--r){% endif %}"></div>
+        </div>
+        <span class="client-score">{{ cl.score }}%</span>
+        {% if cl.gaps %}<span class="badge" style="background:var(--r-lo);color:var(--r);font-size:.65rem">{{ cl.gaps }} gap{{ 's' if cl.gaps != 1 }}</span>{% endif %}
+        {% if cl.unassigned %}<span class="badge" style="background:var(--a-lo);color:var(--a);font-size:.65rem">{{ cl.unassigned }} unassigned</span>{% endif %}
+      </div>
+      {% else %}
+      <div class="p-3 text-muted" style="font-size:.875rem">No active clients.</div>
+      {% endfor %}
+    </div>
+
+  </div>
+
+  <!-- Right: Financials + Renewals -->
+  <div class="col-lg-7">
+
+    <!-- Contract portfolio breakdown -->
+    <div class="ex-card">
+      <div class="ex-card-header"><i class="bi bi-file-earmark-text"></i>Contract Portfolio</div>
+      <div class="stat-pair">
+        <div class="stat-half">
+          <div class="n">{{ contract_stats.active_count }}</div>
+          <div class="l">Active</div>
+        </div>
+        <div class="stat-half">
+          <div class="n" style="color:{% if contract_stats.expired_count %}var(--r){% else %}var(--txt){% endif %}">{{ contract_stats.expired_count }}</div>
+          <div class="l">Expired</div>
+        </div>
+        <div class="stat-half">
+          <div class="n" style="color:var(--acc)">{{ contract_stats.ula_count }}</div>
+          <div class="l">ULAs</div>
+        </div>
+        <div class="stat-half">
+          <div class="n">{{ contract_stats.standard_count }}</div>
+          <div class="l">Standard</div>
+        </div>
+        <div class="stat-half">
+          <div class="n" style="color:{% if (contract_stats.expiring_90d or 0) + (contract_stats.ula_expiring_90d or 0) %}var(--a){% else %}var(--txt){% endif %}">
+            {{ (contract_stats.expiring_90d or 0) + (contract_stats.ula_expiring_90d or 0) }}
+          </div>
+          <div class="l">Exp. 90 Days</div>
+        </div>
+      </div>
+      <div class="stat-pair" style="border-top:1px solid var(--border)">
+        <div class="stat-half">
+          <div class="n" style="color:var(--acc)">
+            {% if contract_stats.total_licence_value %}
+              ${{ '{:,.0f}'.format(contract_stats.total_licence_value) }}
+            {% else %}—{% endif %}
+          </div>
+          <div class="l">Total Licence Value</div>
+        </div>
+        <div class="stat-half">
+          <div class="n" style="color:var(--acc)">
+            {% if contract_stats.total_support_cost %}
+              ${{ '{:,.0f}'.format(contract_stats.total_support_cost) }}
+            {% else %}—{% endif %}
+          </div>
+          <div class="l">Annual Support Cost</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Renewal calendar -->
+    <div class="ex-card">
+      <div class="ex-card-header"><i class="bi bi-calendar-event"></i>Upcoming Renewals — Next 12 Months</div>
+      {% if upcoming_renewals %}
+        {% for r in upcoming_renewals %}
+        {% set days = (r.expiry_date - today).days %}
+        <div class="renewal-row">
+          <span class="renewal-date">{{ r.expiry_date.strftime('%d %b %Y') }}</span>
+          <span class="renewal-name">
+            <a href="{{ url_for('contract_detail', csi_id=r.csi_id) }}" style="color:inherit;text-decoration:none">
+              {{ r.contract_name }}
+            </a>
+            {% if r.is_ula %}<span class="badge ms-1" style="background:rgba(124,58,237,.12);color:#7c3aed;font-size:.62rem">ULA</span>{% endif %}
+            {% if r.owning_client %}<span class="ms-1" style="font-size:.72rem;color:var(--txt2)">{{ r.owning_client }}</span>{% endif %}
+          </span>
+          {% if r.renewal_cost %}
+          <span class="renewal-cost">{{ r.currency or 'USD' }} {{ '{:,.0f}'.format(r.renewal_cost) }}</span>
+          {% endif %}
+          <span class="days-badge {% if days < 30 %}crit{% elif days < 90 %}warn{% else %}ok{% endif %}">
+            {{ days }}d
+          </span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="p-3 text-muted" style="font-size:.875rem">No contracts renewing in the next 12 months.</div>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Top products ───────────────────────────────────────────────────────────── -->
+{% if top_products %}
+<div class="ex-card">
+  <div class="ex-card-header"><i class="bi bi-bar-chart"></i>Top Products by Licence Count</div>
+  {% set max_qty = top_products[0].total_qty or 1 %}
+  {% for p in top_products %}
+  <div class="prod-row">
+    <span class="prod-name">{{ p.product_name }}</span>
+    <div class="prod-bar">
+      <div class="prod-fill" style="width:{{ ((p.total_qty / max_qty) * 100) | int }}%"></div>
+    </div>
+    <span class="prod-qty">{{ '{:,.0f}'.format(p.total_qty or 0) }}</span>
+    {% if p.total_support %}
+    <span style="font-size:.75rem;color:var(--txt2);width:110px;text-align:right;font-variant-numeric:tabular-nums">
+      ${{ '{:,.0f}'.format(p.total_support) }}/yr support
+    </span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Footer ────────────────────────────────────────────────────────────────── -->
+<div class="d-flex justify-content-between align-items-center mt-2 no-print" style="font-size:.75rem;color:var(--txt2)">
+  <span>Generated {{ today.strftime('%d %B %Y') }} · Oracle SAM Tool</span>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('audit_readiness') }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-clipboard2-pulse me-1"></i>Audit Readiness
+    </a>
+    <a href="{{ url_for('export_lms') }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-file-earmark-excel me-1"></i>LMS Export
+    </a>
+  </div>
+</div>
+
+{% endblock %}

@@ -2063,6 +2063,152 @@ def visibility_versions_client(client_code):
 
 
 # ---------------------------------------------------------------------------
+# Executive Summary
+# ---------------------------------------------------------------------------
+@app.route("/executive-summary")
+@login_required
+def executive_summary():
+    today = date.today()
+
+    active_clients = query(
+        "SELECT client_id, client_code, client_name, schema_name "
+        "FROM sam_admin.clients WHERE is_active ORDER BY client_name"
+    )
+
+    # ── Contract portfolio ───────────────────────────────────────────────────
+    contract_stats = query("""
+        SELECT
+            COUNT(*)                                          AS total_contracts,
+            COUNT(*) FILTER (WHERE is_ula)                   AS ula_count,
+            COUNT(*) FILTER (WHERE NOT is_ula)               AS standard_count,
+            COUNT(*) FILTER (WHERE status = 'active')        AS active_count,
+            COUNT(*) FILTER (WHERE status = 'expired')       AS expired_count,
+            COUNT(*) FILTER (WHERE status = 'active'
+              AND NOT is_ula
+              AND support_expiry < CURRENT_DATE + INTERVAL '90 days') AS expiring_90d,
+            COUNT(*) FILTER (WHERE status = 'active'
+              AND is_ula
+              AND ula_expiry < CURRENT_DATE + INTERVAL '90 days')     AS ula_expiring_90d,
+            COALESCE(SUM(l.total_price), 0)                  AS total_licence_value,
+            COALESCE(SUM(l.annual_support_cost), 0)          AS total_support_cost
+        FROM shared.csi_contracts cs
+        LEFT JOIN shared.license_entitlement_lines l
+               ON l.csi_id = cs.csi_id AND l.is_active
+    """, fetchall=False)
+
+    # ── Compliance posture across all clients ────────────────────────────────
+    total_servers      = 0
+    compliant_servers  = 0
+    gap_servers        = 0
+    unassigned_servers = 0
+    total_licences_req = 0
+    total_licences_lic = 0
+
+    client_rows = []
+    for cl in active_clients:
+        s = cl["schema_name"]
+        try:
+            lp = query(f"""
+                SELECT
+                    COUNT(*)                                                    AS total,
+                    COUNT(*) FILTER (WHERE compliance_status = 'compliant')     AS compliant,
+                    COUNT(*) FILTER (WHERE compliance_status = 'under_licensed') AS gaps,
+                    COALESCE(SUM(licences_required), 0)                         AS req,
+                    COALESCE(SUM(COALESCE(total_licensed, 0)), 0)               AS lic
+                FROM {s}.license_position
+            """, fetchall=False)
+
+            ua = query(f"""
+                SELECT COUNT(*) AS cnt FROM {s}.oracle_servers sv
+                WHERE sv.is_active
+                  AND NOT EXISTS (
+                    SELECT 1 FROM {s}.server_csi_map m WHERE m.server_id = sv.server_id
+                  )
+            """, fetchall=False)
+
+            t  = int(lp["total"]    or 0)
+            c  = int(lp["compliant"] or 0)
+            g  = int(lp["gaps"]     or 0)
+            ua_c = int(ua["cnt"]    or 0)
+            req = float(lp["req"]   or 0)
+            lic = float(lp["lic"]   or 0)
+
+            total_servers      += t
+            compliant_servers  += c
+            gap_servers        += g
+            unassigned_servers += ua_c
+            total_licences_req += req
+            total_licences_lic += lic
+
+            score = round(100 * c / t) if t else 100
+            rag = "green" if score == 100 and ua_c == 0 else ("amber" if score >= 80 else "red")
+            client_rows.append({
+                "client_name": cl["client_name"],
+                "client_code": cl["client_code"],
+                "total": t, "compliant": c, "gaps": g,
+                "unassigned": ua_c, "score": score, "rag": rag,
+                "req": req, "lic": lic,
+            })
+        except Exception:
+            client_rows.append({
+                "client_name": cl["client_name"],
+                "client_code": cl["client_code"],
+                "total": 0, "compliant": 0, "gaps": 0,
+                "unassigned": 0, "score": 0, "rag": "amber",
+                "req": 0, "lic": 0,
+            })
+
+    overall_score = round(100 * compliant_servers / total_servers) if total_servers else 100
+    overall_rag   = "green" if overall_score == 100 and unassigned_servers == 0 \
+                    else ("amber" if overall_score >= 80 else "red")
+
+    # ── Top 5 products by licence count ─────────────────────────────────────
+    top_products = query("""
+        SELECT product_name,
+               SUM(quantity) AS total_qty,
+               SUM(annual_support_cost) AS total_support
+        FROM shared.license_entitlement_lines
+        WHERE is_active AND quantity > 0
+        GROUP BY product_name
+        ORDER BY total_qty DESC NULLS LAST
+        LIMIT 5
+    """)
+
+    # ── Upcoming renewals (next 12 months) ───────────────────────────────────
+    upcoming_renewals = query("""
+        SELECT cs.csi_id, cs.csi_number, cs.contract_name, cs.is_ula, cs.currency,
+               COALESCE(cs.ula_expiry, cs.support_expiry) AS expiry_date,
+               COALESCE(SUM(l.annual_support_cost), 0)    AS renewal_cost,
+               oc.client_name AS owning_client
+        FROM shared.csi_contracts cs
+        LEFT JOIN shared.license_entitlement_lines l ON l.csi_id = cs.csi_id AND l.is_active
+        LEFT JOIN sam_admin.clients oc ON oc.client_id = cs.owning_client_id
+        WHERE cs.status = 'active'
+          AND COALESCE(cs.ula_expiry, cs.support_expiry) BETWEEN CURRENT_DATE
+                                                              AND CURRENT_DATE + INTERVAL '12 months'
+        GROUP BY cs.csi_id, cs.csi_number, cs.contract_name, cs.is_ula,
+                 cs.currency, cs.ula_expiry, cs.support_expiry, oc.client_name
+        ORDER BY expiry_date
+        LIMIT 10
+    """)
+
+    return render_template("executive_summary.html",
+                           today=today,
+                           contract_stats=contract_stats,
+                           client_rows=client_rows,
+                           overall_score=overall_score,
+                           overall_rag=overall_rag,
+                           total_servers=total_servers,
+                           compliant_servers=compliant_servers,
+                           gap_servers=gap_servers,
+                           unassigned_servers=unassigned_servers,
+                           total_licences_req=total_licences_req,
+                           total_licences_lic=total_licences_lic,
+                           top_products=top_products,
+                           upcoming_renewals=upcoming_renewals)
+
+
+# ---------------------------------------------------------------------------
 # Audit Readiness Report
 # ---------------------------------------------------------------------------
 @app.route("/audit-readiness")
