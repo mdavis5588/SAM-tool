@@ -1365,6 +1365,58 @@ def finops_client(client_code):
     return render_template("finops.html", client=data)
 
 
+@app.route("/renewal-calendar")
+@login_required
+def renewal_calendar():
+    today = date.today()
+    renewals = query("""
+        SELECT
+            cs.csi_id, cs.csi_number, cs.contract_name, cs.is_ula,
+            cs.status, cs.currency,
+            cs.support_expiry, cs.ula_expiry,
+            CASE WHEN cs.is_ula THEN cs.ula_expiry ELSE cs.support_expiry END AS expiry_date,
+            oc.client_name AS owning_client,
+            COALESCE(SUM(l.annual_support_cost), 0) AS annual_support_cost
+        FROM shared.csi_contracts cs
+        LEFT JOIN sam_admin.clients oc ON oc.client_id = cs.owning_client_id
+        LEFT JOIN shared.license_entitlement_lines l ON l.csi_id = cs.csi_id AND l.is_active
+        WHERE (cs.is_ula AND cs.ula_expiry IS NOT NULL)
+           OR (NOT cs.is_ula AND cs.support_expiry IS NOT NULL)
+        GROUP BY cs.csi_id, cs.csi_number, cs.contract_name, cs.is_ula,
+                 cs.status, cs.currency, cs.support_expiry, cs.ula_expiry,
+                 oc.client_name
+        ORDER BY expiry_date
+    """)
+
+    # Bucket into time bands
+    past, within_30, within_90, within_12m, beyond = [], [], [], [], []
+    for r in renewals:
+        exp = r['expiry_date']
+        if exp is None:
+            continue
+        delta = (exp - today).days
+        r = dict(r)
+        r['days'] = delta
+        if delta < 0:
+            past.append(r)
+        elif delta <= 30:
+            within_30.append(r)
+        elif delta <= 90:
+            within_90.append(r)
+        elif delta <= 365:
+            within_12m.append(r)
+        else:
+            beyond.append(r)
+
+    return render_template("renewal_calendar.html",
+                           today=today,
+                           past=past,
+                           within_30=within_30,
+                           within_90=within_90,
+                           within_12m=within_12m,
+                           beyond=beyond)
+
+
 @app.route("/contracts")
 @login_required
 def contracts():

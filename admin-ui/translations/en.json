@@ -85,6 +85,8 @@
   "servers.filter_env": "All environments",
   "servers.filter_status": "All statuses",
 
+  "nav.renewal_calendar": "Renewal Calendar",
+
   "contracts.title": "CSI Contracts",
   "contracts.add": "Add Contract",
   "contracts.none": "No contracts found.",
@@ -210,6 +212,23 @@
   "add_lines.annual_support": "Annual Support Cost",
   "add_lines.done_view": "Done — View Contract",
   "add_lines.keep_adding": "or keep adding lines above",
+
+  "renewal_cal.title": "Renewal Calendar",
+  "renewal_cal.subtitle": "Support & ULA expiry schedule as of",
+  "renewal_cal.kpi_expired": "Already Expired",
+  "renewal_cal.kpi_30d": "Due Within 30 Days",
+  "renewal_cal.kpi_90d": "Due in 31–90 Days",
+  "renewal_cal.kpi_future": "Due Beyond 90 Days",
+  "renewal_cal.band_expired": "Expired",
+  "renewal_cal.band_30d": "Expiring Within 30 Days",
+  "renewal_cal.band_90d": "Expiring in 31–90 Days",
+  "renewal_cal.band_12m": "Expiring in 91 Days – 12 Months",
+  "renewal_cal.band_beyond": "Beyond 12 Months",
+  "renewal_cal.none_in_band": "No contracts in this window.",
+  "renewal_cal.no_contracts": "No contracts with expiry dates found.",
+  "renewal_cal.ago": "ago",
+  "renewal_cal.left": "left",
+  "renewal_cal.per_yr": "per yr",
 
   "exec_summary.title": "Executive Summary — Oracle SAM",
   "exec_summary.header": "Oracle SAM — Executive Summary",

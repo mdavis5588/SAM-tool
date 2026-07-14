@@ -161,6 +161,7 @@
     .sidebar-flyout-trigger:hover .sidebar-flyout-arrow,
     .sidebar-flyout-trigger.flyout-open .sidebar-flyout-arrow { transform: rotate(90deg); opacity: 1; }
     /* The menu is rendered as a fixed panel via JS */
+    #contractsFlyoutPanel,
     #sidebarFlyoutPanel,
     #complianceFlyoutPanel,
     #visibilityFlyoutPanel {
@@ -175,6 +176,7 @@
       z-index: 2000;
       box-shadow: 4px 4px 16px rgba(0,0,0,.35);
     }
+    #contractsFlyoutPanel.visible,
     #sidebarFlyoutPanel.visible,
     #complianceFlyoutPanel.visible,
     #visibilityFlyoutPanel.visible { display: block; }
@@ -275,8 +277,12 @@
          href="{{ url_for('vmware') }}"><i class="bi bi-diagram-3"></i><span>{{ t('nav.vmware') }}</span></a>
 
       <div class="sidebar-section-label">{{ t('nav.licensing') }}</div>
-      <a class="sidebar-link {% if request.endpoint in ['contracts','contract_detail'] %}active{% endif %}"
-         href="{{ url_for('contracts') }}"><i class="bi bi-file-earmark-text"></i><span>{{ t('nav.contracts') }}</span></a>
+      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['contracts','contract_detail','renewal_calendar'] %}active{% endif %}"
+         href="{{ url_for('contracts') }}" id="contractsFlyoutTrigger"
+         data-flyout="contractsFlyoutPanel">
+        <i class="bi bi-file-earmark-text"></i><span>{{ t('nav.contracts') }}</span>
+        <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
+      </a>
       <a class="sidebar-link {% if request.endpoint in ['licence_summary','licence_summary_client','licence_summary_shared'] %}active{% endif %}"
          href="{{ url_for('licence_summary') }}"><i class="bi bi-bar-chart-line"></i><span>{{ t('nav.licence_summary') }}</span></a>
       <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['finops','finops_client','licence_summary_server_costs'] %}active{% endif %}"
@@ -319,6 +325,15 @@
   </aside>
 
   <!-- Flyout panels — live outside sidebar-nav so overflow:auto can't clip them -->
+  <div id="contractsFlyoutPanel">
+    <a class="sidebar-flyout-item" href="{{ url_for('contracts') }}">
+      <i class="bi bi-file-earmark-text"></i>{{ t('nav.contracts') }}
+    </a>
+    <a class="sidebar-flyout-item" href="{{ url_for('renewal_calendar') }}">
+      <i class="bi bi-calendar-event"></i>{{ t('nav.renewal_calendar') }}
+    </a>
+  </div>
+
   <div id="sidebarFlyoutPanel">
     <a class="sidebar-flyout-item" href="{{ url_for('finops') }}">
       <i class="bi bi-bar-chart-steps"></i>{{ t('finops.tab_cost_summary') }}
@@ -399,7 +414,7 @@
 
     function showFlyout() {
       // Hide any other open panels first
-      document.querySelectorAll('#sidebarFlyoutPanel,#complianceFlyoutPanel,#visibilityFlyoutPanel').forEach(p => {
+      document.querySelectorAll('#contractsFlyoutPanel,#sidebarFlyoutPanel,#complianceFlyoutPanel,#visibilityFlyoutPanel').forEach(p => {
         if (p !== panel) p.classList.remove('visible');
       });
       document.querySelectorAll('.sidebar-flyout-trigger').forEach(t => {

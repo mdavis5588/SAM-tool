@@ -85,6 +85,8 @@
   "servers.filter_env": "Tous les environnements",
   "servers.filter_status": "Tous les statuts",
 
+  "nav.renewal_calendar": "Calendrier de renouvellement",
+
   "contracts.title": "Contrats CSI",
   "contracts.add": "Ajouter un contrat",
   "contracts.none": "Aucun contrat trouvé.",
@@ -210,6 +212,23 @@
   "add_lines.annual_support": "Coût de support annuel",
   "add_lines.done_view": "Terminé — Voir le contrat",
   "add_lines.keep_adding": "ou continuer à ajouter des lignes",
+
+  "renewal_cal.title": "Calendrier de renouvellement",
+  "renewal_cal.subtitle": "Calendrier d'expiration des supports et ULA au",
+  "renewal_cal.kpi_expired": "Déjà expirés",
+  "renewal_cal.kpi_30d": "Dans les 30 jours",
+  "renewal_cal.kpi_90d": "Dans 31–90 jours",
+  "renewal_cal.kpi_future": "Au-delà de 90 jours",
+  "renewal_cal.band_expired": "Expirés",
+  "renewal_cal.band_30d": "Expirant dans les 30 jours",
+  "renewal_cal.band_90d": "Expirant dans 31–90 jours",
+  "renewal_cal.band_12m": "Expirant dans 91 jours – 12 mois",
+  "renewal_cal.band_beyond": "Au-delà de 12 mois",
+  "renewal_cal.none_in_band": "Aucun contrat dans cette période.",
+  "renewal_cal.no_contracts": "Aucun contrat avec une date d'expiration trouvé.",
+  "renewal_cal.ago": "passé",
+  "renewal_cal.left": "restant",
+  "renewal_cal.per_yr": "par an",
 
   "exec_summary.title": "Tableau de bord — Oracle SAM",
   "exec_summary.header": "Oracle SAM — Tableau de bord",
