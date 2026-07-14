@@ -161,7 +161,9 @@
     .sidebar-flyout-trigger:hover .sidebar-flyout-arrow,
     .sidebar-flyout-trigger.flyout-open .sidebar-flyout-arrow { transform: rotate(90deg); opacity: 1; }
     /* The menu is rendered as a fixed panel via JS */
-    #sidebarFlyoutPanel {
+    #sidebarFlyoutPanel,
+    #complianceFlyoutPanel,
+    #visibilityFlyoutPanel {
       display: none;
       position: fixed;
       width: 180px;
@@ -172,7 +174,9 @@
       z-index: 2000;
       box-shadow: 4px 4px 16px rgba(0,0,0,.35);
     }
-    #sidebarFlyoutPanel.visible { display: block; }
+    #sidebarFlyoutPanel.visible,
+    #complianceFlyoutPanel.visible,
+    #visibilityFlyoutPanel.visible { display: block; }
     .sidebar-flyout-item {
       display: flex;
       align-items: center;
