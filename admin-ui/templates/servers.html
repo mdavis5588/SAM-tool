@@ -11,6 +11,19 @@
   {% endif %}
 </div>
 
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item">
+    <a class="nav-link active" href="{{ url_for('servers') }}">
+      <i class="bi bi-server me-1"></i>All Servers
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('weblogic_servers') }}">
+      <i class="bi bi-boxes me-1"></i>WebLogic
+    </a>
+  </li>
+</ul>
+
 <div class="card shadow-sm">
   <div class="card-body p-0">
     <div class="table-responsive">

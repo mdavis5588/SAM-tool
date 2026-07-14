@@ -143,6 +143,87 @@
     </div>
     {% endif %}
 
+    <!-- WebLogic Domains -->
+    {% if wls_domains %}
+    <div class="card shadow-sm mt-3">
+      <div class="card-header"><i class="bi bi-boxes"></i> WebLogic Domains</div>
+      {% for d in wls_domains %}
+      <div class="{% if not loop.last %}border-bottom{% endif %} p-3">
+
+        <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+          <div>
+            <strong>{{ d.domain_name }}</strong>
+            {% if d.wls_edition %}
+            <span class="badge ms-1" style="background:rgba(124,58,237,.12);color:#5b21b6;font-size:.68rem">
+              {{ d.wls_edition }}
+            </span>
+            {% endif %}
+            {% if d.wls_version %}
+            <span class="badge bg-secondary ms-1" style="font-size:.68rem">v{{ d.wls_version }}</span>
+            {% endif %}
+          </div>
+          {% if d.last_seen %}
+          <small class="text-muted text-nowrap">{{ d.last_seen }}</small>
+          {% endif %}
+        </div>
+
+        {% if d.admin_server_host %}
+        <div class="small text-muted mb-2">
+          <i class="bi bi-hdd-network me-1"></i>Admin:
+          <code>{{ d.admin_server_host }}{% if d.admin_server_port %}:{{ d.admin_server_port }}{% endif %}</code>
+        </div>
+        {% endif %}
+
+        {% if d.managed_servers %}
+        <div class="mb-2">
+          <div class="text-muted" style="font-size:.67rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.35rem">
+            Managed Servers ({{ d.managed_servers | length }})
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-borderless mb-0" style="font-size:.8rem">
+              <thead class="table-light">
+                <tr>
+                  <th>Name</th>
+                  <th>Port</th>
+                  <th>Cluster</th>
+                  <th>Machine</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for ms in d.managed_servers %}
+                <tr>
+                  <td>{{ ms.managed_server_name }}</td>
+                  <td class="text-muted">{{ ms.listen_port or '—' }}</td>
+                  <td class="text-muted">{{ ms.cluster_name or '—' }}</td>
+                  <td class="text-muted">{{ ms.machine_name or '—' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endif %}
+
+        {% if d.installed_products %}
+        <div>
+          <div class="text-muted" style="font-size:.67rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.35rem">
+            Installed Products
+          </div>
+          <div class="d-flex flex-wrap gap-1">
+            {% for p in d.installed_products %}
+            <span class="badge bg-light text-dark border" style="font-size:.73rem">
+              {{ p.product_name }}{% if p.product_version %} <span class="text-muted">{{ p.product_version }}</span>{% endif %}
+            </span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
     <!-- Client contacts -->
     <div class="card shadow-sm mt-3">
       <div class="card-header"><i class="bi bi-person-lines-fill"></i> Client Contacts</div>

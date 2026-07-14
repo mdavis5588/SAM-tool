@@ -272,6 +272,76 @@ def clients():
 # ---------------------------------------------------------------------------
 # Servers list
 # ---------------------------------------------------------------------------
+@app.route("/servers/weblogic")
+@login_required
+def weblogic_servers():
+    schema = get_schema()
+    rows = []
+
+    def _wls_query(s, client_code=None, client_name=None):
+        results = query(f"""
+            SELECT
+                sv.server_id,
+                sv.hostname,
+                sv.environment::TEXT,
+                sv.datacenter,
+                sv.last_seen::DATE AS last_seen,
+                d.domain_id,
+                d.domain_name,
+                d.wls_edition,
+                d.wls_version,
+                d.admin_server_host,
+                d.admin_server_port,
+                COUNT(DISTINCT ms.wls_ms_id)     AS managed_server_count,
+                COUNT(DISTINCT ms.cluster_name)
+                  FILTER (WHERE ms.cluster_name IS NOT NULL) AS cluster_count,
+                STRING_AGG(DISTINCT ms.cluster_name, ', '
+                  ORDER BY ms.cluster_name)
+                  FILTER (WHERE ms.cluster_name IS NOT NULL) AS clusters,
+                (SELECT COUNT(*) FROM {s}.wls_installed_products ip
+                 WHERE ip.domain_id = d.domain_id)           AS product_count,
+                lp.licences_required,
+                lp.total_licensed,
+                lp.compliance_status
+            FROM {s}.oracle_servers sv
+            JOIN {s}.wls_domains d ON d.server_id = sv.server_id AND d.is_active
+            LEFT JOIN {s}.wls_managed_servers ms ON ms.domain_id = d.domain_id
+            LEFT JOIN {s}.license_position lp
+                   ON lp.server_id = sv.server_id
+                  AND lp.product_family = 'oracle_weblogic'
+            WHERE sv.is_active
+            GROUP BY sv.server_id, sv.hostname, sv.environment, sv.datacenter,
+                     sv.last_seen, d.domain_id, d.domain_name, d.wls_edition,
+                     d.wls_version, d.admin_server_host, d.admin_server_port,
+                     lp.licences_required, lp.total_licensed, lp.compliance_status
+            ORDER BY sv.hostname, d.domain_name
+        """)
+        for r in results:
+            r = dict(r)
+            r["_client_code"] = client_code or s
+            r["_client_name"] = client_name or s
+            r["_schema"]      = s
+            rows.append(r)
+
+    if schema == "__all__":
+        clients_list = query(
+            "SELECT schema_name, client_name, client_code FROM sam_admin.clients "
+            "WHERE is_active ORDER BY client_name"
+        )
+        for c in clients_list:
+            try:
+                _wls_query(c["schema_name"], c["client_code"], c["client_name"])
+            except Exception:
+                pass
+    else:
+        try:
+            _wls_query(schema)
+        except Exception:
+            pass
+
+    return render_template("weblogic_servers.html", servers=rows, schema=schema)
+
+
 @app.route("/")
 @app.route("/servers")
 @login_required
@@ -891,6 +961,34 @@ def edit_server(server_id):
                 _seen_ula_ids.add(_u["csi_id"])
                 all_server_ulas.append(_u)
 
+    # WebLogic domains discovered on this server
+    try:
+        wls_domains = query(
+            f"""SELECT domain_id, domain_name, domain_home, wls_version, wls_edition,
+                       admin_server_host, admin_server_port, last_seen::DATE AS last_seen
+                FROM {schema}.wls_domains
+                WHERE server_id = %s AND is_active
+                ORDER BY domain_name""",
+            (server_id,)
+        )
+        for d in wls_domains:
+            d = dict(d)
+            d["managed_servers"] = query(
+                f"""SELECT managed_server_name, listen_port, ssl_port,
+                           cluster_name, machine_name, state
+                    FROM {schema}.wls_managed_servers
+                    WHERE domain_id = %s ORDER BY managed_server_name""",
+                (d["domain_id"],)
+            )
+            d["installed_products"] = query(
+                f"""SELECT DISTINCT product_name, product_version
+                    FROM {schema}.wls_installed_products
+                    WHERE domain_id = %s ORDER BY product_name""",
+                (d["domain_id"],)
+            )
+    except Exception:
+        wls_domains = []
+
     java_installations = query(
         f"""SELECT java_id, java_home, java_vendor, java_version,
                    java_major_version, java_edition, is_oracle_jdk,
@@ -944,6 +1042,7 @@ def edit_server(server_id):
                            ula_by_line=ula_by_line,
                            all_server_ulas=all_server_ulas,
                            licence_position=licence_position,
+                           wls_domains=wls_domains,
                            java_installations=java_installations,
                            se2_violations=se2_violations,
                            cpu_validation=cpu_validation,
