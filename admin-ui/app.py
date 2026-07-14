@@ -2820,7 +2820,7 @@ def export_lms():
     # Sheet 1: Summary
     ws_sum = wb.active
     ws_sum.title = "Summary"
-    ws_sum["A1"] = "Oracle SAM — LMS Audit Export"
+    ws_sum["A1"] = "Helios — LMS Audit Export"
     ws_sum["A1"].font = Font(bold=True, size=14)
     ws_sum["A2"] = f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     ws_sum["A3"] = f"Client schema: {schema}"
@@ -3199,7 +3199,7 @@ def test_channel(channel_id):
         "alert_type": "TEST",
         "severity": "LOW",
         "object_name": "SAM Alert System",
-        "description": "This is a test alert from Oracle SAM.",
+        "description": "This is a test alert from Helios.",
         "action_needed": "No action required — this is a connectivity test.",
     }
     ok, err = _send_to_channel(row, [test_alert])
@@ -3272,7 +3272,7 @@ def _send_slack(webhook_url, channel_name, alerts):
     high   = [a for a in alerts if a.get("severity") == "HIGH"]
     medium = [a for a in alerts if a.get("severity") == "MEDIUM"]
     blocks = [{"type": "header", "text": {"type": "plain_text",
-               "text": f"Oracle SAM Compliance Alerts ({len(alerts)} total)"}}]
+               "text": f"Helios Compliance Alerts ({len(alerts)} total)"}}]
     for a in alerts[:20]:
         emoji = ":red_circle:" if a.get("severity") == "HIGH" else ":large_yellow_circle:"
         blocks.append({"type": "section", "text": {"type": "mrkdwn",
@@ -3280,7 +3280,7 @@ def _send_slack(webhook_url, channel_name, alerts):
                     f"{a.get('description')}\n_Action: {a.get('action_needed')}_"}})
     if len(alerts) > 20:
         blocks.append({"type": "section", "text": {"type": "mrkdwn",
-            "text": f"… and {len(alerts) - 20} more alerts. Log in to Oracle SAM to review all."}})
+            "text": f"… and {len(alerts) - 20} more alerts. Log in to Helios to review all."}})
     resp = requests.post(webhook_url, json={"blocks": blocks}, timeout=10)
     resp.raise_for_status()
 
@@ -3293,8 +3293,8 @@ def _send_teams(webhook_url, channel_name, alerts):
         "@type": "MessageCard",
         "@context": "http://schema.org/extensions",
         "themeColor": "FF0000" if any(a.get("severity") == "HIGH" for a in alerts) else "FFA500",
-        "summary": f"Oracle SAM: {len(alerts)} compliance alert(s)",
-        "sections": [{"activityTitle": f"Oracle SAM — {len(alerts)} Compliance Alert(s)",
+        "summary": f"Helios: {len(alerts)} compliance alert(s)",
+        "sections": [{"activityTitle": f"Helios — {len(alerts)} Compliance Alert(s)",
                       "facts": facts}]
     }
     resp = requests.post(webhook_url, json=payload, timeout=10)
@@ -3302,7 +3302,7 @@ def _send_teams(webhook_url, channel_name, alerts):
 
 
 def _send_email(cfg, channel_name, alerts):
-    body_lines = [f"Oracle SAM Compliance Alerts — {len(alerts)} item(s)\n",
+    body_lines = [f"Helios Compliance Alerts — {len(alerts)} item(s)\n",
                   "=" * 60]
     for a in alerts:
         body_lines += [
@@ -3317,7 +3317,7 @@ def _send_email(cfg, channel_name, alerts):
     msg = MIMEMultipart()
     msg["From"]    = cfg.get("from_addr", "sam@example.com")
     msg["To"]      = ", ".join(cfg.get("to_addrs", []))
-    msg["Subject"] = f"Oracle SAM: {len(alerts)} compliance alert(s)"
+    msg["Subject"] = f"Helios: {len(alerts)} compliance alert(s)"
     msg.attach(MIMEText(body, "plain"))
 
     ctx = ssl.create_default_context()

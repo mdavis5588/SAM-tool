@@ -263,8 +263,8 @@
   "renewal_cal.left": "restant",
   "renewal_cal.per_yr": "par an",
 
-  "exec_summary.title": "Tableau de bord — Oracle SAM",
-  "exec_summary.header": "Oracle SAM — Tableau de bord",
+  "exec_summary.title": "Tableau de bord — Helios",
+  "exec_summary.header": "Helios — Tableau de bord",
   "exec_summary.all_clients": "Tous les clients actifs",
   "exec_summary.compliant": "Conforme",
   "exec_summary.attention_required": "Attention requise",
@@ -299,7 +299,7 @@
   "exec_summary.top_products": "Principaux produits par nombre de licences",
   "exec_summary.yr_support": "/an support",
   "exec_summary.generated_prefix": "Généré le",
-  "exec_summary.generated_suffix": "· Oracle SAM Tool",
+  "exec_summary.generated_suffix": "· Helios",
   "exec_summary.audit_readiness_btn": "Rapport d'audit",
   "exec_summary.lms_export_btn": "Export LMS",
 

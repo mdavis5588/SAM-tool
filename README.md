@@ -1,4 +1,4 @@
-# Oracle SAM Tool v2 — Multi-Client with WebLogic
+# Helios v2 — Multi-Client Oracle SAM with WebLogic
 
 Software Asset Management for Oracle Database and Oracle WebLogic Server.
 Supports multiple clients in a single PostgreSQL database using per-client schemas,
@@ -362,7 +362,7 @@ evaluates all active compliance alerts and sends them to every enabled channel.
 
 1. In Teams, open the channel you want to post alerts to.
 2. Click **···** → **Connectors** → search for **Incoming Webhook** → **Add**.
-3. Give it a name (e.g. *Oracle SAM Alerts*), optionally upload an icon, then
+3. Give it a name (e.g. *Helios Alerts*), optionally upload an icon, then
    click **Create**.
 4. Copy the webhook URL (it looks like
    `https://your-org.webhook.office.com/webhookb2/…`).
