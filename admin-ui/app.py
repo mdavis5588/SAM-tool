@@ -1463,12 +1463,12 @@ def cost_optimisation():
     # Annotate each line with consumed/available/utilisation
     annotated = []
     for l in line_rows:
-        consumed = sum(
-            amt for fam, det, amt in consumed_entries_by_csi.get(l["csi_id"], [])
+        consumed = float(sum(
+            float(amt) for fam, det, amt in consumed_entries_by_csi.get(l["csi_id"], [])
             if _is_compatible_product(l["product_family"], det or None,
                                       l["product_family"], l["product_name"])
-        )
-        qty = l["quantity"] or 0
+        ))
+        qty = float(l["quantity"] or 0)
         util_pct = int(consumed / qty * 100) if qty else 0
         waste_licences = max(qty - consumed, 0)
         # Estimate wasted annual cost (pro-rate annual_support_cost by unused fraction)
