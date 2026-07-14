@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+{% block title %}ULA Coverage — FinOps — Helios{% endblock %}
+{% block content %}
+
+<style>
+  .viz-root {
+    --surface-1:   #fcfcfb;
+    --text-pri:    #0b0b0b;
+    --text-sec:    #52514e;
+    --text-muted:  #898781;
+    --gridline:    #e1e0d9;
+    --border:      rgba(11,11,11,0.10);
+    --ula:         #7c3aed;
+    --ula-soft:    rgba(124,58,237,.08);
+    --ula-badge:   rgba(124,58,237,.12);
+    --track:       #e1e0d9;
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      --surface-1:  #1a1a19;
+      --text-pri:   #f0eeeb;
+      --text-sec:   #c3c2b7;
+      --text-muted: #898781;
+      --gridline:   #2c2c2a;
+      --border:     rgba(255,255,255,0.10);
+      --ula:        #a78bfa;
+      --ula-soft:   rgba(167,139,250,.07);
+      --ula-badge:  rgba(167,139,250,.15);
+      --track:      #2c2c2a;
+    }
+  }
+
+  /* ── Filter bar ── */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.75rem;
+    padding: .9rem 1rem;
+    background: var(--ula-soft);
+    border: 1px solid var(--gridline);
+    border-radius: 8px;
+  }
+  .filter-label {
+    font-size: .72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  .filter-select {
+    flex: 1 1 260px;
+    max-width: 420px;
+    font-size: .88rem;
+  }
+
+  /* ── ULA cards ── */
+  .ula-card {
+    background: var(--surface-1);
+    border: 1px solid var(--gridline);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 1.25rem;
+  }
+  .ula-card-head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: .9rem 1.1rem;
+    border-bottom: 1px solid var(--gridline);
+    background: var(--ula-soft);
+    flex-wrap: wrap;
+  }
+  .ula-name {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text-pri);
+    flex: 1 1 200px;
+  }
+  .ula-meta {
+    font-size: .75rem;
+    color: var(--text-muted);
+    display: flex;
+    gap: .75rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .ula-infinity {
+    font-size: 1.1rem;
+    color: var(--ula);
+    line-height: 1;
+  }
+
+  /* ── KPI row inside card ── */
+  .ula-kpi-row {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--gridline);
+  }
+  .ula-kpi {
+    flex: 1 1 100px;
+    padding: .8rem 1.1rem;
+    border-right: 1px solid var(--gridline);
+    display: flex;
+    flex-direction: column;
+    gap: .15rem;
+  }
+  .ula-kpi:last-child { border-right: none; }
+  .ula-kpi-label {
+    font-size: .65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: var(--text-muted);
+  }
+  .ula-kpi-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--ula);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .ula-kpi-value.neutral { color: var(--text-pri); }
+
+  /* ── Body: products + servers side by side ── */
+  .ula-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+  }
+  @media (max-width: 768px) {
+    .ula-body { grid-template-columns: 1fr; }
+  }
+  .ula-section {
+    padding: .9rem 1.1rem;
+  }
+  .ula-section + .ula-section {
+    border-left: 1px solid var(--gridline);
+  }
+  @media (max-width: 768px) {
+    .ula-section + .ula-section {
+      border-left: none;
+      border-top: 1px solid var(--gridline);
+    }
+  }
+  .ula-section-head {
+    font-size: .67rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: var(--text-muted);
+    margin-bottom: .6rem;
+  }
+
+  /* ── Product rows ── */
+  .prod-row {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .3rem 0;
+    border-bottom: 1px solid var(--gridline);
+    font-size: .82rem;
+  }
+  .prod-row:last-child { border-bottom: none; }
+  .prod-name { flex: 1; color: var(--text-sec); }
+  .prod-qty {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-pri);
+    white-space: nowrap;
+  }
+  .prod-bar-wrap { width: 64px; }
+  .prod-bar { height: 5px; border-radius: 3px; background: var(--track); overflow: hidden; }
+  .prod-bar-fill { height: 100%; border-radius: 3px; background: var(--ula); }
+
+  /* ── Server rows ── */
+  .srv-row {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .3rem 0;
+    border-bottom: 1px solid var(--gridline);
+    font-size: .82rem;
+  }
+  .srv-row:last-child { border-bottom: none; }
+  .srv-hostname { font-weight: 600; color: var(--text-pri); flex: 1; }
+  .srv-client {
+    font-size: .72rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  /* ── Empty state ── */
+  .no-servers {
+    font-size: .82rem;
+    color: var(--text-muted);
+    font-style: italic;
+    padding: .4rem 0;
+  }
+
+  /* ── Status badge ── */
+  .status-active    { background:#d1f2e8; color:#0a6847; font-size:.67rem; font-weight:600; padding:.1rem .4rem; border-radius:20px; }
+  .status-expired   { background:#fde8e8; color:#991b1b; font-size:.67rem; font-weight:600; padding:.1rem .4rem; border-radius:20px; }
+  .status-pending   { background:#fef3cd; color:#856404; font-size:.67rem; font-weight:600; padding:.1rem .4rem; border-radius:20px; }
+  .status-other     { background:var(--track); color:var(--text-muted); font-size:.67rem; font-weight:600; padding:.1rem .4rem; border-radius:20px; }
+  @media (prefers-color-scheme: dark) {
+    .status-active  { background:#052e1c; color:#4ade80; }
+    .status-expired { background:#2c0a0a; color:#fca5a5; }
+    .status-pending { background:#2d200a; color:#fcd34d; }
+  }
+</style>
+
+<div class="viz-root">
+
+  <div class="d-flex align-items-baseline gap-3 mb-3">
+    <h4 class="mb-0"><i class="bi bi-currency-dollar me-1"></i>{{ t('finops.title') }}</h4>
+  </div>
+
+  <ul class="nav nav-tabs mb-4">
+    <li class="nav-item">
+      <a class="nav-link" href="{{ url_for('finops') }}">
+        <i class="bi bi-bar-chart-steps me-1"></i>{{ t('finops.tab_cost_summary') }}
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="{{ url_for('licence_summary_server_costs') }}">
+        <i class="bi bi-server me-1"></i>{{ t('nav.server_costs') }}
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link active" href="{{ url_for('finops_ulas') }}">
+        <i class="bi bi-infinity me-1"></i>ULA Coverage
+      </a>
+    </li>
+  </ul>
+
+  <!-- ── Filter bar ── -->
+  <form method="get" class="filter-bar">
+    <span class="filter-label"><i class="bi bi-funnel me-1"></i>Filter ULA</span>
+    <select name="csi_id" class="form-select filter-select" onchange="this.form.submit()">
+      <option value="">— All ULAs ({{ ulas | length }}) —</option>
+      {% for u in ulas %}
+      <option value="{{ u.csi_id }}" {% if u.csi_id == selected_csi %}selected{% endif %}>
+        {{ u.contract_name }}{% if u.csi_number %} ({{ u.csi_number }}){% endif %}
+      </option>
+      {% endfor %}
+    </select>
+    {% if selected_csi %}
+    <a href="{{ url_for('finops_ulas') }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-x me-1"></i>Clear
+    </a>
+    {% endif %}
+  </form>
+
+  {% set display_ulas = [selected_ula] if selected_ula else ulas %}
+
+  {% if not display_ulas or (display_ulas | length == 1 and display_ulas[0] is none) %}
+  <div class="alert alert-info">No ULA contracts found.</div>
+  {% else %}
+
+  {% for u in display_ulas %}
+  {% if u %}
+  {% set total_licences = u.product_totals.values() | sum %}
+  {% set max_qty = (u.product_totals.values() | max) if u.product_totals else 1 %}
+
+  <div class="ula-card">
+    <!-- Header -->
+    <div class="ula-card-head">
+      <span class="ula-infinity"><i class="bi bi-infinity"></i></span>
+      <span class="ula-name">{{ u.contract_name }}</span>
+      <div class="ula-meta">
+        {% if u.csi_number %}<span>CSI {{ u.csi_number }}</span>{% endif %}
+        {% if u.ula_expiry %}<span><i class="bi bi-calendar3 me-1"></i>Expires {{ u.ula_expiry }}</span>{% endif %}
+        <span class="
+          {% if u.status == 'active' %}status-active
+          {% elif u.status == 'expired' %}status-expired
+          {% elif u.status == 'pending' %}status-pending
+          {% else %}status-other{% endif %}">{{ u.status | title }}</span>
+      </div>
+    </div>
+
+    <!-- KPI row -->
+    <div class="ula-kpi-row">
+      <div class="ula-kpi">
+        <span class="ula-kpi-label">Servers Assigned</span>
+        <span class="ula-kpi-value">{{ u.server_count }}</span>
+      </div>
+      <div class="ula-kpi">
+        <span class="ula-kpi-label">Product Lines</span>
+        <span class="ula-kpi-value neutral">{{ u.product_totals | length }}</span>
+      </div>
+      <div class="ula-kpi">
+        <span class="ula-kpi-label">Total Licences Required</span>
+        <span class="ula-kpi-value neutral">{{ "{:,}".format(total_licences | int) }}</span>
+      </div>
+    </div>
+
+    <!-- Body: products + servers -->
+    <div class="ula-body">
+
+      <!-- Products -->
+      <div class="ula-section">
+        <div class="ula-section-head"><i class="bi bi-box me-1"></i>Licence Requirements by Product</div>
+        {% if u.product_totals %}
+          {% for prod, qty in u.product_totals.items() | sort(attribute=1, reverse=True) %}
+          {% set bar_w = ((qty / max_qty) * 100) | round(0) | int %}
+          <div class="prod-row">
+            <span class="prod-name">{{ prod }}</span>
+            <div class="prod-bar-wrap">
+              <div class="prod-bar"><div class="prod-bar-fill" style="width:{{ bar_w }}%"></div></div>
+            </div>
+            <span class="prod-qty">{{ "{:,}".format(qty | int) }}</span>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="no-servers">No licence position data available.</p>
+        {% endif %}
+      </div>
+
+      <!-- Servers -->
+      <div class="ula-section">
+        <div class="ula-section-head"><i class="bi bi-server me-1"></i>Assigned Servers</div>
+        {% if u.servers %}
+          {% for srv in u.servers | sort(attribute='hostname') %}
+          <div class="srv-row">
+            <a href="{{ url_for('edit_server', server_id=srv.server_id) }}"
+               class="srv-hostname text-decoration-none">{{ srv.hostname }}</a>
+            <span class="srv-client">{{ srv.client_name }}</span>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="no-servers">No servers currently assigned to this ULA.</p>
+        {% endif %}
+      </div>
+
+    </div>
+  </div>
+  {% endif %}
+  {% endfor %}
+
+  {% endif %}
+
+</div>
+{% endblock %}

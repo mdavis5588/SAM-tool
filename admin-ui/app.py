@@ -1485,6 +1485,86 @@ def finops_client(client_code):
     return render_template("finops.html", client=data)
 
 
+@app.route("/finops/ulas")
+@login_required
+def finops_ulas():
+    selected_csi = request.args.get("csi_id", type=int)
+
+    ulas = query("""
+        SELECT csi_id, csi_number, contract_name, ula_expiry, status
+        FROM shared.csi_contracts
+        WHERE is_ula
+        ORDER BY contract_name
+    """)
+
+    clients_list = query(
+        "SELECT client_code, client_name, schema_name FROM sam_admin.clients WHERE is_active"
+    )
+
+    ula_map = {}
+    for u in ulas:
+        ula_map[u["csi_id"]] = {
+            "csi_id":        u["csi_id"],
+            "csi_number":    u["csi_number"],
+            "contract_name": u["contract_name"],
+            "ula_expiry":    u["ula_expiry"],
+            "status":        u["status"],
+            "server_count":  0,
+            "servers":       [],
+            "product_totals": {},
+        }
+
+    for c in clients_list:
+        s = c["schema_name"]
+        try:
+            rows = query(f"""
+                SELECT DISTINCT ON (m.csi_id, sv.server_id, lp.product_family, lp.product_detail)
+                    m.csi_id,
+                    sv.server_id,
+                    sv.hostname,
+                    lp.product_family::TEXT AS product_family,
+                    lp.product_detail::TEXT AS product_detail,
+                    lp.licences_required
+                FROM {s}.server_csi_map m
+                JOIN shared.csi_contracts cs ON cs.csi_id = m.csi_id AND cs.is_ula
+                JOIN {s}.oracle_servers sv ON sv.server_id = m.server_id AND sv.is_active
+                LEFT JOIN {s}.license_position lp ON lp.server_id = sv.server_id
+            """)
+            seen_servers = set()
+            for r in rows:
+                csi_id = r["csi_id"]
+                if csi_id not in ula_map:
+                    continue
+                entry = ula_map[csi_id]
+                srv_key = (c["client_code"], r["server_id"])
+                if srv_key not in seen_servers:
+                    seen_servers.add(srv_key)
+                    entry["server_count"] += 1
+                    entry["servers"].append({
+                        "hostname":    r["hostname"],
+                        "client_name": c["client_name"] or c["client_code"],
+                        "client_code": c["client_code"],
+                        "server_id":   r["server_id"],
+                    })
+                if r["product_detail"] and r["licences_required"]:
+                    prod_key = r["product_detail"]
+                    entry["product_totals"][prod_key] = (
+                        entry["product_totals"].get(prod_key, 0) + r["licences_required"]
+                    )
+        except Exception:
+            pass
+
+    ula_list = list(ula_map.values())
+    selected_ula = ula_map.get(selected_csi) if selected_csi else None
+
+    return render_template(
+        "finops_ula.html",
+        ulas=ula_list,
+        selected_csi=selected_csi,
+        selected_ula=selected_ula,
+    )
+
+
 @app.route("/renewal-calendar")
 @login_required
 def renewal_calendar():
