@@ -246,33 +246,16 @@
   </a>
 {%- endmacro %}
 
-{% set db_families = ('oracle_database',) %}
-{% set mw_families = ('oracle_weblogic', 'oracle_coherence', 'oracle_middleware', 'oracle_java', 'other') %}
-
-<!-- ── Client-locked — Database ── -->
+<!-- ── Client-locked section ── -->
 {% if clients %}
-
-{% set db_clients = [] %}
-{% for client in clients %}
-  {% set db_lines = client.lines | selectattr('product_family', 'in', db_families) | list %}
-  {% if db_lines %}{% set _ = db_clients.append({'client_code': client.client_code, 'client_name': client.client_name, 'lines': db_lines}) %}{% endif %}
-{% endfor %}
-
-{% set mw_clients = [] %}
-{% for client in clients %}
-  {% set mw_lines = client.lines | rejectattr('product_family', 'in', db_families) | list %}
-  {% if mw_lines %}{% set _ = mw_clients.append({'client_code': client.client_code, 'client_name': client.client_name, 'lines': mw_lines}) %}{% endif %}
-{% endfor %}
-
-{% if db_clients %}
 <div class="ls-section">
   <i class="bi bi-lock-fill" style="color:var(--s1)"></i>
-  {{ t('licence_summary.client_locked') }} —
-  <i class="bi bi-database ms-1 me-1" style="color:var(--s2)"></i>Database
-  <span style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">{{ db_clients | length }} client{{ 's' if db_clients | length != 1 }}</span>
+  {{ t('licence_summary.client_locked') }}
+  <span style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">{{ clients | length }} client{{ 's' if clients | length != 1 }}</span>
 </div>
-<div class="tile-grid mb-4">
-  {% for client in db_clients %}
+
+<div class="tile-grid">
+  {% for client in clients %}
   {% set total = client.lines | sum(attribute='total_qty') %}
   {{ donut_tile(
        client.lines, total,
@@ -283,78 +266,29 @@
      ) }}
   {% endfor %}
 </div>
-{% endif %}
-
-{% if mw_clients %}
-<div class="ls-section">
-  <i class="bi bi-lock-fill" style="color:var(--s1)"></i>
-  {{ t('licence_summary.client_locked') }} —
-  <i class="bi bi-boxes ms-1 me-1" style="color:#7c3aed"></i>Middleware
-  <span style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">{{ mw_clients | length }} client{{ 's' if mw_clients | length != 1 }}</span>
-</div>
-<div class="tile-grid mb-4">
-  {% for client in mw_clients %}
-  {% set total = client.lines | sum(attribute='total_qty') %}
-  {{ donut_tile(
-       client.lines, total,
-       url_for('licence_summary_client', client_code=client.client_code),
-       client.client_name or client.client_code,
-       t('licence_summary.locked_only'),
-       t('licence_summary.locked')
-     ) }}
-  {% endfor %}
-</div>
-{% endif %}
 
 {% else %}
 <p class="text-muted mb-4">{{ t('licence_summary.none_client') }}</p>
 {% endif %}
 
-<!-- ── Shared pool ── -->
-{% set shared_db = shared_lines | selectattr('product_family', 'in', db_families) | list %}
-{% set shared_mw = shared_lines | rejectattr('product_family', 'in', db_families) | list %}
-
-{% if shared_db %}
-<div class="ls-section">
-  <i class="bi bi-share" style="color:var(--s2)"></i>
-  {{ t('licence_summary.shared_pool') }} —
-  <i class="bi bi-database ms-1 me-1" style="color:var(--s2)"></i>Database
-</div>
-{% set shared_db_total = shared_db | sum(attribute='total_qty') %}
-<div class="tile-grid mb-4">
-  {{ donut_tile(
-       shared_db, shared_db_total,
-       url_for('licence_summary_shared'),
-       t('licence_summary.shared_pool_label'),
-       none,
-       t('licence_summary.licences')
-     ) }}
-</div>
-{% endif %}
-
-{% if shared_mw %}
-<div class="ls-section">
-  <i class="bi bi-share" style="color:var(--s2)"></i>
-  {{ t('licence_summary.shared_pool') }} —
-  <i class="bi bi-boxes ms-1 me-1" style="color:#7c3aed"></i>Middleware
-</div>
-{% set shared_mw_total = shared_mw | sum(attribute='total_qty') %}
-<div class="tile-grid mb-4">
-  {{ donut_tile(
-       shared_mw, shared_mw_total,
-       url_for('licence_summary_shared'),
-       t('licence_summary.shared_pool_label'),
-       none,
-       t('licence_summary.licences')
-     ) }}
-</div>
-{% endif %}
-
-{% if not shared_db and not shared_mw %}
-<div class="ls-section">
+<!-- ── Shared pool section ── -->
+<div class="ls-section" style="margin-top:.5rem">
   <i class="bi bi-share" style="color:var(--s2)"></i>
   {{ t('licence_summary.shared_pool') }}
 </div>
+
+{% if shared_lines %}
+{% set shared_total = shared_lines | sum(attribute='total_qty') %}
+<div class="tile-grid">
+  {{ donut_tile(
+       shared_lines, shared_total,
+       url_for('licence_summary_shared'),
+       t('licence_summary.shared_pool_label'),
+       none,
+       t('licence_summary.licences')
+     ) }}
+</div>
+{% else %}
 <p class="text-muted">{{ t('licence_summary.none_shared') }}</p>
 {% endif %}
 
