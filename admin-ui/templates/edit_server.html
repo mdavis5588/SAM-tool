@@ -323,7 +323,8 @@
     </div>
     {% endif %}
 
-    <!-- Per-line CSI assignment cards -->
+    <!-- Per-line CSI assignment cards (hidden when ULA is active) -->
+    {% if not server_ula_assignment %}
     <h6 class="text-muted text-uppercase fw-semibold mb-2" style="font-size:.75rem; letter-spacing:.08em">
       CSI Assignments
     </h6>
@@ -460,6 +461,7 @@
       </div>
     </div>
     {% endfor %}
+    {% endif %}{# end if not server_ula_assignment #}
 
     {% endif %}{# end if licence_position #}
 
