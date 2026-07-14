@@ -166,6 +166,11 @@
     <option value="{{ env }}">{{ env | title }}</option>
     {% endfor %}
   </select>
+  <select id="filterFamily">
+    <option value="">All products</option>
+    <option value="oracle_database">Database</option>
+    <option value="oracle_weblogic">WebLogic / Middleware</option>
+  </select>
   <span class="text-muted small ms-auto" id="visibleCount">{{ servers|length }} {{ t('label.shown') }}</span>
 </div>
 
@@ -173,8 +178,10 @@
 <div id="serverList">
 {% for sv in servers %}
 {% set card_id = "sv-" ~ loop.index %}
+{% set families = sv.assignments | map(attribute='product_family') | unique | list %}
 <div class="server-card" data-hostname="{{ sv.hostname | lower }}"
-     data-client="{{ sv.client_name }}" data-env="{{ sv.environment | lower }}">
+     data-client="{{ sv.client_name }}" data-env="{{ sv.environment | lower }}"
+     data-families="{{ families | join(' ') | lower }}">
   <button class="server-header" type="button"
           data-bs-toggle="collapse" data-bs-target="#{{ card_id }}"
           aria-expanded="false" aria-controls="{{ card_id }}">
@@ -275,17 +282,24 @@
   const hosInp  = document.getElementById('filterHostname');
   const cliSel  = document.getElementById('filterClient');
   const envSel  = document.getElementById('filterEnv');
+  const famSel  = document.getElementById('filterFamily');
   const countEl = document.getElementById('visibleCount');
 
   function applyFilters() {
     const h = hosInp.value.toLowerCase();
     const c = cliSel.value;
     const e = envSel.value.toLowerCase();
+    const f = famSel.value.toLowerCase();
     let shown = 0;
     cards.forEach(card => {
+      const families = (card.dataset.families || '').split(' ');
+      const famMatch = !f || (f === 'oracle_weblogic'
+        ? families.some(x => x !== 'oracle_database' && x !== '')
+        : families.includes(f));
       const match = (!h || card.dataset.hostname.includes(h))
                  && (!c || card.dataset.client === c)
-                 && (!e || card.dataset.env === e);
+                 && (!e || card.dataset.env === e)
+                 && famMatch;
       card.style.display = match ? '' : 'none';
       if (match) shown++;
     });
@@ -295,6 +309,7 @@
   hosInp.addEventListener('input',  applyFilters);
   cliSel.addEventListener('change', applyFilters);
   envSel.addEventListener('change', applyFilters);
+  famSel.addEventListener('change', applyFilters);
 
   // Update aria-expanded state for chevron animation
   document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(btn => {
