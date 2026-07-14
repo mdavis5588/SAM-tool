@@ -371,7 +371,9 @@ def servers():
                             BOOL_OR(compliance_status = 'under_licensed') AS any_under_licensed,
                             STRING_AGG(product_family||': '||licences_required::TEXT,
                                        ' | ' ORDER BY product_family)     AS licence_summary
-                        FROM {s}.license_position GROUP BY server_id
+                        FROM {s}.license_position
+                        WHERE product_family = 'oracle_database'
+                        GROUP BY server_id
                     ),
                     cpu_issues AS (
                         SELECT server_id, factor_unknown
@@ -396,6 +398,7 @@ def servers():
                         COALESCE(cpu_issues.factor_unknown,FALSE) AS cpu_unvalidated,
                         (ula_servers.server_id IS NOT NULL)    AS has_ula
                     FROM {s}.oracle_servers s
+                    JOIN {s}.oracle_instances i ON i.server_id = s.server_id AND i.is_active
                     LEFT JOIN {s}.server_csi_map m ON m.server_id = s.server_id
                     LEFT JOIN lp                   ON lp.server_id = s.server_id
                     LEFT JOIN cpu_issues           ON cpu_issues.server_id = s.server_id
@@ -440,6 +443,7 @@ def servers():
                     ' | ' ORDER BY product_family
                 )                                             AS licence_summary
             FROM {schema}.license_position
+            WHERE product_family = 'oracle_database'
             GROUP BY server_id
         ),
         cpu_issues AS (
@@ -470,6 +474,7 @@ def servers():
             COALESCE(cpu_issues.factor_unknown, FALSE)         AS cpu_unvalidated,
             (ula_servers.server_id IS NOT NULL)                AS has_ula
         FROM {schema}.oracle_servers s
+        JOIN {schema}.oracle_instances i       ON i.server_id = s.server_id AND i.is_active
         LEFT JOIN {schema}.server_csi_map m    ON m.server_id = s.server_id
         LEFT JOIN lp                           ON lp.server_id = s.server_id
         LEFT JOIN cpu_issues                   ON cpu_issues.server_id = s.server_id
