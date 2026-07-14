@@ -476,6 +476,25 @@ def edit_server(server_id):
                 (csi_id,), fetchall=False
             )
             if csi_is_ula and csi_is_ula["is_ula"]:
+                # ULAs are only assignable if they are client-locked to this client
+                ula_owner = query(
+                    """SELECT c.client_code, cs.sharing_policy
+                       FROM shared.csi_contracts cs
+                       JOIN sam_admin.clients c ON c.client_id = cs.owning_client_id
+                       WHERE cs.csi_id = %s""",
+                    (csi_id,), fetchall=False
+                )
+                server_client = query(
+                    "SELECT client_code FROM sam_admin.clients WHERE schema_name = %s",
+                    (schema,), fetchall=False
+                )
+                server_code = server_client["client_code"] if server_client else None
+                if (not ula_owner
+                        or ula_owner["sharing_policy"] != "client_locked"
+                        or ula_owner["client_code"] != server_code):
+                    flash("ULAs can only be assigned to servers belonging to the ULA's owning client.", "danger")
+                    return redirect(url_for("edit_server", server_id=server_id))
+
                 ula_covered = query(
                     "SELECT product_name FROM shared.ula_covered_products WHERE csi_id = %s",
                     (csi_id,)
@@ -767,14 +786,15 @@ def edit_server(server_id):
     for (csi_id, detail), amt in consumed_by_csi_detail.items():
         consumed_entries_by_csi.setdefault(csi_id, []).append((detail, amt))
 
-    # ULA contracts accessible to this client
+    # Only client-locked ULAs owned by this client
     ula_contracts = query("""
         SELECT cs.csi_id, cs.csi_number, cs.contract_name, cs.support_expiry,
                cs.sharing_policy, cs.ula_expiry, c.client_code AS owning_client
         FROM shared.csi_contracts cs
-        LEFT JOIN sam_admin.clients c ON c.client_id = cs.owning_client_id
+        JOIN sam_admin.clients c ON c.client_id = cs.owning_client_id
         WHERE cs.is_ula AND cs.status = 'active'
-          AND (cs.sharing_policy != 'client_locked' OR c.client_code = %s)
+          AND cs.sharing_policy = 'client_locked'
+          AND c.client_code = %s
         ORDER BY cs.csi_number
     """, (server_client_code,))
     # Covered products per ULA (empty list = covers everything)
