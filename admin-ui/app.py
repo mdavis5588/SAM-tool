@@ -1,8 +1,10 @@
 import io
 import json
+import mimetypes
 import os
 import smtplib
 import ssl
+import uuid
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from email.mime.multipart import MIMEMultipart
@@ -13,12 +15,46 @@ import psycopg2
 import psycopg2.extras
 import requests
 from flask import (Flask, Response, render_template, request, redirect,
-                   url_for, session, flash, jsonify)
+                   url_for, session, flash, jsonify, send_file, abort)
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "change-me-in-production")
+
+# ---------------------------------------------------------------------------
+# Document uploads
+# ---------------------------------------------------------------------------
+UPLOAD_DIR = os.environ.get(
+    "UPLOAD_DIR",
+    os.path.join(os.path.dirname(__file__), "uploads")
+)
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+ALLOWED_EXTENSIONS = {
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+    "txt", "csv", "msg", "eml", "png", "jpg", "jpeg"
+}
+MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "25"))
+
+def _allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def _ensure_documents_table():
+    execute("""
+        CREATE TABLE IF NOT EXISTS shared.csi_documents (
+            doc_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            csi_id        INTEGER NOT NULL REFERENCES shared.csi_contracts(csi_id) ON DELETE CASCADE,
+            original_name TEXT NOT NULL,
+            stored_name   TEXT NOT NULL UNIQUE,
+            mimetype      TEXT,
+            file_size     BIGINT,
+            uploaded_by   TEXT,
+            uploaded_at   TIMESTAMPTZ DEFAULT NOW()
+        )
+    """)
+
+_ensure_documents_table()
 
 # ---------------------------------------------------------------------------
 # i18n — simple JSON-based translations
@@ -1613,6 +1649,11 @@ def contract_detail(csi_id):
             )
             ula_assigned_server_ids = {r["server_id"] for r in already}
 
+    documents = query(
+        "SELECT * FROM shared.csi_documents WHERE csi_id = %s ORDER BY uploaded_at DESC",
+        (csi_id,)
+    )
+
     return render_template("contract_detail.html",
                            contract=contract, lines=lines,
                            assigned_servers=assigned_servers,
@@ -1620,7 +1661,75 @@ def contract_detail(csi_id):
                            ula_products=ula_products,
                            ula_annual_support=ula_annual_support,
                            ula_available_servers=ula_available_servers,
-                           ula_assigned_server_ids=ula_assigned_server_ids)
+                           ula_assigned_server_ids=ula_assigned_server_ids,
+                           documents=documents)
+
+
+@app.route("/contracts/<int:csi_id>/documents/upload", methods=["POST"])
+@login_required
+def document_upload(csi_id):
+    if "file" not in request.files:
+        flash("No file selected.", "warning")
+        return redirect(url_for("contract_detail", csi_id=csi_id))
+    f = request.files["file"]
+    if not f.filename:
+        flash("No file selected.", "warning")
+        return redirect(url_for("contract_detail", csi_id=csi_id))
+    if not _allowed_file(f.filename):
+        flash(f"File type not allowed. Permitted: {', '.join(sorted(ALLOWED_EXTENSIONS))}", "danger")
+        return redirect(url_for("contract_detail", csi_id=csi_id))
+    # Read and size-check
+    data = f.read()
+    if len(data) > MAX_UPLOAD_MB * 1024 * 1024:
+        flash(f"File exceeds {MAX_UPLOAD_MB} MB limit.", "danger")
+        return redirect(url_for("contract_detail", csi_id=csi_id))
+    ext = f.filename.rsplit(".", 1)[1].lower()
+    stored_name = f"{uuid.uuid4().hex}.{ext}"
+    dest = os.path.join(UPLOAD_DIR, stored_name)
+    with open(dest, "wb") as fh:
+        fh.write(data)
+    mime = f.mimetype or mimetypes.guess_type(f.filename)[0] or "application/octet-stream"
+    execute(
+        """INSERT INTO shared.csi_documents
+               (csi_id, original_name, stored_name, mimetype, file_size, uploaded_by)
+           VALUES (%s, %s, %s, %s, %s, %s)""",
+        (csi_id, f.filename, stored_name, mime, len(data), session.get("username", "unknown"))
+    )
+    flash("Document uploaded.", "success")
+    return redirect(url_for("contract_detail", csi_id=csi_id))
+
+
+@app.route("/contracts/<int:csi_id>/documents/<doc_id>/download")
+@login_required
+def document_download(csi_id, doc_id):
+    doc = query(
+        "SELECT * FROM shared.csi_documents WHERE doc_id = %s AND csi_id = %s",
+        (doc_id, csi_id), fetchall=False
+    )
+    if not doc:
+        abort(404)
+    path = os.path.join(UPLOAD_DIR, doc["stored_name"])
+    if not os.path.exists(path):
+        abort(404)
+    return send_file(path, as_attachment=True,
+                     download_name=doc["original_name"],
+                     mimetype=doc["mimetype"] or "application/octet-stream")
+
+
+@app.route("/contracts/<int:csi_id>/documents/<doc_id>/delete", methods=["POST"])
+@login_required
+def document_delete(csi_id, doc_id):
+    doc = query(
+        "SELECT * FROM shared.csi_documents WHERE doc_id = %s AND csi_id = %s",
+        (doc_id, csi_id), fetchall=False
+    )
+    if doc:
+        path = os.path.join(UPLOAD_DIR, doc["stored_name"])
+        if os.path.exists(path):
+            os.remove(path)
+        execute("DELETE FROM shared.csi_documents WHERE doc_id = %s", (doc_id,))
+        flash("Document deleted.", "success")
+    return redirect(url_for("contract_detail", csi_id=csi_id))
 
 
 @app.route("/contracts/<int:csi_id>/delete", methods=["POST"])
