@@ -43,6 +43,8 @@ psql oracle_sam -f database/00_init.sql
 `00_init.sql` creates roles, provisions example clients, and seeds sample entitlements.
 Edit it before running to use your real client names and CSI data.
 
+> **Upgrading an existing database?** See [Database migrations](#database-migrations) below.
+
 ### 2. Add a new client
 
 ```sql
@@ -280,6 +282,7 @@ docker compose down
 
 ### 3. What you can do in the UI
 
+- **Executive Summary** — top-level KPI dashboard: compliance score, licence gaps, contract portfolio value, and per-client RAG status
 - **Servers** — see every discovered server with its calculated licence requirement
   (processor count and type), CSI assignment status, and compliance badge
 - **Edit a server** — switch between Processor Perpetual (default) and Named User Plus;
@@ -287,6 +290,14 @@ docker compose down
   view change history and acknowledge entries
 - **Contracts** — browse all CSI contracts, view entitlement lines and which servers
   are consuming them
+  - **Renewal Calendar** — timeline view of upcoming support and ULA expiry dates, bucketed by urgency
+- **FinOps** — cost summary by product across all clients
+  - **Server Costs** — per-server support cost breakdown
+  - **Cost Optimisation** — highlights completely unused licence lines, low-utilisation (<50%) CSIs, empty contracts, and ULAs expiring within 12 months with estimated wasted spend
+- **Licence Summary** — aggregate licence position across all active contracts
+- **Compliance** — detailed audit-ready compliance findings
+  - **Audit Readiness** — five-section audit report: licence gaps, unassigned servers, contract risks, empty contracts, ULA scope violations
+- **Visibility / Lifecycle Management** — Oracle DB version distribution across the estate
 - **Alerts** — live compliance alerts: expiring contracts, ULA deadlines,
   unacknowledged HIGH severity changes, SE2 violations, unrecognised CPUs, and VMware exposure
 - **VMware** — vSphere cluster inventory showing Oracle VM workloads and the full
@@ -294,6 +305,8 @@ docker compose down
 - **LMS Export** — download a 10-sheet Excel workbook covering the full audit pack
   (see below)
 - **Settings** — configure email, Slack, or Teams alert channels
+
+The UI supports **English and French** — use the language toggle in the top navigation bar.
 
 ### 4. LMS Audit Export
 
@@ -426,21 +439,61 @@ ports:
 
 Then restart: `docker compose up -d`
 
+## Database migrations
+
+When upgrading an existing database (rather than doing a clean install), run the migration
+scripts in order. All scripts are idempotent — safe to re-run if you are unsure which have
+already been applied.
+
+```bash
+# Run all migrations in sequence
+psql oracle_sam -f database/migrations/01_java_licence_exemptions.sql
+psql oracle_sam -f database/migrations/02_vmware_se2_cpu_alerts.sql
+psql oracle_sam -f database/migrations/03_merge_tuning_pack_names.sql
+psql oracle_sam -f database/migrations/04_ula_covered_products.sql
+
+# Per-line CSI assignment (top-level — not inside the migrations/ folder)
+psql oracle_sam -f database/05_migration_per_line_csi.sql
+```
+
+| Script | What it adds |
+|---|---|
+| `migrations/01_java_licence_exemptions.sql` | `licence_exempt`, `exempt_reason`, `exempt_notes`, `exempt_set_by`, `exempt_set_at` columns on `java_installations` in every client schema |
+| `migrations/02_vmware_se2_cpu_alerts.sql` | VMware cluster tables (`sam_admin.vmware_clusters`), SE2 violation tracking, CPU validation table, alert channels table |
+| `migrations/03_merge_tuning_pack_names.sql` | Data fix: merges duplicate "Tuning Pack" / "Oracle Tuning Pack" product lines and re-points any server assignments |
+| `migrations/04_ula_covered_products.sql` | `shared.ula_covered_products` — stores which specific products a ULA contract covers; required for ULA scope violation detection in Audit Readiness |
+| `05_migration_per_line_csi.sql` | `shared.oracle_licensed_options` table; adds `product_detail` and `line_id` columns to `server_csi_map` in every client schema; enables per-line CSI assignment and Oracle option licence lines |
+
+> **New installs:** `01_admin_schema.sql` and `02_shared_schema.sql` already include all of
+> the above. The migration scripts are only needed when upgrading an existing database.
+
 ## Files
 
 ```
-oracle-sam-v2/
+SAM-tool/
 ├── ansible/
 │   ├── inventory/hosts.yml             Multi-client inventory
 │   └── playbooks/
 │       ├── discover_oracle.yml         Oracle DB discovery
 │       └── discover_weblogic.yml       WebLogic discovery (WLST)
 ├── database/
-│   ├── admin/01_admin_schema.sql       Client registry + provisioning
-│   ├── shared/02_shared_schema.sql     CSI entitlements + core factor table
-│   ├── client_template/
-│   │   └── 03_client_template_functions.sql  Views + upserts installed per client
-│   └── migrations/00_init.sql         Full init script with roles + sample data
-├── powerbi/POWERBI_SETUP.md           Power BI connection + DAX guide
+│   ├── 00_init.sql                     Roles, sample clients, seed data (edit before running)
+│   ├── 01_admin_schema.sql             Client registry + provisioning functions
+│   ├── 02_shared_schema.sql            CSI entitlements, core factor table, shared views
+│   ├── 03_client_template_functions.sql  Per-client views + discovery upsert functions
+│   ├── 05_migration_per_line_csi.sql   Migration: per-line CSI assignment + oracle option lines
+│   ├── sample_data.sql                 Sample data for client_acme
+│   ├── sample_data_globex.sql          Sample data for client_globex
+│   └── migrations/
+│       ├── 01_java_licence_exemptions.sql   Java exemption columns
+│       ├── 02_vmware_se2_cpu_alerts.sql     VMware, SE2, CPU alert tables
+│       ├── 03_merge_tuning_pack_names.sql   Data fix: Tuning Pack deduplication
+│       └── 04_ula_covered_products.sql      ULA covered products table
+├── admin-ui/
+│   ├── app.py                          Flask application
+│   ├── requirements.txt                Python dependencies
+│   ├── templates/                      Jinja2 HTML templates
+│   └── translations/                   en.json / fr.json — bilingual strings
+├── PowerBI/POWERBI_SETUP.md           Power BI connection + DAX guide
 └── README.md
 ```
