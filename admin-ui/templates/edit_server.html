@@ -239,7 +239,8 @@
     </div>
 
     <!-- ULA toggle — appears once between licence summary and CSI cards -->
-    {% set server_ula_assignment = assignments | selectattr('is_ula') | list | first | default(none) %}
+    {% set _ula_list = assignments | selectattr('is_ula') | list %}
+    {% set server_ula_assignment = _ula_list[0] if _ula_list else none %}
 
     {% if server_ula_assignment or all_server_ulas %}
     <div class="mb-3 px-3 py-2 rounded-3"
