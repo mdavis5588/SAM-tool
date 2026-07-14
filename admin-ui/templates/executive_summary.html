@@ -368,7 +368,15 @@
   {% set max_qty = top_products[0].total_qty or 1 %}
   {% for p in top_products %}
   <div class="prod-row">
-    <span class="prod-name">{{ p.product_name }}</span>
+    <span class="prod-name">
+      {% set n = (p.product_name or '') | lower %}
+      {% set fam = p.product_family | default('') %}
+      {% if fam == 'oracle_coherence' or 'coherence' in n %}<i class="bi bi-cpu me-1" style="color:#059669;font-size:.8rem"></i>
+      {% elif fam == 'oracle_weblogic' or 'weblogic' in n %}<i class="bi bi-boxes me-1" style="color:#7c3aed;font-size:.8rem"></i>
+      {% elif 'soa' in n or 'service bus' in n %}<i class="bi bi-diagram-3 me-1" style="color:#0891b2;font-size:.8rem"></i>
+      {% else %}<i class="bi bi-database me-1" style="color:#2563eb;font-size:.8rem"></i>{% endif %}
+      {{ p.product_name }}
+    </span>
     <div class="prod-bar">
       <div class="prod-fill" style="width:{{ ((p.total_qty / max_qty) * 100) | int }}%"></div>
     </div>

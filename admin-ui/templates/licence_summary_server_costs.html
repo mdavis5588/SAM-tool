@@ -220,7 +220,20 @@
           <tbody>
             {% for a in sv.assignments %}
             <tr>
-              <td>{{ a.product_name }}</td>
+              <td>
+                {% set n = (a.product_name or '') | lower %}
+                {% set fam = a.product_family | default('') %}
+                {% if 'weblogic' in n or fam in ('oracle_weblogic',) %}
+                  <i class="bi bi-boxes me-1" style="color:#7c3aed;font-size:.8rem"></i>
+                {% elif 'coherence' in n or fam == 'oracle_coherence' %}
+                  <i class="bi bi-cpu me-1" style="color:#059669;font-size:.8rem"></i>
+                {% elif 'soa' in n or 'service bus' in n %}
+                  <i class="bi bi-diagram-3 me-1" style="color:#0891b2;font-size:.8rem"></i>
+                {% elif fam == 'oracle_database' or 'database' in n %}
+                  <i class="bi bi-database me-1" style="color:#2563eb;font-size:.8rem"></i>
+                {% endif %}
+                {{ a.product_name }}
+              </td>
               <td>
                 <a href="{{ url_for('contract_detail', csi_id=a.csi_id) }}"
                    class="csi-tag {% if a.sharing_policy == 'shareable' %}shared{% endif %}"

@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}WLS Versions — Helios{% endblock %}
+{% block content %}
+
+<style>
+  .vv-root {
+    --accent:     #7c3aed;
+    --text-pri:   #0f0e0d;
+    --text-sec:   #52514e;
+    --text-muted: #8a8884;
+    --surface:    #ffffff;
+    --border:     #e4e2dc;
+    --bg:         #f4f6f8;
+    --track:      #e4e2dc;
+  }
+  @media (prefers-color-scheme: dark) {
+    .vv-root {
+      --accent:#a78bfa;
+      --text-pri:#f0eeeb;--text-sec:#c3c2b7;--text-muted:#898781;
+      --surface:#1e1e1d;--border:#2e2e2b;--bg:#141413;--track:#2e2e2b;
+    }
+  }
+  :root[data-theme="dark"]  .vv-root{--accent:#a78bfa;--text-pri:#f0eeeb;--text-sec:#c3c2b7;--text-muted:#898781;--surface:#1e1e1d;--border:#2e2e2b;--bg:#141413;--track:#2e2e2b;}
+  :root[data-theme="light"] .vv-root{--accent:#7c3aed;--text-pri:#0f0e0d;--text-sec:#52514e;--text-muted:#8a8884;--surface:#ffffff;--border:#e4e2dc;--bg:#f4f6f8;--track:#e4e2dc;}
+
+  .client-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
+    gap: 1.25rem;
+  }
+  .client-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.1rem 1.2rem 1rem;
+    overflow: hidden;
+  }
+  .client-card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1rem;
+    padding-bottom: .65rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .client-card-name {
+    font-weight: 700; font-size: .95rem; color: var(--text-pri);
+    display: flex; align-items: center; gap: .45rem;
+  }
+  .client-card-name i { color: var(--text-muted); font-size: .85rem; }
+  .domain-count-badge {
+    font-size: .65rem; font-weight: 700;
+    background: rgba(124,58,237,.1); color: var(--accent);
+    border: 1px solid rgba(124,58,237,.2);
+    border-radius: 20px; padding: .1rem .5rem;
+  }
+
+  .domain-table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+  .domain-table th {
+    font-size: .66rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--text-muted);
+    padding: .3rem .5rem; border-bottom: 2px solid var(--border);
+    white-space: nowrap;
+  }
+  .domain-table td { padding: .4rem .5rem; border-bottom: 1px solid var(--border); color: var(--text-sec); }
+  .domain-table tbody tr:last-child td { border-bottom: none; }
+  .domain-table td:first-child { color: var(--text-pri); font-weight: 600; }
+
+  .edition-chip {
+    display: inline-block;
+    font-size: .67rem; font-weight: 600;
+    background: rgba(124,58,237,.1); color: var(--accent);
+    border-radius: 4px; padding: .1rem .42rem;
+    white-space: nowrap; max-width: 180px;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .edition-chip.suite { background: rgba(5,150,105,.1); color: #059669; }
+  .edition-chip.se    { background: rgba(37,99,235,.1); color: #2563eb; }
+
+  .env-badge {
+    font-size: .62rem; font-weight: 600; padding: .1rem .38rem;
+    border-radius: 4px; text-transform: uppercase; letter-spacing: .04em;
+  }
+  .env-prod { background: rgba(220,38,38,.1); color: #dc2626; }
+  .env-dev  { background: rgba(37,99,235,.1); color: #2563eb; }
+  .env-test { background: rgba(217,119,6,.1); color: #d97706; }
+  .env-dr   { background: rgba(109,40,217,.1); color: #7c3aed; }
+  .env-other{ background: var(--track); color: var(--text-muted); }
+
+  /* version summary bar */
+  .ver-summary {
+    display: flex; flex-wrap: wrap; gap: .4rem;
+    margin-bottom: .85rem;
+  }
+  .ver-pill {
+    font-size: .67rem; font-weight: 600;
+    background: var(--track); color: var(--text-sec);
+    border-radius: 20px; padding: .12rem .55rem;
+    font-variant-numeric: tabular-nums;
+  }
+</style>
+
+<div class="vv-root">
+
+<div class="d-flex align-items-baseline gap-3 mb-3">
+  <h4 class="mb-0"><i class="bi bi-boxes me-1"></i>WebLogic Versions</h4>
+</div>
+
+<ul class="nav nav-tabs mb-4">
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('visibility_versions') }}">
+      <i class="bi bi-database me-1"></i>{{ t('nav.versions') }}
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="{{ url_for('visibility_wls_versions') }}">
+      <i class="bi bi-boxes me-1"></i>WebLogic Versions
+    </a>
+  </li>
+</ul>
+
+{% if not clients %}
+<div class="alert alert-info">No WebLogic domains discovered. Run the <code>discover_weblogic.yml</code> playbook to populate data.</div>
+{% else %}
+
+<div class="client-grid">
+  {% for c in clients %}
+  <div class="client-card">
+    <div class="client-card-header">
+      <div class="client-card-name">
+        <i class="bi bi-building"></i>{{ c.client_name }}
+      </div>
+      <span class="domain-count-badge">{{ c.domains | length }} domain{{ 's' if c.domains | length != 1 }}</span>
+    </div>
+
+    <div class="ver-summary">
+      {% for ver, cnt in c.ver_counts %}
+      <span class="ver-pill">{{ ver or 'Unknown' }} &times; {{ cnt }}</span>
+      {% endfor %}
+    </div>
+
+    <div class="table-responsive">
+      <table class="domain-table">
+        <thead>
+          <tr>
+            <th>Server</th>
+            <th>Domain</th>
+            <th>Version</th>
+            <th>Edition</th>
+            <th>Env</th>
+            <th>Last Seen</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in c.domains %}
+          <tr>
+            <td>{{ d.hostname }}</td>
+            <td style="color:var(--text-sec);font-size:.8rem">{{ d.domain_name }}</td>
+            <td>
+              {% if d.wls_version %}
+              <code style="font-size:.78rem">{{ d.wls_version }}</code>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td>
+              {% if d.wls_edition %}
+                {% set ed = d.wls_edition | lower %}
+                {% if 'suite' in ed %}
+                  <span class="edition-chip suite">{{ d.wls_edition }}</span>
+                {% elif 'standard' in ed %}
+                  <span class="edition-chip se">{{ d.wls_edition }}</span>
+                {% else %}
+                  <span class="edition-chip">{{ d.wls_edition }}</span>
+                {% endif %}
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td>
+              {% set env = (d.environment or '') | lower %}
+              <span class="env-badge {% if 'prod' in env %}env-prod{% elif 'dev' in env %}env-dev{% elif 'test' in env or 'uat' in env %}env-test{% elif 'dr' in env %}env-dr{% else %}env-other{% endif %}">
+                {{ d.environment or '?' }}
+              </span>
+            </td>
+            <td style="font-size:.78rem;color:var(--text-muted)">{{ d.last_seen or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% endif %}
+</div>
+{% endblock %}

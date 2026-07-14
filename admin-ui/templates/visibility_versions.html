@@ -137,9 +137,22 @@
 
 <div class="vv-root">
 
-<div class="d-flex align-items-baseline gap-3 mb-4">
+<div class="d-flex align-items-baseline gap-3 mb-3">
   <h4 class="mb-0"><i class="bi bi-database me-1"></i>{{ t('visibility.versions_title') }}</h4>
 </div>
+
+<ul class="nav nav-tabs mb-4">
+  <li class="nav-item">
+    <a class="nav-link active" href="{{ url_for('visibility_versions') }}">
+      <i class="bi bi-database me-1"></i>{{ t('nav.versions') }}
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('visibility_wls_versions') }}">
+      <i class="bi bi-boxes me-1"></i>WebLogic Versions
+    </a>
+  </li>
+</ul>
 
 <!-- ── Legend ── -->
 <div class="legend-strip">

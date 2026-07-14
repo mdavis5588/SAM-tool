@@ -2552,6 +2552,57 @@ def visibility_versions_client(client_code):
 
 
 # ---------------------------------------------------------------------------
+# Visibility — WebLogic versions
+# ---------------------------------------------------------------------------
+@app.route("/visibility/wls-versions")
+@login_required
+def visibility_wls_versions():
+    active_clients = query(
+        "SELECT client_id, client_code, client_name, schema_name "
+        "FROM sam_admin.clients WHERE is_active ORDER BY client_name"
+    )
+    clients_data = []
+    for c in active_clients:
+        s = c["schema_name"]
+        try:
+            rows = query(f"""
+                SELECT
+                    sv.hostname,
+                    sv.environment::TEXT  AS environment,
+                    sv.datacenter,
+                    d.domain_name,
+                    d.wls_version,
+                    d.wls_edition,
+                    d.last_seen::DATE     AS last_seen
+                FROM {s}.oracle_servers sv
+                JOIN {s}.wls_domains d ON d.server_id = sv.server_id AND d.is_active
+                WHERE sv.is_active
+                ORDER BY sv.hostname, d.domain_name
+            """)
+        except Exception as e:
+            app.logger.error("visibility_wls_versions query failed for %s: %s", s, e)
+            rows = []
+
+        if not rows:
+            continue
+
+        # Group by version for the summary bar
+        ver_counts = {}
+        for r in rows:
+            v = r["wls_version"] or "Unknown"
+            ver_counts[v] = ver_counts.get(v, 0) + 1
+
+        clients_data.append({
+            "client_name":  c["client_name"],
+            "client_code":  c["client_code"],
+            "domains":      rows,
+            "ver_counts":   sorted(ver_counts.items(), key=lambda x: x[0], reverse=True),
+        })
+
+    return render_template("visibility_wls_versions.html", clients=clients_data)
+
+
+# ---------------------------------------------------------------------------
 # Executive Summary
 # ---------------------------------------------------------------------------
 @app.route("/executive-summary")
@@ -2669,11 +2720,12 @@ def executive_summary():
     # ── Top 5 products by licence count ─────────────────────────────────────
     top_products = query("""
         SELECT product_name,
+               product_family::TEXT AS product_family,
                SUM(quantity) AS total_qty,
                SUM(annual_support_cost) AS total_support
         FROM shared.license_entitlement_lines
         WHERE is_active AND quantity > 0
-        GROUP BY product_name
+        GROUP BY product_name, product_family
         ORDER BY total_qty DESC NULLS LAST
         LIMIT 5
     """)

@@ -128,7 +128,22 @@
       <!-- Product name -->
       <div class="prod-name">
         {% set n = line.product_name.lower() %}
-        {% if 'enterprise' in n %}
+        {% set fam = line.product_family | default('') %}
+        {% if 'weblogic suite' in n %}
+          <i class="bi bi-boxes me-1" style="color:#7c3aed"></i>
+        {% elif 'weblogic' in n and 'enterprise' in n %}
+          <i class="bi bi-boxes me-1" style="color:#2563eb"></i>
+        {% elif 'weblogic' in n %}
+          <i class="bi bi-boxes me-1" style="color:#6366f1"></i>
+        {% elif 'coherence' in n %}
+          <i class="bi bi-cpu me-1" style="color:#059669"></i>
+        {% elif 'soa suite' in n or 'service bus' in n or 'osb' in n %}
+          <i class="bi bi-diagram-3 me-1" style="color:#0891b2"></i>
+        {% elif 'identity' in n or 'oam' in n or 'oig' in n %}
+          <i class="bi bi-person-badge me-1" style="color:#7c3aed"></i>
+        {% elif fam == 'oracle_weblogic' or fam == 'oracle_coherence' %}
+          <i class="bi bi-boxes me-1" style="color:#6366f1"></i>
+        {% elif 'enterprise' in n %}
           <i class="bi bi-database-fill text-primary me-1"></i>
         {% elif 'standard' in n %}
           <i class="bi bi-database text-secondary me-1"></i>
@@ -199,7 +214,14 @@
         <div class="modal-header">
           <h5 class="modal-title" id="{{ modal_id }}-label">
             {% set n = line.product_name.lower() %}
-            {% if 'enterprise' in n %}<i class="bi bi-database-fill text-primary me-2"></i>
+            {% set fam = line.product_family | default('') %}
+            {% if 'weblogic suite' in n %}<i class="bi bi-boxes me-2" style="color:#7c3aed"></i>
+            {% elif 'weblogic' in n and 'enterprise' in n %}<i class="bi bi-boxes me-2" style="color:#2563eb"></i>
+            {% elif 'weblogic' in n %}<i class="bi bi-boxes me-2" style="color:#6366f1"></i>
+            {% elif 'coherence' in n %}<i class="bi bi-cpu me-2" style="color:#059669"></i>
+            {% elif 'soa suite' in n or 'service bus' in n %}<i class="bi bi-diagram-3 me-2" style="color:#0891b2"></i>
+            {% elif fam == 'oracle_weblogic' or fam == 'oracle_coherence' %}<i class="bi bi-boxes me-2" style="color:#6366f1"></i>
+            {% elif 'enterprise' in n %}<i class="bi bi-database-fill text-primary me-2"></i>
             {% elif 'standard' in n %}<i class="bi bi-database text-secondary me-2"></i>
             {% elif 'diagnostic' in n %}<i class="bi bi-activity text-info me-2"></i>
             {% elif 'tuning' in n %}<i class="bi bi-sliders text-warning me-2"></i>
