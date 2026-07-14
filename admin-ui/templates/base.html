@@ -282,6 +282,9 @@
       <a class="sidebar-link {% if request.endpoint in ['compliance','compliance_client'] %}active{% endif %}"
          href="{{ url_for('compliance') }}"><i class="bi bi-shield-check"></i><span>{{ t('nav.compliance') }}</span></a>
 
+      <a class="sidebar-link {% if request.endpoint == 'audit_readiness' %}active{% endif %}"
+         href="{{ url_for('audit_readiness') }}"><i class="bi bi-clipboard2-pulse"></i><span>Audit Readiness</span></a>
+
       <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['visibility_versions'] %}active{% endif %}"
          href="{{ url_for('visibility_versions') }}" id="visibilityFlyoutTrigger"
          data-flyout="visibilityFlyoutPanel">

@@ -2063,6 +2063,182 @@ def visibility_versions_client(client_code):
 
 
 # ---------------------------------------------------------------------------
+# Audit Readiness Report
+# ---------------------------------------------------------------------------
+@app.route("/audit-readiness")
+@login_required
+def audit_readiness():
+    today = date.today()
+    active_clients = query(
+        "SELECT client_id, client_code, client_name, schema_name "
+        "FROM sam_admin.clients WHERE is_active ORDER BY client_name"
+    )
+
+    # ── 1. Licence gaps: servers where consumed > available ──────────────────
+    licence_gaps = []
+    for cl in active_clients:
+        s = cl["schema_name"]
+        try:
+            rows = query(f"""
+                SELECT %s AS client_name, hostname, environment::TEXT,
+                       product_detail, licences_required,
+                       COALESCE(total_licensed, 0) AS total_licensed,
+                       licences_required - COALESCE(total_licensed, 0) AS shortfall
+                FROM {s}.license_position
+                WHERE compliance_status = 'under_licensed'
+                ORDER BY shortfall DESC
+            """, (cl["client_name"],))
+            licence_gaps.extend(rows)
+        except Exception:
+            pass
+
+    # ── 2. Servers with no CSI assigned ─────────────────────────────────────
+    unassigned_servers = []
+    for cl in active_clients:
+        s = cl["schema_name"]
+        try:
+            rows = query(f"""
+                SELECT %s AS client_name, sv.hostname, sv.environment::TEXT,
+                       sv.datacenter
+                FROM {s}.oracle_servers sv
+                WHERE sv.is_active
+                  AND NOT EXISTS (
+                      SELECT 1 FROM {s}.server_csi_map m WHERE m.server_id = sv.server_id
+                  )
+                ORDER BY sv.hostname
+            """, (cl["client_name"],))
+            unassigned_servers.extend(rows)
+        except Exception:
+            pass
+
+    # ── 3. Expired or soon-expiring contracts (<90 days) ────────────────────
+    contract_risks = query("""
+        SELECT cs.csi_id, cs.csi_number, cs.contract_name, cs.status,
+               cs.support_expiry, cs.ula_expiry, cs.is_ula,
+               oc.client_name AS owning_client,
+               CASE
+                 WHEN cs.status != 'active' THEN 'expired'
+                 WHEN cs.is_ula AND cs.ula_expiry < CURRENT_DATE THEN 'ula_expired'
+                 WHEN cs.is_ula AND cs.ula_expiry < CURRENT_DATE + INTERVAL '90 days' THEN 'ula_expiring'
+                 WHEN NOT cs.is_ula AND cs.support_expiry < CURRENT_DATE THEN 'expired'
+                 WHEN NOT cs.is_ula AND cs.support_expiry < CURRENT_DATE + INTERVAL '90 days' THEN 'expiring'
+                 ELSE 'ok'
+               END AS risk_type
+        FROM shared.csi_contracts cs
+        LEFT JOIN sam_admin.clients oc ON oc.client_id = cs.owning_client_id
+        WHERE cs.status = 'active'
+          AND (
+            (cs.is_ula  AND cs.ula_expiry     < CURRENT_DATE + INTERVAL '90 days')
+            OR
+            (NOT cs.is_ula AND cs.support_expiry < CURRENT_DATE + INTERVAL '90 days')
+          )
+        ORDER BY COALESCE(cs.ula_expiry, cs.support_expiry)
+    """)
+
+    # ── 4. Contracts with no entitlement lines ───────────────────────────────
+    empty_contracts = query("""
+        SELECT cs.csi_id, cs.csi_number, cs.contract_name,
+               oc.client_name AS owning_client
+        FROM shared.csi_contracts cs
+        LEFT JOIN sam_admin.clients oc ON oc.client_id = cs.owning_client_id
+        WHERE cs.is_ula = false
+          AND NOT EXISTS (
+              SELECT 1 FROM shared.license_entitlement_lines l
+              WHERE l.csi_id = cs.csi_id AND l.is_active
+          )
+        ORDER BY cs.contract_name
+    """)
+
+    # ── 5. ULAs: servers assigned whose products exceed ULA scope ────────────
+    ula_scope_violations = []
+    ulas = query("""
+        SELECT cs.csi_id, cs.contract_name, cs.owning_client_id,
+               cl.schema_name, cl.client_name
+        FROM shared.csi_contracts cs
+        JOIN sam_admin.clients cl ON cl.client_id = cs.owning_client_id
+        WHERE cs.is_ula AND cs.status = 'active'
+    """)
+    for ula in ulas:
+        s = ula["schema_name"]
+        covered = {r["product_name"] for r in query(
+            "SELECT product_name FROM shared.ula_covered_products WHERE csi_id = %s",
+            (ula["csi_id"],)
+        )}
+        if not covered:
+            continue
+        try:
+            assigned = query(f"""
+                SELECT DISTINCT sv.hostname, lp.product_detail
+                FROM {s}.server_csi_map m
+                JOIN {s}.oracle_servers sv ON sv.server_id = m.server_id
+                JOIN {s}.license_position lp ON lp.server_id = m.server_id
+                WHERE m.csi_id = %s
+            """, (ula["csi_id"],))
+            for row in assigned:
+                if row["product_detail"] and row["product_detail"] not in covered:
+                    ula_scope_violations.append({
+                        "client_name": ula["client_name"],
+                        "contract_name": ula["contract_name"],
+                        "hostname": row["hostname"],
+                        "product_detail": row["product_detail"],
+                    })
+        except Exception:
+            pass
+
+    # ── 6. Per-client summary scorecard ─────────────────────────────────────
+    client_scores = []
+    for cl in active_clients:
+        s = cl["schema_name"]
+        try:
+            lp_rows = query(f"""
+                SELECT COUNT(*) FILTER (WHERE compliance_status = 'under_licensed') AS gaps,
+                       COUNT(*) AS total
+                FROM {s}.license_position
+            """, fetchall=False)
+            ua_count = sum(1 for r in unassigned_servers if r["client_name"] == cl["client_name"])
+            gaps = int(lp_rows["gaps"] or 0) if lp_rows else 0
+            total = int(lp_rows["total"] or 0) if lp_rows else 0
+            issues = gaps + ua_count
+            if issues == 0:
+                rag = "green"
+            elif issues <= 3:
+                rag = "amber"
+            else:
+                rag = "red"
+            client_scores.append({
+                "client_name": cl["client_name"],
+                "client_code": cl["client_code"],
+                "total_positions": total,
+                "gaps": gaps,
+                "unassigned": ua_count,
+                "rag": rag,
+            })
+        except Exception:
+            client_scores.append({
+                "client_name": cl["client_name"],
+                "client_code": cl["client_code"],
+                "total_positions": 0,
+                "gaps": 0,
+                "unassigned": 0,
+                "rag": "amber",
+            })
+
+    total_issues = (len(licence_gaps) + len(unassigned_servers)
+                    + len(contract_risks) + len(empty_contracts)
+                    + len(ula_scope_violations))
+
+    return render_template("audit_readiness.html",
+                           today=today,
+                           client_scores=client_scores,
+                           licence_gaps=licence_gaps,
+                           unassigned_servers=unassigned_servers,
+                           contract_risks=contract_risks,
+                           empty_contracts=empty_contracts,
+                           ula_scope_violations=ula_scope_violations,
+                           total_issues=total_issues)
+
+
+# ---------------------------------------------------------------------------
 # Compliance dashboard
 # ---------------------------------------------------------------------------
 @app.route("/compliance")
