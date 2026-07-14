@@ -61,6 +61,52 @@
   .gauge-pct.low  { color: var(--err); }
   .gauge-label { font-size: .78rem; color: var(--text-muted); margin-top: .2rem; }
 
+  /* ── Family breakdown bar ── */
+  .family-breakdown {
+    display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.75rem;
+  }
+  .family-panel {
+    flex: 1 1 220px; background: var(--surface);
+    border: 1px solid var(--gridline); border-radius: 10px;
+    padding: .9rem 1.1rem; position: relative; overflow: hidden;
+  }
+  .family-panel::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  }
+  .family-panel.db::before { background: #2563eb; }
+  .family-panel.mw::before { background: #7c3aed; }
+  .family-panel-header {
+    display: flex; align-items: center; gap: .5rem;
+    font-size: .68rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .07em; color: var(--text-muted); margin-bottom: .65rem;
+  }
+  .family-panel-header i { font-size: .8rem; }
+  .family-panel.db .family-panel-header i { color: #2563eb; }
+  .family-panel.mw .family-panel-header i { color: #7c3aed; }
+  .family-score-row { display: flex; align-items: baseline; gap: .5rem; margin-bottom: .5rem; }
+  .family-score {
+    font-size: 1.55rem; font-weight: 800; line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .family-score.high { color: var(--ok); }
+  .family-score.mid  { color: var(--warn); }
+  .family-score.low  { color: var(--err); }
+  .family-counts { font-size: .75rem; color: var(--text-muted); }
+  .family-bar-track {
+    height: 6px; background: var(--track); border-radius: 3px; overflow: hidden;
+  }
+  .family-bar-fill { height: 100%; border-radius: 3px; transition: width .4s; }
+  .family-bar-fill.high { background: var(--ok); }
+  .family-bar-fill.mid  { background: var(--warn); }
+  .family-bar-fill.low  { background: var(--err); }
+
+  /* ── Family section header ── */
+  .section-head {
+    font-size: .68rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .08em; margin-bottom: .5rem;
+    display: flex; align-items: center; gap: .4rem;
+  }
+
   /* ── Server cards ── */
   .server-card {
     border: 1px solid var(--gridline);
@@ -210,97 +256,167 @@
   </div>
 </div>
 
-<!-- ── Server list ── -->
-{% set nc = servers | selectattr('is_non_compliant') | list %}
-{% set ok = servers | rejectattr('is_non_compliant') | list %}
+<!-- ── Family breakdown ── -->
+{% if db_total > 0 or mw_total > 0 %}
+<div class="family-breakdown">
 
-{% if nc %}
-<div class="mb-1" style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--err);margin-bottom:.6rem">
-  <i class="bi bi-exclamation-triangle-fill me-1"></i>{{ t('compliance.non_compliant') }} ({{ nc | length }})
-</div>
-{% for sv in nc %}
-{% set card_id = "sv-" ~ loop.index %}
-<div class="server-card err">
-  <button class="server-header" type="button"
-          data-bs-toggle="collapse" data-bs-target="#{{ card_id }}"
-          aria-expanded="false" aria-controls="{{ card_id }}">
-    <div class="server-name">
-      <i class="bi bi-server" style="color:var(--err);font-size:.85rem"></i>
-      {{ sv.hostname }}
-      {% set env = (sv.environment or '') | lower %}
-      <span class="env-badge {% if 'prod' in env %}env-prod{% elif 'dev' in env %}env-dev{% elif 'test' in env or 'uat' in env %}env-test{% else %}env-other{% endif %}">
-        {{ sv.environment or 'unknown' }}
-      </span>
+  {% if db_total > 0 %}
+  {% set db_cls = 'high' if db_score >= 90 else ('mid' if db_score >= 70 else 'low') %}
+  <div class="family-panel db">
+    <div class="family-panel-header">
+      <i class="bi bi-database-fill"></i> Database servers
     </div>
-    <span class="status-pill err">
-      <i class="bi bi-x-circle"></i>
-      {{ sv.issues | length }} issue{{ 's' if sv.issues | length != 1 }}
-      · {{ sv.total_short | int }} licence{{ 's' if sv.total_short | int != 1 }} short
-    </span>
-    <i class="bi bi-chevron-down chevron"></i>
-  </button>
-  <div class="collapse" id="{{ card_id }}">
-    <div class="issue-body">
-      <table class="issue-table">
-        <thead>
-          <tr>
-            <th>{{ t('label.product') }}</th>
-            <th>{{ t('compliance.required') }}</th>
-            <th>{{ t('label.assigned') }}</th>
-            <th>{{ t('compliance.short') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for issue in sv.issues %}
-          <tr>
-            <td>{{ issue.product | replace('oracle_','') | replace('_',' ') | title }}</td>
-            <td>{{ issue.required }}</td>
-            <td>{{ issue.assigned }}</td>
-            <td>
-              <span class="short-badge">
-                <i class="bi bi-exclamation-circle"></i> {{ issue.short }}
-              </span>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      <div class="mt-2">
-        <a href="{{ url_for('edit_server', server_id=sv.server_id) }}" class="edit-link">
-          <i class="bi bi-pencil me-1"></i>{{ t('compliance.assign_licences') }}
-        </a>
+    <div class="family-score-row">
+      <span class="family-score {{ db_cls }}">{{ db_score | int }}%</span>
+      <span class="family-counts">compliant</span>
+    </div>
+    <div class="family-bar-track mb-2">
+      <div class="family-bar-fill {{ db_cls }}" style="width:{{ db_score }}%"></div>
+    </div>
+    <div class="family-counts">
+      {{ db_comp }} of {{ db_total }} server{{ 's' if db_total != 1 }} compliant
+      {% if db_total - db_comp > 0 %}
+      · <span style="color:var(--err);font-weight:600">{{ db_total - db_comp }} non-compliant</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if mw_total > 0 %}
+  {% set mw_cls = 'high' if mw_score >= 90 else ('mid' if mw_score >= 70 else 'low') %}
+  <div class="family-panel mw">
+    <div class="family-panel-header">
+      <i class="bi bi-boxes"></i> Middleware / WebLogic servers
+    </div>
+    <div class="family-score-row">
+      <span class="family-score {{ mw_cls }}">{{ mw_score | int }}%</span>
+      <span class="family-counts">compliant</span>
+    </div>
+    <div class="family-bar-track mb-2">
+      <div class="family-bar-fill {{ mw_cls }}" style="width:{{ mw_score }}%"></div>
+    </div>
+    <div class="family-counts">
+      {{ mw_comp }} of {{ mw_total }} server{{ 's' if mw_total != 1 }} compliant
+      {% if mw_total - mw_comp > 0 %}
+      · <span style="color:var(--err);font-weight:600">{{ mw_total - mw_comp }} non-compliant</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endif %}
+
+{# ── Reusable macro for a group of servers ── #}
+{%- macro server_group(group_servers, id_prefix) %}
+  {% set nc = group_servers | selectattr('is_non_compliant') | list %}
+  {% set ok = group_servers | rejectattr('is_non_compliant') | list %}
+
+  {% if nc %}
+  <div class="section-head" style="color:var(--err)">
+    <i class="bi bi-exclamation-triangle-fill"></i>{{ t('compliance.non_compliant') }} ({{ nc | length }})
+  </div>
+  {% for sv in nc %}
+  {% set card_id = id_prefix ~ "-nc-" ~ loop.index %}
+  <div class="server-card err">
+    <button class="server-header" type="button"
+            data-bs-toggle="collapse" data-bs-target="#{{ card_id }}"
+            aria-expanded="false" aria-controls="{{ card_id }}">
+      <div class="server-name">
+        <i class="bi bi-server" style="color:var(--err);font-size:.85rem"></i>
+        {{ sv.hostname }}
+        {% set env = (sv.environment or '') | lower %}
+        <span class="env-badge {% if 'prod' in env %}env-prod{% elif 'dev' in env %}env-dev{% elif 'test' in env or 'uat' in env %}env-test{% else %}env-other{% endif %}">
+          {{ sv.environment or 'unknown' }}
+        </span>
+      </div>
+      <span class="status-pill err">
+        <i class="bi bi-x-circle"></i>
+        {{ sv.issues | length }} issue{{ 's' if sv.issues | length != 1 }}
+        · {{ sv.total_short | int }} licence{{ 's' if sv.total_short | int != 1 }} short
+      </span>
+      <i class="bi bi-chevron-down chevron"></i>
+    </button>
+    <div class="collapse" id="{{ card_id }}">
+      <div class="issue-body">
+        <table class="issue-table">
+          <thead>
+            <tr>
+              <th>{{ t('label.product') }}</th>
+              <th>{{ t('compliance.required') }}</th>
+              <th>{{ t('label.assigned') }}</th>
+              <th>{{ t('compliance.short') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for issue in sv.issues %}
+            <tr>
+              <td>{{ issue.product | replace('oracle_','') | replace('_',' ') | title }}</td>
+              <td>{{ issue.required }}</td>
+              <td>{{ issue.assigned }}</td>
+              <td><span class="short-badge"><i class="bi bi-exclamation-circle"></i> {{ issue.short }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="mt-2">
+          <a href="{{ url_for('edit_server', server_id=sv.server_id) }}" class="edit-link">
+            <i class="bi bi-pencil me-1"></i>{{ t('compliance.assign_licences') }}
+          </a>
+        </div>
       </div>
     </div>
   </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if ok %}
+  <div class="section-head mt-3" style="color:var(--ok)">
+    <i class="bi bi-shield-check"></i>{{ t('compliance.compliant') }} ({{ ok | length }})
+  </div>
+  {% for sv in ok %}
+  <div class="server-card ok">
+    <div class="server-header" style="cursor:default">
+      <div class="server-name">
+        <i class="bi bi-server" style="color:var(--ok);font-size:.85rem"></i>
+        {{ sv.hostname }}
+        {% set env = (sv.environment or '') | lower %}
+        <span class="env-badge {% if 'prod' in env %}env-prod{% elif 'dev' in env %}env-dev{% elif 'test' in env or 'uat' in env %}env-test{% else %}env-other{% endif %}">
+          {{ sv.environment or 'unknown' }}
+        </span>
+      </div>
+      <span class="status-pill ok">
+        <i class="bi bi-check-circle"></i> {{ t('compliance.all_compliant') }}
+      </span>
+      <a href="{{ url_for('edit_server', server_id=sv.server_id) }}" class="edit-link" style="justify-self:end">
+        <i class="bi bi-pencil"></i>
+      </a>
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+{%- endmacro %}
+
+<!-- ── Database servers ── -->
+{% if db_servers %}
+<div class="mb-3 pb-2" style="border-bottom:2px solid #2563eb22">
+  <div style="font-size:.8rem;font-weight:700;color:#2563eb;margin-bottom:.75rem">
+    <i class="bi bi-database-fill me-1"></i>Database Servers
+    <span style="font-weight:400;color:var(--text-muted);margin-left:.4rem">({{ db_total }})</span>
+  </div>
+  {{ server_group(db_servers, 'db') }}
 </div>
-{% endfor %}
 {% endif %}
 
-{% if ok %}
-<div class="mt-3 mb-1" style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--ok);margin-bottom:.6rem">
-  <i class="bi bi-shield-check me-1"></i>{{ t('compliance.compliant') }} ({{ ok | length }})
-</div>
-{% for sv in ok %}
-<div class="server-card ok">
-  <div class="server-header" style="cursor:default">
-    <div class="server-name">
-      <i class="bi bi-server" style="color:var(--ok);font-size:.85rem"></i>
-      {{ sv.hostname }}
-      {% set env = (sv.environment or '') | lower %}
-      <span class="env-badge {% if 'prod' in env %}env-prod{% elif 'dev' in env %}env-dev{% elif 'test' in env or 'uat' in env %}env-test{% else %}env-other{% endif %}">
-        {{ sv.environment or 'unknown' }}
-      </span>
-    </div>
-    <span class="status-pill ok">
-      <i class="bi bi-check-circle"></i> {{ t('compliance.all_compliant') }}
-    </span>
-    <a href="{{ url_for('edit_server', server_id=sv.server_id) }}"
-       class="edit-link" style="justify-self:end">
-      <i class="bi bi-pencil"></i>
-    </a>
+<!-- ── Middleware / WebLogic servers ── -->
+{% if mw_servers %}
+<div class="mb-3">
+  <div style="font-size:.8rem;font-weight:700;color:#7c3aed;margin-bottom:.75rem;margin-top:{{ '1.5rem' if db_servers else '0' }}">
+    <i class="bi bi-boxes me-1"></i>Middleware / WebLogic Servers
+    <span style="font-weight:400;color:var(--text-muted);margin-left:.4rem">({{ mw_total }})</span>
   </div>
+  {{ server_group(mw_servers, 'mw') }}
 </div>
-{% endfor %}
 {% endif %}
 
 {% if not servers %}

@@ -3017,8 +3017,15 @@ def compliance_client(client_code):
                 COALESCE(SUM(lp.licences_required), 0) AS total_required,
                 COALESCE(SUM(lp.total_licensed), 0)    AS total_assigned,
                 COALESCE(SUM(GREATEST(lp.licences_required - lp.total_licensed, 0)), 0) AS total_short,
+                COALESCE(BOOL_OR(lp.product_family = 'oracle_database'), FALSE) AS has_db,
+                COALESCE(BOOL_OR(lp.product_family != 'oracle_database'), FALSE) AS has_mw,
+                COALESCE(BOOL_OR(lp.product_family = 'oracle_database'
+                    AND lp.compliance_status = 'under_licensed'), FALSE) AS db_non_compliant,
+                COALESCE(BOOL_OR(lp.product_family != 'oracle_database'
+                    AND lp.compliance_status = 'under_licensed'), FALSE) AS mw_non_compliant,
                 JSON_AGG(JSON_BUILD_OBJECT(
                     'product',  COALESCE(lp.product_detail, lp.product_family),
+                    'product_family', lp.product_family,
                     'required', lp.licences_required,
                     'assigned', lp.total_licensed,
                     'short',    GREATEST(lp.licences_required - lp.total_licensed, 0)
@@ -3033,8 +3040,8 @@ def compliance_client(client_code):
         app.logger.error("compliance_client query failed for %s: %s", s, e)
         servers = []
 
+    servers = [dict(sv) for sv in servers]
     for sv in servers:
-        sv = dict(sv)
         issues = sv.get("issues")
         if issues and isinstance(issues, str):
             sv["issues"] = json.loads(issues)
@@ -3045,13 +3052,27 @@ def compliance_client(client_code):
     non_comp = sum(1 for sv in servers if sv["is_non_compliant"])
     comp     = total - non_comp
     score    = round(comp / total * 100, 1) if total > 0 else 100.0
+
+    db_servers = [sv for sv in servers if sv["has_db"]]
+    mw_servers = [sv for sv in servers if sv["has_mw"]]
+    db_total   = len(db_servers)
+    mw_total   = len(mw_servers)
+    db_comp    = sum(1 for sv in db_servers if not sv["db_non_compliant"])
+    mw_comp    = sum(1 for sv in mw_servers if not sv["mw_non_compliant"])
+    db_score   = round(db_comp / db_total * 100, 1) if db_total > 0 else 100.0
+    mw_score   = round(mw_comp / mw_total * 100, 1) if mw_total > 0 else 100.0
+
     return render_template("compliance_client.html",
                            client=client,
                            servers=servers,
                            total_servers=total,
                            compliant_servers=comp,
                            non_compliant_servers=non_comp,
-                           score=score)
+                           score=score,
+                           db_servers=db_servers,
+                           mw_servers=mw_servers,
+                           db_total=db_total, db_comp=db_comp, db_score=db_score,
+                           mw_total=mw_total, mw_comp=mw_comp, mw_score=mw_score)
 
 
 # ---------------------------------------------------------------------------
