@@ -306,6 +306,12 @@ def servers():
                     cpu_issues AS (
                         SELECT server_id, factor_unknown
                         FROM   {s}.cpu_validation_report WHERE factor_unknown
+                    ),
+                    ula_servers AS (
+                        SELECT DISTINCT m.server_id
+                        FROM {s}.server_csi_map m
+                        JOIN shared.csi_contracts cs ON cs.csi_id = m.csi_id
+                        WHERE cs.is_ula
                     )
                     SELECT
                         s.server_id, s.hostname, s.environment::TEXT, s.datacenter,
@@ -317,16 +323,19 @@ def servers():
                         COALESCE(lp.total_licences_required,0) AS total_licences_required,
                         COALESCE(lp.any_under_licensed,FALSE)  AS any_under_licensed,
                         lp.licence_summary,
-                        COALESCE(cpu_issues.factor_unknown,FALSE) AS cpu_unvalidated
+                        COALESCE(cpu_issues.factor_unknown,FALSE) AS cpu_unvalidated,
+                        (ula_servers.server_id IS NOT NULL)    AS has_ula
                     FROM {s}.oracle_servers s
                     LEFT JOIN {s}.server_csi_map m ON m.server_id = s.server_id
                     LEFT JOIN lp                   ON lp.server_id = s.server_id
                     LEFT JOIN cpu_issues           ON cpu_issues.server_id = s.server_id
+                    LEFT JOIN ula_servers          ON ula_servers.server_id = s.server_id
                     WHERE s.is_active
                     GROUP BY s.server_id, s.hostname, s.environment, s.datacenter,
                              s.ip_address, s.last_seen, s.licence_metric_override,
                              lp.licence_rows, lp.total_licences_required,
-                             lp.any_under_licensed, lp.licence_summary, cpu_issues.factor_unknown
+                             lp.any_under_licensed, lp.licence_summary, cpu_issues.factor_unknown,
+                             ula_servers.server_id
                     ORDER BY s.hostname
                 """)
                 for r in client_rows:
@@ -367,6 +376,12 @@ def servers():
             SELECT server_id, factor_unknown
             FROM   {schema}.cpu_validation_report
             WHERE  factor_unknown = TRUE
+        ),
+        ula_servers AS (
+            SELECT DISTINCT m.server_id
+            FROM {schema}.server_csi_map m
+            JOIN shared.csi_contracts cs ON cs.csi_id = m.csi_id
+            WHERE cs.is_ula
         )
         SELECT
             s.server_id,
@@ -382,16 +397,19 @@ def servers():
             COALESCE(lp.total_licences_required, 0)            AS total_licences_required,
             COALESCE(lp.any_under_licensed, FALSE)             AS any_under_licensed,
             lp.licence_summary,
-            COALESCE(cpu_issues.factor_unknown, FALSE)         AS cpu_unvalidated
+            COALESCE(cpu_issues.factor_unknown, FALSE)         AS cpu_unvalidated,
+            (ula_servers.server_id IS NOT NULL)                AS has_ula
         FROM {schema}.oracle_servers s
         LEFT JOIN {schema}.server_csi_map m    ON m.server_id = s.server_id
         LEFT JOIN lp                           ON lp.server_id = s.server_id
         LEFT JOIN cpu_issues                   ON cpu_issues.server_id = s.server_id
+        LEFT JOIN ula_servers                  ON ula_servers.server_id = s.server_id
         WHERE s.is_active = TRUE
         GROUP BY s.server_id, s.hostname, s.environment, s.datacenter,
                  s.ip_address, s.last_seen, s.licence_metric_override,
                  lp.licence_rows, lp.total_licences_required,
-                 lp.any_under_licensed, lp.licence_summary, cpu_issues.factor_unknown
+                 lp.any_under_licensed, lp.licence_summary, cpu_issues.factor_unknown,
+                 ula_servers.server_id
         ORDER BY s.hostname
     """)
 
