@@ -159,6 +159,24 @@ def login_required(f):
     return decorated
 
 
+@app.route("/debug/ula-check")
+@login_required
+def debug_ula_check():
+    rows = query("""
+        SELECT cs.csi_id, cs.csi_number, cs.contract_name,
+               cs.is_ula, cs.status, cs.sharing_policy,
+               cs.owning_client_id,
+               c.client_code, c.schema_name
+        FROM shared.csi_contracts cs
+        LEFT JOIN sam_admin.clients c ON c.client_id = cs.owning_client_id
+        WHERE cs.is_ula
+        ORDER BY cs.csi_id
+    """)
+    clients = query("SELECT client_id, client_code, schema_name FROM sam_admin.clients ORDER BY client_code")
+    import json as _json
+    return f"<pre>{_json.dumps([dict(r) for r in rows], default=str, indent=2)}\n\nClients:\n{_json.dumps([dict(c) for c in clients], default=str, indent=2)}</pre>"
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
