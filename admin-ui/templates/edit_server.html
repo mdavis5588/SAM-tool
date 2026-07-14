@@ -195,11 +195,16 @@
     <div class="card shadow-sm mb-3">
       <div class="card-header py-2 d-flex align-items-center justify-content-between">
         <span class="fw-semibold"><i class="bi bi-clipboard-check me-1"></i> Licence Summary</span>
-        {% set total_short = licence_position | selectattr('compliance_status', 'ne', 'compliant') | list | length %}
-        {% if total_short == 0 %}
-          <span class="badge bg-success">All lines covered</span>
+        {% set _ula_active = assignments | selectattr('is_ula') | list | length > 0 %}
+        {% if _ula_active %}
+          <span class="badge" style="background:rgba(124,58,237,.15);color:#7c3aed"><i class="bi bi-infinity me-1"></i>ULA Coverage</span>
         {% else %}
-          <span class="badge bg-danger">{{ total_short }} line(s) need licences</span>
+          {% set total_short = licence_position | selectattr('compliance_status', 'ne', 'compliant') | list | length %}
+          {% if total_short == 0 %}
+            <span class="badge bg-success">All lines covered</span>
+          {% else %}
+            <span class="badge bg-danger">{{ total_short }} line(s) need licences</span>
+          {% endif %}
         {% endif %}
       </div>
       <div class="table-responsive">
@@ -213,6 +218,7 @@
             </tr>
           </thead>
           <tbody>
+            {% set _ula_active = assignments | selectattr('is_ula') | list | length > 0 %}
             {% for row in licence_position %}
             {% set still_needed = [row.licences_required - row.total_licensed, 0] | max %}
             <tr>
@@ -223,9 +229,17 @@
                 {{ row.product_detail or (row.product_family | replace('_',' ') | title) }}
               </td>
               <td class="text-end">{{ row.licences_required }}</td>
-              <td class="text-end">{{ row.total_licensed }}</td>
               <td class="text-end">
-                {% if still_needed == 0 %}
+                {% if _ula_active %}
+                  <span style="color:#7c3aed;font-weight:600"><i class="bi bi-infinity me-1"></i>ULA</span>
+                {% else %}
+                  {{ row.total_licensed }}
+                {% endif %}
+              </td>
+              <td class="text-end">
+                {% if _ula_active %}
+                  <span class="badge bg-success"><i class="bi bi-check-circle"></i> Compliant</span>
+                {% elif still_needed == 0 %}
                   <span class="badge bg-success"><i class="bi bi-check-circle"></i> Covered</span>
                 {% else %}
                   <span class="badge bg-danger">{{ still_needed }} short</span>
