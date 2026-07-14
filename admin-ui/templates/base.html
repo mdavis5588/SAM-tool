@@ -260,6 +260,9 @@
     </div>
 
     <nav class="sidebar-nav">
+      <a class="sidebar-link {% if request.endpoint == 'executive_summary' %}active{% endif %}"
+         href="{{ url_for('executive_summary') }}"><i class="bi bi-bar-chart-line"></i><span>{{ t('nav.executive_summary') }}</span></a>
+
       <div class="sidebar-section-label">{{ t('nav.inventory') }}</div>
       <a class="sidebar-link {% if request.endpoint == 'servers' %}active{% endif %}"
          href="{{ url_for('servers') }}"><i class="bi bi-server"></i><span>{{ t('nav.servers') }}</span></a>
@@ -279,7 +282,7 @@
       <a class="sidebar-link {% if request.endpoint == 'alerts' %}active{% endif %}"
          href="{{ url_for('alerts') }}"><i class="bi bi-exclamation-triangle"></i><span>{{ t('nav.alerts') }}</span></a>
 
-      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['compliance','compliance_client','executive_summary','audit_readiness'] %}active{% endif %}"
+      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['compliance','compliance_client','audit_readiness'] %}active{% endif %}"
          href="{{ url_for('compliance') }}" id="complianceFlyoutTrigger"
          data-flyout="complianceFlyoutPanel">
         <i class="bi bi-shield-check"></i><span>{{ t('nav.compliance') }}</span>
@@ -326,10 +329,6 @@
     <a class="sidebar-flyout-item {% if request.endpoint in ['compliance','compliance_client'] %}active{% endif %}"
        href="{{ url_for('compliance') }}">
       <i class="bi bi-shield-check"></i>{{ t('nav.compliance') }}
-    </a>
-    <a class="sidebar-flyout-item {% if request.endpoint == 'executive_summary' %}active{% endif %}"
-       href="{{ url_for('executive_summary') }}">
-      <i class="bi bi-bar-chart-line"></i>{{ t('nav.executive_summary') }}
     </a>
     <a class="sidebar-flyout-item {% if request.endpoint == 'audit_readiness' %}active{% endif %}"
        href="{{ url_for('audit_readiness') }}">

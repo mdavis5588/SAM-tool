@@ -2078,22 +2078,37 @@ def executive_summary():
     # ── Contract portfolio ───────────────────────────────────────────────────
     contract_stats = query("""
         SELECT
-            COUNT(*)                                          AS total_contracts,
-            COUNT(*) FILTER (WHERE is_ula)                   AS ula_count,
-            COUNT(*) FILTER (WHERE NOT is_ula)               AS standard_count,
-            COUNT(*) FILTER (WHERE status = 'active')        AS active_count,
-            COUNT(*) FILTER (WHERE status = 'expired')       AS expired_count,
-            COUNT(*) FILTER (WHERE status = 'active'
-              AND NOT is_ula
-              AND support_expiry < CURRENT_DATE + INTERVAL '90 days') AS expiring_90d,
-            COUNT(*) FILTER (WHERE status = 'active'
-              AND is_ula
-              AND ula_expiry < CURRENT_DATE + INTERVAL '90 days')     AS ula_expiring_90d,
-            COALESCE(SUM(l.total_price), 0)                  AS total_licence_value,
-            COALESCE(SUM(l.annual_support_cost), 0)          AS total_support_cost
-        FROM shared.csi_contracts cs
-        LEFT JOIN shared.license_entitlement_lines l
-               ON l.csi_id = cs.csi_id AND l.is_active
+            cs.total_contracts,
+            cs.ula_count,
+            cs.standard_count,
+            cs.active_count,
+            cs.expired_count,
+            cs.expiring_90d,
+            cs.ula_expiring_90d,
+            COALESCE(fin.total_licence_value, 0) AS total_licence_value,
+            COALESCE(fin.total_support_cost, 0)  AS total_support_cost
+        FROM (
+            SELECT
+                COUNT(*)                                          AS total_contracts,
+                COUNT(*) FILTER (WHERE is_ula)                   AS ula_count,
+                COUNT(*) FILTER (WHERE NOT is_ula)               AS standard_count,
+                COUNT(*) FILTER (WHERE status = 'active')        AS active_count,
+                COUNT(*) FILTER (WHERE status = 'expired')       AS expired_count,
+                COUNT(*) FILTER (WHERE status = 'active'
+                  AND NOT is_ula
+                  AND support_expiry < CURRENT_DATE + INTERVAL '90 days') AS expiring_90d,
+                COUNT(*) FILTER (WHERE status = 'active'
+                  AND is_ula
+                  AND ula_expiry < CURRENT_DATE + INTERVAL '90 days')     AS ula_expiring_90d
+            FROM shared.csi_contracts
+        ) cs
+        CROSS JOIN (
+            SELECT
+                SUM(l.total_price)         AS total_licence_value,
+                SUM(l.annual_support_cost) AS total_support_cost
+            FROM shared.license_entitlement_lines l
+            WHERE l.is_active
+        ) fin
     """, fetchall=False)
 
     # ── Compliance posture across all clients ────────────────────────────────
