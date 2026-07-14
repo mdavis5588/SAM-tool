@@ -124,6 +124,17 @@ def _edition_class(text):
     return None
 
 
+def _ula_product_matches_family(ula_product_name, server_family):
+    """Return True if a ULA covered-product name applies to the server's product family."""
+    pn = (ula_product_name or "").lower()
+    if server_family == "oracle_database":
+        return "database" in pn or "oracle db" in pn
+    if server_family == "oracle_weblogic":
+        return "weblogic" in pn
+    # Fallback: check if the family keyword appears in the product name
+    return server_family.replace("_", " ") in pn
+
+
 def _is_compatible_product(family, product_detail, line_family, line_product_name):
     if family != line_family:
         return False
@@ -458,17 +469,37 @@ def edit_server(server_id):
                 flash("That licence line no longer exists for this server.", "danger")
                 return redirect(url_for("edit_server", server_id=server_id))
 
-            entitlement_lines = query(
-                "SELECT product_name, product_family::TEXT AS product_family "
-                "FROM shared.license_entitlement_lines WHERE csi_id = %s AND is_active",
-                (csi_id,)
+            # Check whether this CSI covers the assigned product — either via
+            # entitlement lines (standard contracts) or ula_covered_products (ULAs).
+            csi_is_ula = query(
+                "SELECT is_ula FROM shared.csi_contracts WHERE csi_id = %s",
+                (csi_id,), fetchall=False
             )
-            if not any(_is_compatible_product(family, product_detail,
-                                               l["product_family"], l["product_name"])
-                       for l in entitlement_lines):
-                flash("That CSI contract doesn't cover this product/edition — "
-                      "pick a contract that matches.", "danger")
-                return redirect(url_for("edit_server", server_id=server_id))
+            if csi_is_ula and csi_is_ula["is_ula"]:
+                ula_covered = query(
+                    "SELECT product_name FROM shared.ula_covered_products WHERE csi_id = %s",
+                    (csi_id,)
+                )
+                # No covered products = ULA covers everything; otherwise match by family/name
+                if ula_covered and not any(
+                    _ula_product_matches_family(r["product_name"], family)
+                    for r in ula_covered
+                ):
+                    flash("This ULA does not cover this product family — "
+                          "pick a contract that matches.", "danger")
+                    return redirect(url_for("edit_server", server_id=server_id))
+            else:
+                entitlement_lines = query(
+                    "SELECT product_name, product_family::TEXT AS product_family "
+                    "FROM shared.license_entitlement_lines WHERE csi_id = %s AND is_active",
+                    (csi_id,)
+                )
+                if not any(_is_compatible_product(family, product_detail,
+                                                   l["product_family"], l["product_name"])
+                           for l in entitlement_lines):
+                    flash("That CSI contract doesn't cover this product/edition — "
+                          "pick a contract that matches.", "danger")
+                    return redirect(url_for("edit_server", server_id=server_id))
 
             # Enforce client_locked CSIs — cannot be assigned to a different client's server
             csi_policy = query(
@@ -736,13 +767,24 @@ def edit_server(server_id):
     for (csi_id, detail), amt in consumed_by_csi_detail.items():
         consumed_entries_by_csi.setdefault(csi_id, []).append((detail, amt))
 
-    # DEBUG — remove after diagnosis
-    print("DEBUG licence_position rows:")
-    for row in licence_position:
-        print(f"  LP row: family={row['product_family']!r} detail={row['product_detail']!r}")
-    print("DEBUG entitlement_lines:")
-    for l in entitlement_lines:
-        print(f"  EL line: csi_id={l['csi_id']} family={l['product_family']!r} name={l['product_name']!r} qty={l.get('quantity')}")
+    # ULA contracts accessible to this client
+    ula_contracts = query("""
+        SELECT cs.csi_id, cs.csi_number, cs.contract_name, cs.support_expiry,
+               cs.sharing_policy, cs.ula_expiry, c.client_code AS owning_client
+        FROM shared.csi_contracts cs
+        LEFT JOIN sam_admin.clients c ON c.client_id = cs.owning_client_id
+        WHERE cs.is_ula AND cs.status = 'active'
+          AND (cs.sharing_policy != 'client_locked' OR c.client_code = %s)
+        ORDER BY cs.csi_number
+    """, (server_client_code,))
+    # Covered products per ULA (empty list = covers everything)
+    ula_covered_products = {}
+    for u in ula_contracts:
+        rows = query(
+            "SELECT product_name FROM shared.ula_covered_products WHERE csi_id = %s",
+            (u["csi_id"],)
+        )
+        ula_covered_products[u["csi_id"]] = [r["product_name"] for r in rows]
 
     compatible_csis_by_line = {}
     for row in licence_position:
@@ -763,8 +805,27 @@ def edit_server(server_id):
                     matches[l["csi_id"]] = dict(l,
                         csi_total_qty=qty,
                         csi_consumed=consumed,
-                        csi_available=max(qty - consumed, 0)
+                        csi_available=max(qty - consumed, 0),
+                        is_ula=False
                     )
+        # Add applicable ULAs for this licence line
+        for u in ula_contracts:
+            if u["csi_id"] in matches:
+                continue
+            covered = ula_covered_products[u["csi_id"]]
+            # No covered products = covers all families; otherwise check family match
+            if not covered or any(
+                _ula_product_matches_family(p, row["product_family"]) for p in covered
+            ):
+                matches[u["csi_id"]] = dict(u,
+                    product_family=row["product_family"],
+                    product_name=u["contract_name"],
+                    csi_total_qty=None,
+                    csi_consumed=None,
+                    csi_available=None,  # unlimited
+                    unit_price=None,
+                    is_ula=True
+                )
         compatible_csis_by_line[key] = list(matches.values())
 
         already = consumed_by_line.get((row["product_family"], row["product_detail"]), 0)

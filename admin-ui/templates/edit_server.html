@@ -347,9 +347,20 @@
               <label class="form-label form-label-sm mb-1">Add CSI Contract</label>
               <select name="csi_id" class="form-select form-select-sm" required {% if line_locked %}disabled{% endif %}>
                 <option value="">— select —</option>
-                {# Client-locked CSIs first (green — consume these first) #}
-                {% set locked_csis = line_csis | selectattr('sharing_policy', 'equalto', 'client_locked') | list %}
-                {% set shared_csis = line_csis | rejectattr('sharing_policy', 'equalto', 'client_locked') | list %}
+                {# Split into ULA, client-locked standard, and shared pool #}
+                {% set ula_csis    = line_csis | selectattr('is_ula') | list %}
+                {% set locked_csis = line_csis | rejectattr('is_ula') | selectattr('sharing_policy', 'equalto', 'client_locked') | list %}
+                {% set shared_csis = line_csis | rejectattr('is_ula') | rejectattr('sharing_policy', 'equalto', 'client_locked') | list %}
+                {% if ula_csis %}
+                <optgroup label="∞ ULA — Unlimited Licence Agreement">
+                  {% for c in ula_csis %}
+                  <option value="{{ c.csi_id }}" style="color:#7c3aed;font-weight:600">
+                    {{ c.csi_number or 'No CSI#' }} &nbsp;|&nbsp; ULA
+                    {%- if c.ula_expiry %} &nbsp;|&nbsp; expires {{ c.ula_expiry }}{% endif %}
+                  </option>
+                  {% endfor %}
+                </optgroup>
+                {% endif %}
                 {% if locked_csis %}
                 <optgroup label="★ Client-Locked — use first">
                   {% for c in locked_csis %}
