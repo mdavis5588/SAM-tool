@@ -320,30 +320,25 @@
 
   <!-- Flyout panels — live outside sidebar-nav so overflow:auto can't clip them -->
   <div id="sidebarFlyoutPanel">
-    <a class="sidebar-flyout-item {% if request.endpoint in ['finops','finops_client'] %}active{% endif %}"
-       href="{{ url_for('finops') }}">
+    <a class="sidebar-flyout-item" href="{{ url_for('finops') }}">
       <i class="bi bi-bar-chart-steps"></i>{{ t('finops.tab_cost_summary') }}
     </a>
-    <a class="sidebar-flyout-item {% if request.endpoint == 'licence_summary_server_costs' %}active{% endif %}"
-       href="{{ url_for('licence_summary_server_costs') }}">
+    <a class="sidebar-flyout-item" href="{{ url_for('licence_summary_server_costs') }}">
       <i class="bi bi-server"></i>{{ t('nav.server_costs') }}
     </a>
   </div>
 
   <div id="complianceFlyoutPanel">
-    <a class="sidebar-flyout-item {% if request.endpoint in ['compliance','compliance_client'] %}active{% endif %}"
-       href="{{ url_for('compliance') }}">
+    <a class="sidebar-flyout-item" href="{{ url_for('compliance') }}">
       <i class="bi bi-shield-check"></i>{{ t('nav.compliance') }}
     </a>
-    <a class="sidebar-flyout-item {% if request.endpoint == 'audit_readiness' %}active{% endif %}"
-       href="{{ url_for('audit_readiness') }}">
+    <a class="sidebar-flyout-item" href="{{ url_for('audit_readiness') }}">
       <i class="bi bi-clipboard2-pulse"></i>{{ t('nav.audit_readiness') }}
     </a>
   </div>
 
   <div id="visibilityFlyoutPanel">
-    <a class="sidebar-flyout-item {% if request.endpoint == 'visibility_versions' %}active{% endif %}"
-       href="{{ url_for('visibility_versions') }}">
+    <a class="sidebar-flyout-item" href="{{ url_for('visibility_versions') }}">
       <i class="bi bi-database"></i>{{ t('nav.versions') }}
     </a>
   </div>
