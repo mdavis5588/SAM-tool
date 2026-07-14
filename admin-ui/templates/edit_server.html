@@ -238,7 +238,56 @@
       </div>
     </div>
 
-    <!-- Per-line licence position with inline CSI assignment -->
+    <!-- ULA toggle — appears once between licence summary and CSI cards -->
+    {% set server_ula_assignment = assignments | selectattr('is_ula') | list | first | default(none) %}
+
+    {% if server_ula_assignment %}
+    <!-- ULA is active: show banner, hide all CSI cards -->
+    <div class="d-flex align-items-center gap-3 mb-3 px-3 py-3 rounded-3"
+         style="background:rgba(124,58,237,.08);border:1.5px solid rgba(124,58,237,.25)">
+      <i class="bi bi-infinity" style="color:#7c3aed;font-size:1.4rem;flex-shrink:0"></i>
+      <div class="flex-grow-1">
+        <div class="fw-bold" style="color:#7c3aed">ULA Coverage Active</div>
+        <div style="font-size:.83rem;color:#64748b">
+          {{ server_ula_assignment.contract_name }}
+          {% if server_ula_assignment.csi_number %}
+            &nbsp;·&nbsp;<code style="font-size:.75rem">{{ server_ula_assignment.csi_number }}</code>
+          {% endif %}
+          &nbsp;·&nbsp;All product families covered
+        </div>
+      </div>
+      <form method="post" onsubmit="return confirm('Remove ULA? You will need to re-add individual CSI assignments.')">
+        <input type="hidden" name="action" value="remove_ula">
+        <button type="submit" class="btn btn-sm btn-outline-danger">
+          <i class="bi bi-x-lg me-1"></i>Remove ULA
+        </button>
+      </form>
+    </div>
+
+    {% else %}
+
+    {% if all_server_ulas %}
+    <!-- ULA available: show chooser above CSI cards -->
+    <div class="d-flex align-items-center gap-3 mb-3 px-3 py-2 rounded-3 flex-wrap"
+         style="background:rgba(124,58,237,.04);border:1.5px solid rgba(124,58,237,.18)">
+      <span style="font-size:.82rem;font-weight:600;color:#7c3aed;flex-shrink:0">
+        <i class="bi bi-infinity me-1"></i>ULA Available
+      </span>
+      {% for u in all_server_ulas %}
+      <form method="post" class="d-inline">
+        <input type="hidden" name="action" value="assign_ula">
+        <input type="hidden" name="csi_id" value="{{ u.csi_id }}">
+        <button type="submit" class="btn btn-sm"
+                style="background:rgba(124,58,237,.12);color:#7c3aed;border:1.5px solid rgba(124,58,237,.3);font-size:.8rem"
+                onclick="return confirm('Assign this server to ULA \'{{ u.contract_name }}\'?\n\nThis will remove all individual CSI assignments.')">
+          <i class="bi bi-infinity me-1"></i>{{ u.csi_number or u.contract_name }}{% if u.ula_expiry %} · expires {{ u.ula_expiry }}{% endif %}
+        </button>
+      </form>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Per-line CSI assignment cards -->
     <h6 class="text-muted text-uppercase fw-semibold mb-2" style="font-size:.75rem; letter-spacing:.08em">
       CSI Assignments
     </h6>
@@ -271,74 +320,18 @@
       </div>
 
       <div class="card-body p-0">
-
-        <!-- Split assignments: ULA vs individual CSIs -->
         {% set line_maps = [] %}
-        {% set ula_maps  = [] %}
         {% for a in assignments %}
-          {% if a.product_family == row.product_family and a.product_detail == row.product_detail %}
-            {% if a.is_ula %}
-              {% set _ = ula_maps.append(a) %}
-            {% else %}
-              {% set _ = line_maps.append(a) %}
-            {% endif %}
+          {% if a.product_family == row.product_family and a.product_detail == row.product_detail and not a.is_ula %}
+            {% set _ = line_maps.append(a) %}
           {% endif %}
         {% endfor %}
 
-        <!-- ULA assignment section -->
-        {% set line_ulas = ula_by_line.get(line_key, []) %}
-        {% if ula_maps %}
-        <!-- Already covered by a ULA -->
-        {% for a in ula_maps %}
-        <div class="d-flex align-items-center gap-2 px-3 py-2"
-             style="background:rgba(124,58,237,.07);border-bottom:1px solid rgba(124,58,237,.15)">
-          <i class="bi bi-infinity text-purple" style="color:#7c3aed;font-size:1rem"></i>
-          <span style="font-size:.85rem">
-            <strong style="color:#7c3aed">ULA Coverage</strong>
-            &nbsp;—&nbsp; {{ a.contract_name }}
-            {% if a.csi_number %}<code class="ms-1" style="font-size:.75rem">{{ a.csi_number }}</code>{% endif %}
-          </span>
-          <form method="post" class="ms-auto" onsubmit="return confirm('Remove ULA assignment?')">
-            <input type="hidden" name="action" value="remove_csi">
-            <input type="hidden" name="map_id" value="{{ a.map_id }}">
-            <button type="submit" class="btn btn-sm btn-outline-danger py-0">
-              <i class="bi bi-x-lg"></i> Remove ULA
-            </button>
-          </form>
-        </div>
-        {% endfor %}
-        {% elif line_ulas %}
-        <!-- ULA(s) available but not yet assigned -->
-        <div class="px-3 py-2 d-flex align-items-center gap-2 flex-wrap"
-             style="background:rgba(124,58,237,.05);border-bottom:1px solid rgba(124,58,237,.12)">
-          <span class="text-muted" style="font-size:.8rem"><i class="bi bi-infinity me-1" style="color:#7c3aed"></i>ULA available:</span>
-          {% for u in line_ulas %}
-          <form method="post" class="d-inline">
-            <input type="hidden" name="action" value="assign_ula">
-            <input type="hidden" name="product_family" value="{{ row.product_family }}">
-            <input type="hidden" name="csi_id" value="{{ u.csi_id }}">
-            <button type="submit" class="btn btn-sm py-0"
-                    style="background:rgba(124,58,237,.12);color:#7c3aed;border:1px solid rgba(124,58,237,.3);font-size:.78rem"
-                    onclick="return confirm('Assign to ULA {{ u.contract_name }}? This will remove all individual CSI assignments for this product family.')">
-              <i class="bi bi-infinity me-1"></i>{{ u.csi_number or u.contract_name }}{% if u.ula_expiry %} · expires {{ u.ula_expiry }}{% endif %}
-            </button>
-          </form>
-          {% endfor %}
-        </div>
-        {% endif %}
-
-        <!-- Individual CSI assignments (hidden when covered by ULA) -->
-        {% if not ula_maps %}
         {% if line_maps %}
         <table class="table table-sm mb-0">
           <thead class="table-light">
             <tr>
-              <th>CSI Number</th>
-              <th>Contract</th>
-              <th>Licences</th>
-              <th>Expiry</th>
-              <th>Notes</th>
-              <th></th>
+              <th>CSI Number</th><th>Contract</th><th>Licences</th><th>Expiry</th><th>Notes</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -349,9 +342,7 @@
               <td>{{ a.licences_consumed if a.licences_consumed is not none else '—' }}</td>
               <td>
                 {% if a.support_expiry %}
-                  <span class="{% if a.support_expiry < today_date %}text-danger{% endif %}">
-                    {{ a.support_expiry }}
-                  </span>
+                  <span class="{% if a.support_expiry < today_date %}text-danger{% endif %}">{{ a.support_expiry }}</span>
                 {% else %}—{% endif %}
               </td>
               <td><small>{{ a.notes or '' }}</small></td>
@@ -359,9 +350,7 @@
                 <form method="post" onsubmit="return confirm('Remove this CSI assignment?')">
                   <input type="hidden" name="action" value="remove_csi">
                   <input type="hidden" name="map_id" value="{{ a.map_id }}">
-                  <button type="submit" class="btn btn-sm btn-outline-danger">
-                    <i class="bi bi-trash"></i>
-                  </button>
+                  <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                 </form>
               </td>
             </tr>
@@ -378,15 +367,9 @@
         {% set line_locked = (not line_csis) or line_full %}
         <div class="border-top px-3 py-2 bg-light">
           {% if not line_csis %}
-          <div class="small text-muted mb-2">
-            <i class="bi bi-info-circle"></i>
-            No active CSI contract covers this product/edition yet.
-          </div>
+          <div class="small text-muted mb-2"><i class="bi bi-info-circle"></i> No active CSI contract covers this product/edition yet.</div>
           {% elif line_full %}
-          <div class="small text-muted mb-2">
-            <i class="bi bi-check-circle"></i>
-            This line already has its full {{ row.licences_required }} licence(s) assigned.
-          </div>
+          <div class="small text-muted mb-2"><i class="bi bi-check-circle"></i> This line already has its full {{ row.licences_required }} licence(s) assigned.</div>
           {% endif %}
           <form method="post" class="row g-2 align-items-end">
             <input type="hidden" name="action"         value="assign_csi">
@@ -401,9 +384,7 @@
                 {% if locked_csis %}
                 <optgroup label="★ Client-Locked — use first">
                   {% for c in locked_csis %}
-                  <option value="{{ c.csi_id }}"
-                    {% if c.csi_available == 0 %}disabled{% endif %}
-                    style="color:#198754;font-weight:600">
+                  <option value="{{ c.csi_id }}" {% if c.csi_available == 0 %}disabled{% endif %} style="color:#198754;font-weight:600">
                     {{ c.csi_number or 'No CSI#' }} &nbsp;|&nbsp; {{ c.csi_available }} avail{% if c.unit_price %} &nbsp;|&nbsp; ${{ '{:,.0f}'.format(c.unit_price) }}/seat{% endif %}
                   </option>
                   {% endfor %}
@@ -412,8 +393,7 @@
                 {% if shared_csis %}
                 <optgroup label="Shared Pool">
                   {% for c in shared_csis %}
-                  <option value="{{ c.csi_id }}"
-                    {% if c.csi_available == 0 %}disabled{% endif %}>
+                  <option value="{{ c.csi_id }}" {% if c.csi_available == 0 %}disabled{% endif %}>
                     {{ c.csi_number or 'No CSI#' }} &nbsp;|&nbsp; {{ c.csi_available }} avail{% if c.unit_price %} &nbsp;|&nbsp; ${{ '{:,.0f}'.format(c.unit_price) }}/seat{% endif %}
                   </option>
                   {% endfor %}
@@ -425,8 +405,7 @@
               <label class="form-label form-label-sm mb-1">Licences consumed</label>
               <input type="number" step="0.5" min="0"
                      {% if row.remaining_capacity is not none %}max="{{ row.remaining_capacity }}"{% endif %}
-                     name="licences_consumed"
-                     class="form-control form-control-sm"
+                     name="licences_consumed" class="form-control form-control-sm"
                      placeholder="max {{ row.remaining_capacity if row.remaining_capacity is not none else row.licences_required }}"
                      {% if line_locked %}disabled{% endif %}>
             </div>
@@ -441,12 +420,13 @@
             </div>
           </form>
         </div>
-        {% endif %}{# end if not ula_maps #}
 
       </div>
     </div>
     {% endfor %}
-    {% endif %}
+
+    {% endif %}{# end else (no ULA active) #}
+    {% endif %}{# end if licence_position #}
 
     <!-- Java installations -->
     {% if java_installations %}

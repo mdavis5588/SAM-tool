@@ -607,8 +607,7 @@ def edit_server(server_id):
 
         elif action == "assign_ula":
             csi_id = request.form.get("csi_id")
-            family = request.form.get("product_family")
-            # Validate this is actually a client-locked ULA belonging to this client
+            # Validate this is a client-locked ULA belonging to this client
             server_client = query(
                 "SELECT client_code FROM sam_admin.clients WHERE schema_name = %s",
                 (schema,), fetchall=False
@@ -626,20 +625,33 @@ def edit_server(server_id):
                     or ula_row["client_code"] != server_code):
                 flash("Invalid ULA selection.", "danger")
                 return redirect(url_for("edit_server", server_id=server_id))
-            # Remove all existing individual CSI assignments for this family
+            # Get all product families present on this server
+            lp_rows = query(
+                f"SELECT DISTINCT product_family::TEXT FROM {schema}.license_position "
+                f"WHERE server_id = %s",
+                (server_id,)
+            )
+            families = [r["product_family"] for r in lp_rows]
+            # Remove ALL existing CSI assignments for this server
+            execute(f"DELETE FROM {schema}.server_csi_map WHERE server_id = %s", (server_id,))
+            # Insert one ULA row per product family
+            for fam in families:
+                execute(f"""
+                    INSERT INTO {schema}.server_csi_map
+                      (server_id, csi_id, product_family, product_detail,
+                       licences_consumed, notes, assigned_by)
+                    VALUES (%s, %s, %s, NULL, NULL, NULL, %s)
+                """, (server_id, csi_id, fam, ADMIN_USER))
+            flash("Server assigned to ULA — all individual CSI assignments removed.", "success")
+
+        elif action == "remove_ula":
             execute(
                 f"DELETE FROM {schema}.server_csi_map "
-                f"WHERE server_id = %s AND product_family = %s",
-                (server_id, family)
+                f"WHERE server_id = %s AND csi_id IN "
+                f"(SELECT csi_id FROM shared.csi_contracts WHERE is_ula)",
+                (server_id,)
             )
-            # Insert the ULA assignment (NULL licences_consumed = unlimited)
-            execute(f"""
-                INSERT INTO {schema}.server_csi_map
-                  (server_id, csi_id, product_family, product_detail,
-                   licences_consumed, notes, assigned_by)
-                VALUES (%s, %s, %s, NULL, NULL, NULL, %s)
-            """, (server_id, csi_id, family, ADMIN_USER))
-            flash("Server assigned to ULA — individual CSI assignments removed.", "success")
+            flash("ULA assignment removed.", "success")
 
         elif action == "save_contacts":
             client_row = query(
@@ -852,6 +864,15 @@ def edit_server(server_id):
             row["licences_required"] - already if row["licences_required"] is not None else None
         )
 
+    # Deduplicated ULAs applicable to any line on this server (for the single top-level toggle)
+    _seen_ula_ids = set()
+    all_server_ulas = []
+    for _ulas in ula_by_line.values():
+        for _u in _ulas:
+            if _u["csi_id"] not in _seen_ula_ids:
+                _seen_ula_ids.add(_u["csi_id"])
+                all_server_ulas.append(_u)
+
     java_installations = query(
         f"""SELECT java_id, java_home, java_vendor, java_version,
                    java_major_version, java_edition, is_oracle_jdk,
@@ -903,6 +924,7 @@ def edit_server(server_id):
                            assignments=assignments,
                            compatible_csis_by_line=compatible_csis_by_line,
                            ula_by_line=ula_by_line,
+                           all_server_ulas=all_server_ulas,
                            licence_position=licence_position,
                            java_installations=java_installations,
                            se2_violations=se2_violations,
