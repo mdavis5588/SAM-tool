@@ -312,7 +312,14 @@
           <tbody>
             {% set _ula_active = assignments | selectattr('is_ula') | list | length > 0 %}
             {% for row in licence_position %}
-            {% set still_needed = [row.licences_required - row.total_licensed, 0] | max %}
+            {%- set _nup_min   = row.get('nup_minimum') -%}
+            {%- set _nup_users = row.get('nup_active_users') -%}
+            {%- if _is_nup and _nup_min is not none -%}
+              {%- set _effective_required = ([_nup_min, _nup_users if _nup_users is not none else 0] | max) | int -%}
+            {%- else -%}
+              {%- set _effective_required = row.licences_required -%}
+            {%- endif -%}
+            {% set still_needed = [_effective_required - row.total_licensed, 0] | max %}
             <tr>
               <td>
                 {% if row.product_family == 'oracle_database' %}<i class="bi bi-database me-1 text-muted"></i>
@@ -324,7 +331,7 @@
                              background:rgba(124,58,237,.1);color:#7c3aed;margin-left:.3rem">NUP</span>
                 {% endif %}
               </td>
-              <td class="text-end" style="font-variant-numeric:tabular-nums">{{ row.licences_required }}</td>
+              <td class="text-end" style="font-variant-numeric:tabular-nums">{{ _effective_required }}</td>
               {% if _is_nup %}
               <td class="text-end" style="font-variant-numeric:tabular-nums">
                 {% if row.get('nup_minimum') is not none %}
