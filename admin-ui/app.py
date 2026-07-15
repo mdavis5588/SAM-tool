@@ -583,17 +583,43 @@ def edit_server(server_id):
 
             # Check whether this CSI covers the assigned product (standard contracts only;
             # ULAs are handled separately via the assign_ula action)
+            # Fetch server metric to validate CSI metric compatibility
+            _sv_row = query(
+                f"SELECT COALESCE(licence_metric_override,'processor_perpetual') AS licence_metric "
+                f"FROM {schema}.oracle_servers WHERE server_id = %s",
+                (server_id,), fetchall=False
+            )
+            _sv_metric = (_sv_row or {}).get("licence_metric", "processor_perpetual")
+
             entitlement_lines = query(
-                "SELECT product_name, product_family::TEXT AS product_family "
+                "SELECT product_name, product_family::TEXT AS product_family, "
+                "license_metric::TEXT AS license_metric "
                 "FROM shared.license_entitlement_lines WHERE csi_id = %s AND is_active",
                 (csi_id,)
             )
-            if not any(_is_compatible_product(family, product_detail,
-                                               l["product_family"], l["product_name"])
-                       for l in entitlement_lines):
+            compatible_lines = [
+                l for l in entitlement_lines
+                if _is_compatible_product(family, product_detail,
+                                          l["product_family"], l["product_name"])
+            ]
+            if not compatible_lines:
                 flash("That CSI contract doesn't cover this product/edition — "
                       "pick a contract that matches.", "danger")
                 return redirect(url_for("edit_server", server_id=server_id))
+
+            # Reject metric mismatch: NUP server must use NUP CSI lines and vice-versa
+            if _sv_metric == "named_user_plus":
+                if not any((l.get("license_metric") or "processor") == "named_user_plus"
+                           for l in compatible_lines):
+                    flash("This server uses Named User Plus licensing — "
+                          "only NUP CSI contracts can be assigned.", "danger")
+                    return redirect(url_for("edit_server", server_id=server_id))
+            else:
+                if any((l.get("license_metric") or "processor") == "named_user_plus"
+                       for l in compatible_lines):
+                    flash("This server uses processor licensing — "
+                          "NUP CSI contracts cannot be assigned.", "danger")
+                    return redirect(url_for("edit_server", server_id=server_id))
 
             # Enforce client_locked CSIs — cannot be assigned to a different client's server
             csi_policy = query(
@@ -844,6 +870,7 @@ def edit_server(server_id):
 
     entitlement_lines = query("""
         SELECT l.csi_id, l.product_name, l.product_family::TEXT AS product_family,
+               l.license_metric::TEXT AS license_metric,
                l.quantity, l.unit_price, cs.csi_number, cs.contract_name, cs.support_expiry,
                cs.sharing_policy, c.client_code AS owning_client
         FROM shared.csi_contracts cs
@@ -946,12 +973,19 @@ def edit_server(server_id):
         )
         _ula_covered[u["csi_id"]] = [r["product_name"] for r in rows]
 
+    _server_metric = server.get("licence_metric", "processor_perpetual")
     compatible_csis_by_line = {}
     ula_by_line = {}   # line_key -> list of applicable ULA dicts
     for row in licence_position:
         key = f"{row['product_family']}|{row['product_detail'] or ''}"
         matches = {}
         for l in entitlement_lines:
+            # When the server uses NUP, only show NUP-metric lines; otherwise exclude NUP lines
+            line_metric = l.get("license_metric") or "processor"
+            if _server_metric == "named_user_plus" and line_metric != "named_user_plus":
+                continue
+            if _server_metric != "named_user_plus" and line_metric == "named_user_plus":
+                continue
             if _is_compatible_product(row["product_family"], row["product_detail"],
                                        l["product_family"], l["product_name"]):
                 if l["csi_id"] not in matches:
