@@ -766,38 +766,40 @@ def _can_propose_assignments():
 @login_required
 def assignment_queue():
     u    = current_user()
-    role = u.get("role", "")
 
-    # Approvers see everything pending; proposers see only their own requests
-    if _can_approve_assignments():
-        pending = query(
-            """SELECT r.*, c.client_name
-               FROM sam_admin.assignment_requests r
-               JOIN sam_admin.clients c ON c.client_id = r.client_id
-               WHERE r.status = 'pending'
-               ORDER BY r.proposed_at""")
-        history = query(
-            """SELECT r.*, c.client_name
-               FROM sam_admin.assignment_requests r
-               JOIN sam_admin.clients c ON c.client_id = r.client_id
-               WHERE r.status != 'pending'
-               ORDER BY r.proposed_at DESC LIMIT 200""")
-    else:
-        schema = get_schema()
-        pending = query(
-            """SELECT r.*, c.client_name
-               FROM sam_admin.assignment_requests r
-               JOIN sam_admin.clients c ON c.client_id = r.client_id
-               WHERE r.status = 'pending' AND r.proposed_by = %s
-               ORDER BY r.proposed_at""",
-            (u.get("username"),))
-        history = query(
-            """SELECT r.*, c.client_name
-               FROM sam_admin.assignment_requests r
-               JOIN sam_admin.clients c ON c.client_id = r.client_id
-               WHERE r.status != 'pending' AND r.proposed_by = %s
-               ORDER BY r.proposed_at DESC LIMIT 100""",
-            (u.get("username"),))
+    try:
+        if _can_approve_assignments():
+            pending = query(
+                """SELECT r.*, c.client_name
+                   FROM sam_admin.assignment_requests r
+                   JOIN sam_admin.clients c ON c.client_id = r.client_id
+                   WHERE r.status = 'pending'
+                   ORDER BY r.proposed_at""")
+            history = query(
+                """SELECT r.*, c.client_name
+                   FROM sam_admin.assignment_requests r
+                   JOIN sam_admin.clients c ON c.client_id = r.client_id
+                   WHERE r.status != 'pending'
+                   ORDER BY r.proposed_at DESC LIMIT 200""")
+        else:
+            pending = query(
+                """SELECT r.*, c.client_name
+                   FROM sam_admin.assignment_requests r
+                   JOIN sam_admin.clients c ON c.client_id = r.client_id
+                   WHERE r.status = 'pending' AND r.proposed_by = %s
+                   ORDER BY r.proposed_at""",
+                (u.get("username"),))
+            history = query(
+                """SELECT r.*, c.client_name
+                   FROM sam_admin.assignment_requests r
+                   JOIN sam_admin.clients c ON c.client_id = r.client_id
+                   WHERE r.status != 'pending' AND r.proposed_by = %s
+                   ORDER BY r.proposed_at DESC LIMIT 100""",
+                (u.get("username"),))
+    except Exception:
+        flash("Assignment queue table not found — run migration 08_assignment_queue.sql first.", "warning")
+        pending = []
+        history = []
 
     return render_template(
         "assignment_queue.html",
@@ -813,6 +815,7 @@ def assignment_propose():
     """Submit a new assignment (or removal) request for approval."""
     if not _can_propose_assignments():
         abort(403)
+
 
     u      = current_user()
     schema = get_schema()
