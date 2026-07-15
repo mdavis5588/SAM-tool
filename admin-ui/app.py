@@ -262,12 +262,32 @@ def _apply_client_scope():
 
 @app.context_processor
 def _inject_user():
+    u    = current_user()
+    role = u.get("role", "") if u else ""
+    pending_count = 0
+    if u:
+        try:
+            if role in ("superadmin", "contracting"):
+                row = query(
+                    "SELECT COUNT(*) AS n FROM sam_admin.assignment_requests WHERE status='pending'",
+                    fetchall=False
+                )
+            else:
+                row = query(
+                    "SELECT COUNT(*) AS n FROM sam_admin.assignment_requests "
+                    "WHERE status='pending' AND proposed_by=%s",
+                    (u.get("username"),), fetchall=False
+                )
+            pending_count = (row or {}).get("n", 0)
+        except Exception:
+            pass
     return {
-        "current_user":       current_user(),
-        "current_role":       current_role(),
-        "can_write_contracts": can_write_contracts(),
-        "can_write_licences":  can_write_licences(),
-        "is_superadmin":       is_superadmin(),
+        "current_user":             u,
+        "current_role":             role,
+        "can_write_contracts":      can_write_contracts(),
+        "can_write_licences":       can_write_licences(),
+        "is_superadmin":            is_superadmin(),
+        "pending_assignments_count": pending_count,
     }
 
 with app.app_context():
@@ -732,6 +752,284 @@ def admin_audit_purge():
 
 
 # ---------------------------------------------------------------------------
+# Licence assignment approval queue
+# ---------------------------------------------------------------------------
+
+def _can_approve_assignments():
+    return current_role() in ("superadmin", "contracting")
+
+def _can_propose_assignments():
+    return current_role() in ("superadmin", "contracting", "dba", "client")
+
+
+@app.route("/assignments", methods=["GET"])
+@login_required
+def assignment_queue():
+    u    = current_user()
+    role = u.get("role", "")
+
+    # Approvers see everything pending; proposers see only their own requests
+    if _can_approve_assignments():
+        pending = query(
+            """SELECT r.*, c.client_name
+               FROM sam_admin.assignment_requests r
+               JOIN sam_admin.clients c ON c.client_id = r.client_id
+               WHERE r.status = 'pending'
+               ORDER BY r.proposed_at""")
+        history = query(
+            """SELECT r.*, c.client_name
+               FROM sam_admin.assignment_requests r
+               JOIN sam_admin.clients c ON c.client_id = r.client_id
+               WHERE r.status != 'pending'
+               ORDER BY r.proposed_at DESC LIMIT 200""")
+    else:
+        schema = get_schema()
+        pending = query(
+            """SELECT r.*, c.client_name
+               FROM sam_admin.assignment_requests r
+               JOIN sam_admin.clients c ON c.client_id = r.client_id
+               WHERE r.status = 'pending' AND r.proposed_by = %s
+               ORDER BY r.proposed_at""",
+            (u.get("username"),))
+        history = query(
+            """SELECT r.*, c.client_name
+               FROM sam_admin.assignment_requests r
+               JOIN sam_admin.clients c ON c.client_id = r.client_id
+               WHERE r.status != 'pending' AND r.proposed_by = %s
+               ORDER BY r.proposed_at DESC LIMIT 100""",
+            (u.get("username"),))
+
+    return render_template(
+        "assignment_queue.html",
+        pending=pending,
+        history=history,
+        can_approve=_can_approve_assignments(),
+    )
+
+
+@app.route("/assignments/propose", methods=["POST"])
+@login_required
+def assignment_propose():
+    """Submit a new assignment (or removal) request for approval."""
+    if not _can_propose_assignments():
+        abort(403)
+
+    u      = current_user()
+    schema = get_schema()
+
+    req_type       = request.form.get("request_type", "assign")
+    server_id      = request.form.get("server_id")
+    csi_id         = request.form.get("csi_id")
+    family         = request.form.get("product_family")
+    product_detail = request.form.get("product_detail") or None
+    consumed_raw   = request.form.get("licences_consumed") or None
+    notes          = request.form.get("notes") or None
+    map_id_remove  = request.form.get("map_id_to_remove") or None
+
+    if not server_id or not family:
+        flash("Missing required fields.", "danger")
+        return redirect(request.referrer or url_for("servers"))
+
+    # Fetch client info for this schema
+    client_row = query(
+        "SELECT client_id, client_name FROM sam_admin.clients WHERE schema_name = %s",
+        (schema,), fetchall=False
+    )
+    if not client_row:
+        flash("Cannot determine client for this schema.", "danger")
+        return redirect(request.referrer or url_for("servers"))
+
+    # Fetch server hostname/environment for display
+    srv_row = query(
+        f"SELECT hostname, environment FROM {schema}.oracle_servers WHERE server_id = %s",
+        (server_id,), fetchall=False
+    )
+    if not srv_row:
+        flash("Server not found.", "danger")
+        return redirect(request.referrer or url_for("servers"))
+
+    # Fetch CSI number for display
+    csi_row = None
+    csi_number = None
+    if csi_id:
+        csi_row = query(
+            "SELECT csi_number FROM shared.csi_contracts WHERE csi_id = %s",
+            (csi_id,), fetchall=False
+        )
+        csi_number = csi_row["csi_number"] if csi_row else str(csi_id)
+
+    consumed = None
+    if consumed_raw:
+        try:
+            consumed = float(consumed_raw)
+        except ValueError:
+            flash("Licences consumed must be a number.", "danger")
+            return redirect(request.referrer or url_for("edit_server", server_id=server_id))
+
+    execute(
+        """INSERT INTO sam_admin.assignment_requests
+           (client_id, client_schema, server_id, hostname, environment,
+            csi_id, csi_number, product_family, product_detail,
+            licences_consumed, notes, proposed_by, proposed_by_role,
+            request_type, map_id_to_remove)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+        (client_row["client_id"], schema, server_id,
+         srv_row["hostname"], srv_row.get("environment"),
+         csi_id, csi_number, family, product_detail,
+         consumed, notes,
+         u.get("username"), u.get("role"),
+         req_type, map_id_remove)
+    )
+    _audit("assignment.propose",
+           entity_type="assignment_request",
+           entity_id=server_id,
+           entity_name=f"{srv_row['hostname']} / {csi_number or 'remove'}",
+           new_values={"request_type": req_type, "csi_id": csi_id,
+                       "product_family": family, "product_detail": product_detail,
+                       "licences_consumed": consumed},
+           client_schema=schema)
+    flash("Assignment request submitted for approval.", "success")
+    return redirect(url_for("edit_server", server_id=server_id))
+
+
+@app.route("/assignments/<int:request_id>/review", methods=["POST"])
+@login_required
+def assignment_review(request_id):
+    """Approve or reject a pending request. Contracting + superadmin only."""
+    if not _can_approve_assignments():
+        abort(403)
+
+    u      = current_user()
+    action = request.form.get("action")   # approve | reject | withdraw
+    note   = request.form.get("review_note") or None
+
+    req = query(
+        "SELECT * FROM sam_admin.assignment_requests WHERE request_id = %s",
+        (request_id,), fetchall=False
+    )
+    if not req:
+        abort(404)
+    if req["status"] != "pending":
+        flash("This request is no longer pending.", "warning")
+        return redirect(url_for("assignment_queue"))
+
+    if action == "reject":
+        execute(
+            """UPDATE sam_admin.assignment_requests
+               SET status='rejected', reviewed_by=%s, reviewed_at=NOW(), review_note=%s
+               WHERE request_id=%s""",
+            (u.get("username"), note, request_id)
+        )
+        _audit("assignment.reject",
+               entity_type="assignment_request", entity_id=request_id,
+               entity_name=f"{req['hostname']} / {req['csi_number'] or 'remove'}",
+               old_values={"status": "pending"},
+               new_values={"status": "rejected", "note": note},
+               client_schema=req["client_schema"])
+        flash("Request rejected.", "warning")
+
+    elif action == "approve":
+        schema    = req["client_schema"]
+        server_id = req["server_id"]
+        csi_id    = req["csi_id"]
+        family    = req["product_family"]
+        detail    = req["product_detail"]
+        consumed  = req["licences_consumed"]
+        notes     = req["notes"]
+        req_type  = req["request_type"]
+
+        try:
+            if req_type == "remove":
+                map_id = req["map_id_to_remove"]
+                old_csi = query(
+                    f"SELECT csi_id, product_family::TEXT, product_detail, licences_consumed "
+                    f"FROM {schema}.server_csi_map WHERE map_id = %s",
+                    (map_id,), fetchall=False
+                )
+                execute(
+                    f"DELETE FROM {schema}.server_csi_map WHERE map_id = %s",
+                    (map_id,)
+                )
+                _audit("csi.remove", entity_type="csi_assignment", entity_id=server_id,
+                       entity_name=f"server {server_id} / map {map_id}",
+                       old_values=dict(old_csi) if old_csi else None,
+                       client_schema=schema)
+            else:
+                # assign — upsert into server_csi_map
+                execute(f"""
+                    DELETE FROM {schema}.server_csi_map
+                    WHERE server_id = %s AND csi_id = %s AND product_family = %s
+                      AND (product_detail IS NOT DISTINCT FROM %s)
+                """, (server_id, csi_id, family, detail))
+                execute(f"""
+                    INSERT INTO {schema}.server_csi_map
+                      (server_id, csi_id, product_family, product_detail,
+                       licences_consumed, notes, assigned_by)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (server_id, csi_id, family, detail, consumed, notes,
+                      u.get("username")))
+                _audit("csi.assign", entity_type="csi_assignment", entity_id=server_id,
+                       entity_name=f"server {server_id} / CSI {csi_id}",
+                       new_values={"csi_id": csi_id, "product_family": family,
+                                   "product_detail": detail,
+                                   "licences_consumed": str(consumed) if consumed else None},
+                       client_schema=schema)
+
+            execute(
+                """UPDATE sam_admin.assignment_requests
+                   SET status='approved', reviewed_by=%s, reviewed_at=NOW(),
+                       review_note=%s, applied_at=NOW()
+                   WHERE request_id=%s""",
+                (u.get("username"), note, request_id)
+            )
+            _audit("assignment.approve",
+                   entity_type="assignment_request", entity_id=request_id,
+                   entity_name=f"{req['hostname']} / {req['csi_number'] or 'remove'}",
+                   old_values={"status": "pending"},
+                   new_values={"status": "approved", "note": note},
+                   client_schema=schema)
+            flash("Request approved and assignment applied.", "success")
+
+        except Exception as exc:
+            flash(f"Failed to apply assignment: {exc}", "danger")
+
+    return redirect(url_for("assignment_queue"))
+
+
+@app.route("/assignments/<int:request_id>/withdraw", methods=["POST"])
+@login_required
+def assignment_withdraw(request_id):
+    """Withdraw a pending request — only the proposer or an approver can do this."""
+    u   = current_user()
+    req = query(
+        "SELECT * FROM sam_admin.assignment_requests WHERE request_id = %s",
+        (request_id,), fetchall=False
+    )
+    if not req:
+        abort(404)
+    if req["status"] != "pending":
+        flash("Only pending requests can be withdrawn.", "warning")
+        return redirect(url_for("assignment_queue"))
+    if req["proposed_by"] != u.get("username") and not _can_approve_assignments():
+        abort(403)
+
+    execute(
+        """UPDATE sam_admin.assignment_requests
+           SET status='withdrawn', reviewed_by=%s, reviewed_at=NOW()
+           WHERE request_id=%s""",
+        (u.get("username"), request_id)
+    )
+    _audit("assignment.withdraw",
+           entity_type="assignment_request", entity_id=request_id,
+           entity_name=f"{req['hostname']} / {req['csi_number'] or 'remove'}",
+           old_values={"status": "pending"},
+           new_values={"status": "withdrawn"},
+           client_schema=req["client_schema"])
+    flash("Request withdrawn.", "info")
+    return redirect(url_for("assignment_queue"))
+
+
+# ---------------------------------------------------------------------------
 # Multi-client switcher
 # ---------------------------------------------------------------------------
 @app.route("/switch-client", methods=["POST"])
@@ -1116,6 +1414,10 @@ def edit_server(server_id):
             flash("Licence metric updated.", "success")
 
         elif action == "assign_csi":
+            # client and dba roles go through the approval queue
+            if current_role() in ("client", "dba"):
+                return redirect(url_for("assignment_propose"), 307)
+
             csi_id         = request.form.get("csi_id")
             family         = request.form.get("product_family")
             product_detail = request.form.get("product_detail") or None
@@ -1288,6 +1590,10 @@ def edit_server(server_id):
             flash("CSI assignment saved.", "success")
 
         elif action == "remove_csi":
+            # client and dba roles go through the approval queue
+            if current_role() in ("client", "dba"):
+                return redirect(url_for("assignment_propose"), 307)
+
             map_id = request.form.get("map_id")
             old_csi = query(
                 f"SELECT csi_id, product_family::TEXT, product_detail, licences_consumed "

@@ -339,6 +339,7 @@
   "audit_readiness.out_of_scope": "Produit hors périmètre",
   "audit_readiness.no_violations": "Aucune violation de périmètre ULA détectée.",
 
+  "nav.assignment_queue": "File d'approbation",
   "nav.users_access": "Utilisateurs & Accès",
   "nav.audit_snapshots": "Audit & Instantanés",
   "nav.licence_history": "Historique des licences",

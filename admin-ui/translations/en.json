@@ -339,6 +339,7 @@
   "audit_readiness.out_of_scope": "Out-of-scope Product",
   "audit_readiness.no_violations": "No ULA scope violations detected.",
 
+  "nav.assignment_queue": "Assignment Queue",
   "nav.users_access": "Users & Access",
   "nav.audit_snapshots": "Audit & Snapshots",
   "nav.licence_history": "Licence History",

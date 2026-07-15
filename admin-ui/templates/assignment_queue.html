@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block title %}Assignment Queue — Helios{% endblock %}
+{% block content %}
+
+<style>
+.aq-root {
+  --text-pri:   #0f0e0d;
+  --text-sec:   #52514e;
+  --text-muted: #898781;
+  --surface:    #ffffff;
+  --border:     #e4e2dc;
+  --bg:         #f4f6f8;
+  --accent:     #6d28d9;
+  --warn:       #d97706;
+  --danger:     #dc2626;
+  --success:    #059669;
+}
+@media (prefers-color-scheme: dark) {
+  .aq-root { --text-pri:#f0eeeb;--text-sec:#c3c2b7;--text-muted:#898781;--surface:#1e1e1d;--border:#2e2e2b;--bg:#141413; }
+}
+:root[data-theme="dark"]  .aq-root{--text-pri:#f0eeeb;--text-sec:#c3c2b7;--text-muted:#898781;--surface:#1e1e1d;--border:#2e2e2b;--bg:#141413;}
+:root[data-theme="light"] .aq-root{--text-pri:#0f0e0d;--text-sec:#52514e;--text-muted:#898781;--surface:#ffffff;--border:#e4e2dc;--bg:#f4f6f8;}
+
+.aq-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden; margin-bottom: 1.5rem;
+}
+.aq-card-header {
+  padding: .65rem 1.1rem; border-bottom: 1px solid var(--border);
+  font-weight: 700; font-size: .88rem;
+  display: flex; align-items: center; gap: .5rem;
+  color: var(--text-pri);
+}
+.aq-table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+.aq-table th {
+  text-align: left; font-size: .68rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text-muted); padding: .45rem 1rem;
+  border-bottom: 2px solid var(--border);
+}
+.aq-table td {
+  padding: .6rem 1rem; border-bottom: 1px solid var(--border);
+  color: var(--text-pri); vertical-align: middle;
+}
+.aq-table tr:last-child td { border-bottom: none; }
+.aq-table tbody tr:hover td { background: var(--bg); }
+
+.status-badge {
+  display: inline-flex; align-items: center; gap: .25rem;
+  font-size: .67rem; font-weight: 700; padding: .15rem .45rem;
+  border-radius: 20px; white-space: nowrap;
+}
+.status-badge.pending   { background:rgba(217,119,6,.12);  color:#92400e; }
+.status-badge.approved  { background:rgba(5,150,105,.12);  color:#065f46; }
+.status-badge.rejected  { background:rgba(220,38,38,.12);  color:#991b1b; }
+.status-badge.withdrawn { background:rgba(107,114,128,.12);color:#374151; }
+
+.type-badge {
+  font-size: .65rem; font-weight: 600; padding: .1rem .4rem;
+  border-radius: 4px; border: 1px solid var(--border); color: var(--text-sec);
+}
+.type-badge.assign { background:rgba(5,150,105,.08); border-color:#6ee7b7; color:#065f46; }
+.type-badge.remove { background:rgba(220,38,38,.08); border-color:#fca5a5; color:#991b1b; }
+
+.review-panel {
+  background: var(--bg); border-top: 1px solid var(--border);
+  padding: .75rem 1rem; display:none;
+}
+.review-panel.show { display: block; }
+</style>
+
+<div class="aq-root">
+
+<div class="d-flex align-items-baseline gap-3 mb-4">
+  <h4 class="mb-0"><i class="bi bi-hourglass-split me-2"></i>Assignment Approval Queue</h4>
+  {% if not can_approve %}
+  <span style="font-size:.8rem;color:var(--text-muted)">
+    Your requests · approvals by contracting / superadmin
+  </span>
+  {% endif %}
+</div>
+
+<!-- ── Pending requests ── -->
+<div class="aq-card">
+  <div class="aq-card-header">
+    <i class="bi bi-clock text-warning"></i> Pending
+    {% if pending %}
+    <span class="badge bg-warning text-dark ms-1">{{ pending | length }}</span>
+    {% endif %}
+    {% if can_approve and pending %}
+    <span class="ms-auto text-muted fw-normal" style="font-size:.75rem">Review each request below</span>
+    {% endif %}
+  </div>
+
+  {% if not pending %}
+  <div class="p-4 text-center text-muted small">No pending requests.</div>
+  {% else %}
+  <div style="overflow-x:auto">
+    <table class="aq-table">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Client</th>
+          <th>Server</th>
+          <th>Product</th>
+          <th>CSI / Contract</th>
+          <th class="text-end">Qty</th>
+          <th>Notes</th>
+          <th>Proposed By</th>
+          <th>Proposed At</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in pending %}
+        <tr>
+          <td><span class="type-badge {{ r.request_type }}">{{ r.request_type }}</span></td>
+          <td class="fw-semibold">{{ r.client_name }}</td>
+          <td>
+            <span class="fw-semibold font-monospace">{{ r.hostname }}</span>
+            {% if r.environment %}<span class="badge bg-secondary ms-1" style="font-size:.65rem">{{ r.environment }}</span>{% endif %}
+          </td>
+          <td>
+            <span>{{ r.product_family | replace('_', ' ') | title }}</span>
+            {% if r.product_detail %}<div class="text-muted" style="font-size:.72rem">{{ r.product_detail }}</div>{% endif %}
+          </td>
+          <td><code style="font-size:.8rem">{{ r.csi_number or '—' }}</code></td>
+          <td class="text-end font-monospace">{{ r.licences_consumed or 'auto' }}</td>
+          <td class="text-muted small">{{ r.notes or '' }}</td>
+          <td>
+            <span class="fw-semibold">{{ r.proposed_by }}</span>
+            <div class="text-muted" style="font-size:.7rem">{{ r.proposed_by_role }}</div>
+          </td>
+          <td class="text-muted small text-nowrap">{{ r.proposed_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td class="text-end" style="white-space:nowrap">
+            {% if can_approve %}
+            <button class="btn btn-sm btn-outline-success me-1"
+                    onclick="toggleReview({{ r.request_id }})">
+              <i class="bi bi-check2"></i> Review
+            </button>
+            {% endif %}
+            <!-- Withdraw — proposer or approver -->
+            {% if r.proposed_by == current_user.username or can_approve %}
+            <form method="post"
+                  action="{{ url_for('assignment_withdraw', request_id=r.request_id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('Withdraw this request?')">
+              <button class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% if can_approve %}
+        <tr id="review-row-{{ r.request_id }}" style="display:none">
+          <td colspan="10" style="padding:0">
+            <div class="review-panel show">
+              <form method="post" action="{{ url_for('assignment_review', request_id=r.request_id) }}"
+                    class="d-flex gap-2 align-items-end flex-wrap">
+                <div style="flex:1;min-width:240px">
+                  <label class="form-label form-label-sm fw-bold mb-1">Review Note (optional)</label>
+                  <input type="text" name="review_note" class="form-control form-control-sm"
+                         placeholder="Reason, reference number…">
+                </div>
+                <div class="d-flex gap-2">
+                  <button type="submit" name="action" value="approve"
+                          class="btn btn-sm btn-success"
+                          onclick="return confirm('Approve and apply this assignment now?')">
+                    <i class="bi bi-check-lg me-1"></i>Approve
+                  </button>
+                  <button type="submit" name="action" value="reject"
+                          class="btn btn-sm btn-danger"
+                          onclick="return confirm('Reject this request?')">
+                    <i class="bi bi-x-lg me-1"></i>Reject
+                  </button>
+                </div>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── History ── -->
+<div class="aq-card">
+  <div class="aq-card-header">
+    <i class="bi bi-clock-history text-muted"></i> History
+    <span class="badge bg-secondary ms-1">{{ history | length }}</span>
+  </div>
+
+  {% if not history %}
+  <div class="p-4 text-center text-muted small">No completed requests yet.</div>
+  {% else %}
+  <div style="overflow-x:auto">
+    <table class="aq-table">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Status</th>
+          <th>Client</th>
+          <th>Server</th>
+          <th>Product</th>
+          <th>CSI</th>
+          <th class="text-end">Qty</th>
+          <th>Proposed By</th>
+          <th>Reviewed By</th>
+          <th>Review Note</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in history %}
+        <tr>
+          <td><span class="type-badge {{ r.request_type }}">{{ r.request_type }}</span></td>
+          <td><span class="status-badge {{ r.status }}">{{ r.status }}</span></td>
+          <td>{{ r.client_name }}</td>
+          <td>
+            <span class="font-monospace">{{ r.hostname }}</span>
+            {% if r.environment %}<span class="badge bg-secondary ms-1" style="font-size:.65rem">{{ r.environment }}</span>{% endif %}
+          </td>
+          <td>
+            {{ r.product_family | replace('_', ' ') | title }}
+            {% if r.product_detail %}<div class="text-muted" style="font-size:.72rem">{{ r.product_detail }}</div>{% endif %}
+          </td>
+          <td><code style="font-size:.8rem">{{ r.csi_number or '—' }}</code></td>
+          <td class="text-end font-monospace">{{ r.licences_consumed or 'auto' }}</td>
+          <td class="small">{{ r.proposed_by }}</td>
+          <td class="small text-muted">{{ r.reviewed_by or '—' }}</td>
+          <td class="small text-muted">{{ r.review_note or '' }}</td>
+          <td class="small text-muted text-nowrap">{{ r.proposed_at.strftime('%Y-%m-%d') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+</div>{# .aq-root #}
+
+<script>
+function toggleReview(id) {
+  const row = document.getElementById('review-row-' + id);
+  if (!row) return;
+  row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+</script>
+
+{% endblock %}

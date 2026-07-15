@@ -309,6 +309,13 @@
          href="{{ url_for('clients') }}"><i class="bi bi-people"></i><span>{{ t('nav.clients') }}</span></a>
       <a class="sidebar-link {% if request.endpoint == 'settings' %}active{% endif %}"
          href="{{ url_for('settings') }}"><i class="bi bi-gear"></i><span>{{ t('nav.alert_settings') }}</span></a>
+      <a class="sidebar-link {% if request.endpoint == 'assignment_queue' %}active{% endif %}"
+         href="{{ url_for('assignment_queue') }}">
+        <i class="bi bi-hourglass-split"></i><span>{{ t('nav.assignment_queue') }}
+        {%- set pending_count = pending_assignments_count | default(0) -%}
+        {% if pending_count > 0 %}<span class="badge bg-warning text-dark ms-1" style="font-size:.6rem">{{ pending_count }}</span>{% endif %}
+        </span>
+      </a>
       {% if is_superadmin %}
       <a class="sidebar-link {% if request.endpoint == 'admin_users' %}active{% endif %}"
          href="{{ url_for('admin_users') }}"><i class="bi bi-person-lock"></i><span>{{ t('nav.users_access') }}</span></a>
