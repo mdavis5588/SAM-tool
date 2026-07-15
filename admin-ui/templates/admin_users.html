@@ -1,0 +1,395 @@
+{% extends "base.html" %}
+{% block title %}User Management — Helios{% endblock %}
+{% block content %}
+
+<style>
+  .um-root {
+    --text-pri:   #0f0e0d;
+    --text-sec:   #52514e;
+    --text-muted: #8a8884;
+    --surface:    #ffffff;
+    --border:     #e4e2dc;
+    --bg:         #f4f6f8;
+    --accent:     #6d28d9;
+    --danger:     #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    .um-root {
+      --text-pri:#f0eeeb;--text-sec:#c3c2b7;--text-muted:#898781;
+      --surface:#1e1e1d;--border:#2e2e2b;--bg:#141413;
+    }
+  }
+  :root[data-theme="dark"]  .um-root{--text-pri:#f0eeeb;--text-sec:#c3c2b7;--text-muted:#898781;--surface:#1e1e1d;--border:#2e2e2b;--bg:#141413;}
+  :root[data-theme="light"] .um-root{--text-pri:#0f0e0d;--text-sec:#52514e;--text-muted:#8a8884;--surface:#ffffff;--border:#e4e2dc;--bg:#f4f6f8;}
+
+  .um-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; margin-bottom: 1.5rem;
+  }
+  .um-card-header {
+    padding: .7rem 1.1rem;
+    border-bottom: 1px solid var(--border);
+    font-weight: 700; font-size: .9rem;
+    display: flex; align-items: center; gap: .5rem;
+    color: var(--text-pri);
+  }
+  .um-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  .um-table th {
+    text-align: left; font-size: .7rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .04em;
+    color: var(--text-muted); padding: .45rem 1rem;
+    border-bottom: 2px solid var(--border);
+  }
+  .um-table td {
+    padding: .6rem 1rem; border-bottom: 1px solid var(--border);
+    color: var(--text-pri); vertical-align: middle;
+  }
+  .um-table tr:last-child td { border-bottom: none; }
+  .um-table tbody tr:hover td { background: var(--bg); }
+
+  .role-badge {
+    display: inline-flex; align-items: center; gap: .3rem;
+    font-size: .68rem; font-weight: 700; padding: .15rem .5rem;
+    border-radius: 20px; white-space: nowrap;
+  }
+  .role-badge.superadmin  { background: rgba(109,40,217,.12); color: #6d28d9; }
+  .role-badge.contracting { background: rgba(37,99,235,.12);  color: #1d4ed8; }
+  .role-badge.dba         { background: rgba(5,150,105,.12);  color: #047857; }
+  .role-badge.client      { background: rgba(107,114,128,.12);color: #374151; }
+
+  .auth-badge {
+    font-size: .65rem; font-weight: 600; padding: .1rem .4rem;
+    border-radius: 4px; border: 1px solid var(--border);
+    color: var(--text-sec);
+  }
+  .auth-badge.ad { background: rgba(37,99,235,.08); border-color: #93c5fd; color: #1d4ed8; }
+
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+  }
+  .status-dot.active   { background: #059669; }
+  .status-dot.inactive { background: #9ca3af; }
+
+  /* ── New user form ── */
+  .new-user-form {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1.25rem 1.4rem; margin-bottom: 1.5rem;
+  }
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: .75rem;
+  }
+  .form-label-sm {
+    font-size: .72rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .04em; color: var(--text-muted); margin-bottom: .25rem;
+  }
+
+  /* ── Edit modal styles ── */
+  .action-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--text-muted); font-size: .8rem; padding: .2rem .4rem;
+    border-radius: 4px; transition: color .12s, background .12s;
+  }
+  .action-btn:hover { background: var(--bg); color: var(--accent); }
+  .action-btn.danger:hover { color: var(--danger); }
+
+  /* Role descriptions */
+  .role-hint { font-size: .7rem; color: var(--text-muted); margin-top: .15rem; }
+</style>
+
+<div class="um-root">
+
+<div class="d-flex align-items-baseline gap-3 mb-4">
+  <h4 class="mb-0"><i class="bi bi-people-fill me-2"></i>User Management</h4>
+  <span style="font-size:.8rem;color:var(--text-muted)">Superadmin only</span>
+</div>
+
+<!-- ── Role reference ── -->
+<div class="d-flex gap-2 flex-wrap mb-4">
+  <div style="background:rgba(109,40,217,.06);border:1px solid rgba(109,40,217,.2);border-radius:8px;padding:.6rem .9rem;font-size:.78rem">
+    <span class="role-badge superadmin">superadmin</span>
+    <div class="role-hint mt-1">Full access to all features</div>
+  </div>
+  <div style="background:rgba(37,99,235,.06);border:1px solid rgba(37,99,235,.2);border-radius:8px;padding:.6rem .9rem;font-size:.78rem">
+    <span class="role-badge contracting">contracting</span>
+    <div class="role-hint mt-1">Add/manage contracts · view everything</div>
+  </div>
+  <div style="background:rgba(5,150,105,.06);border:1px solid rgba(5,150,105,.2);border-radius:8px;padding:.6rem .9rem;font-size:.78rem">
+    <span class="role-badge dba">dba</span>
+    <div class="role-hint mt-1">View everything · manage licence assignments</div>
+  </div>
+  <div style="background:rgba(107,114,128,.06);border:1px solid var(--border);border-radius:8px;padding:.6rem .9rem;font-size:.78rem">
+    <span class="role-badge client">client</span>
+    <div class="role-hint mt-1">View-only · scoped to one client</div>
+  </div>
+</div>
+
+<!-- ── Create new user ── -->
+<div class="new-user-form">
+  <div class="fw-bold mb-3" style="font-size:.9rem"><i class="bi bi-person-plus me-1"></i>Add New User</div>
+  <form method="post" action="{{ url_for('admin_user_create') }}" id="newUserForm">
+    <div class="form-grid mb-3">
+      <div>
+        <div class="form-label-sm">Username *</div>
+        <input type="text" name="username" class="form-control form-control-sm" required placeholder="jdoe">
+      </div>
+      <div>
+        <div class="form-label-sm">Display Name</div>
+        <input type="text" name="display_name" class="form-control form-control-sm" placeholder="Jane Doe">
+      </div>
+      <div>
+        <div class="form-label-sm">Email</div>
+        <input type="email" name="email" class="form-control form-control-sm" placeholder="jane@acme.com">
+      </div>
+      <div>
+        <div class="form-label-sm">Role *</div>
+        <select name="role" class="form-select form-select-sm" id="newRoleSelect" onchange="toggleClientField()">
+          <option value="client">client</option>
+          <option value="dba">dba</option>
+          <option value="contracting">contracting</option>
+          <option value="superadmin">superadmin</option>
+        </select>
+      </div>
+      <div id="clientField">
+        <div class="form-label-sm">Client *</div>
+        <select name="client_id" class="form-select form-select-sm" id="newClientSelect">
+          <option value="">— select client —</option>
+          {% for cl in clients %}
+          <option value="{{ cl.client_id }}">{{ cl.client_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <div class="form-label-sm">Auth Method</div>
+        <select name="auth_method" class="form-select form-select-sm" id="newAuthMethod" onchange="toggleAuthFields()">
+          <option value="local">Local (password)</option>
+          <option value="active_directory">Active Directory</option>
+        </select>
+      </div>
+      <div id="passwordField">
+        <div class="form-label-sm">Password</div>
+        <input type="password" name="password" class="form-control form-control-sm" placeholder="min 8 characters" autocomplete="new-password">
+      </div>
+      <div id="adField" style="display:none">
+        <div class="form-label-sm">AD Username (UPN)</div>
+        <input type="text" name="ad_username" class="form-control form-control-sm" placeholder="jane@corp.acme.com">
+      </div>
+    </div>
+    <button type="submit" class="btn btn-sm btn-primary">
+      <i class="bi bi-person-plus me-1"></i>Create User
+    </button>
+  </form>
+</div>
+
+<!-- ── Users table ── -->
+<div class="um-card">
+  <div class="um-card-header">
+    <i class="bi bi-people"></i> All Users
+    <span class="ms-auto" style="font-size:.75rem;font-weight:400;color:var(--text-muted)">{{ users|length }} total</span>
+  </div>
+  {% if not users %}
+  <div class="p-4 text-center text-muted">No users found.</div>
+  {% else %}
+  <div style="overflow-x:auto">
+    <table class="um-table">
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Display Name</th>
+          <th>Email</th>
+          <th>Role</th>
+          <th>Client Scope</th>
+          <th>Auth</th>
+          <th>Status</th>
+          <th>Last Login</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td style="font-weight:600;font-family:monospace">{{ u.username }}</td>
+          <td>{{ u.display_name or '—' }}</td>
+          <td style="color:var(--text-sec)">{{ u.email or '—' }}</td>
+          <td><span class="role-badge {{ u.role }}">{{ u.role }}</span></td>
+          <td style="color:var(--text-sec)">{{ u.client_name or '<span style="color:var(--text-muted)">All clients</span>' | safe }}</td>
+          <td>
+            <span class="auth-badge {{ 'ad' if u.auth_method == 'active_directory' else '' }}">
+              {{ 'AD' if u.auth_method == 'active_directory' else 'local' }}
+            </span>
+          </td>
+          <td>
+            <span class="status-dot {{ 'active' if u.is_active else 'inactive' }}"></span>
+            <span style="font-size:.78rem;color:var(--text-sec);margin-left:.3rem">{{ 'Active' if u.is_active else 'Inactive' }}</span>
+          </td>
+          <td style="font-size:.78rem;color:var(--text-muted)">{{ u.last_login or 'Never' }}</td>
+          <td>
+            <div class="d-flex gap-1">
+              <button class="action-btn" title="Edit" onclick="openEditModal({{ u | tojson }})">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <form method="post" action="{{ url_for('admin_user_edit', user_id=u.user_id) }}" style="display:inline">
+                <input type="hidden" name="action" value="toggle_active">
+                <button type="submit" class="action-btn" title="{{ 'Deactivate' if u.is_active else 'Activate' }}">
+                  <i class="bi bi-{{ 'pause-circle' if u.is_active else 'play-circle' }}"></i>
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+</div>
+
+<!-- ── Edit user modal ── -->
+<div class="modal fade" id="editUserModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Edit User</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" id="editUserForm">
+        <input type="hidden" name="action" value="update">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label form-label-sm fw-bold">Username</label>
+            <input type="text" id="editUsername" class="form-control form-control-sm" disabled>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col">
+              <label class="form-label form-label-sm fw-bold">Display Name</label>
+              <input type="text" name="display_name" id="editDisplayName" class="form-control form-control-sm">
+            </div>
+            <div class="col">
+              <label class="form-label form-label-sm fw-bold">Email</label>
+              <input type="email" name="email" id="editEmail" class="form-control form-control-sm">
+            </div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col">
+              <label class="form-label form-label-sm fw-bold">Role</label>
+              <select name="role" id="editRole" class="form-select form-select-sm" onchange="toggleEditClientField()">
+                <option value="client">client</option>
+                <option value="dba">dba</option>
+                <option value="contracting">contracting</option>
+                <option value="superadmin">superadmin</option>
+              </select>
+            </div>
+            <div class="col" id="editClientFieldWrap">
+              <label class="form-label form-label-sm fw-bold">Client Scope</label>
+              <select name="client_id" id="editClientId" class="form-select form-select-sm">
+                <option value="">— All clients —</option>
+                {% for cl in clients %}
+                <option value="{{ cl.client_id }}">{{ cl.client_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col">
+              <label class="form-label form-label-sm fw-bold">Auth Method</label>
+              <select name="auth_method" id="editAuthMethod" class="form-select form-select-sm" onchange="toggleEditAdField()">
+                <option value="local">Local (password)</option>
+                <option value="active_directory">Active Directory</option>
+              </select>
+            </div>
+            <div class="col" id="editAdFieldWrap">
+              <label class="form-label form-label-sm fw-bold">AD Username (UPN)</label>
+              <input type="text" name="ad_username" id="editAdUsername" class="form-control form-control-sm">
+            </div>
+          </div>
+
+          <hr>
+          <div class="mb-1 fw-bold" style="font-size:.8rem">Reset Password</div>
+          <div class="d-flex gap-2 align-items-end">
+            <div style="flex:1">
+              <input type="password" id="resetPwInput" class="form-control form-control-sm" placeholder="New password (min 8 chars)" autocomplete="new-password">
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-warning" onclick="submitResetPassword()">
+              Reset
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-sm btn-outline-danger me-auto" onclick="confirmDelete()">
+            <i class="bi bi-trash me-1"></i>Delete User
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden forms for delete & password reset -->
+<form method="post" id="deleteUserForm" style="display:none">
+  <input type="hidden" name="action" value="delete">
+</form>
+<form method="post" id="resetPwForm" style="display:none">
+  <input type="hidden" name="action" value="reset_password">
+  <input type="hidden" name="new_password" id="resetPwHidden">
+</form>
+
+<script>
+let _editUserId = null;
+
+function toggleClientField() {
+  const role = document.getElementById('newRoleSelect').value;
+  document.getElementById('clientField').style.display = role === 'client' ? '' : 'none';
+}
+function toggleAuthFields() {
+  const m = document.getElementById('newAuthMethod').value;
+  document.getElementById('passwordField').style.display = m === 'local' ? '' : 'none';
+  document.getElementById('adField').style.display       = m === 'active_directory' ? '' : 'none';
+}
+toggleClientField();
+
+function toggleEditClientField() {
+  const role = document.getElementById('editRole').value;
+  document.getElementById('editClientFieldWrap').style.display = role === 'client' ? '' : 'none';
+}
+function toggleEditAdField() {
+  const m = document.getElementById('editAuthMethod').value;
+  document.getElementById('editAdFieldWrap').style.display = m === 'active_directory' ? '' : 'none';
+}
+
+function openEditModal(u) {
+  _editUserId = u.user_id;
+  document.getElementById('editUsername').value     = u.username;
+  document.getElementById('editDisplayName').value  = u.display_name || '';
+  document.getElementById('editEmail').value        = u.email || '';
+  document.getElementById('editRole').value         = u.role;
+  document.getElementById('editClientId').value     = u.client_id || '';
+  document.getElementById('editAuthMethod').value   = u.auth_method;
+  document.getElementById('editAdUsername').value   = u.ad_username || '';
+  document.getElementById('editUserForm').action    = '/admin/users/' + u.user_id + '/edit';
+  document.getElementById('deleteUserForm').action  = '/admin/users/' + u.user_id + '/edit';
+  document.getElementById('resetPwForm').action     = '/admin/users/' + u.user_id + '/edit';
+  toggleEditClientField();
+  toggleEditAdField();
+  new bootstrap.Modal(document.getElementById('editUserModal')).show();
+}
+
+function confirmDelete() {
+  if (confirm('Permanently delete this user? This cannot be undone.')) {
+    document.getElementById('deleteUserForm').submit();
+  }
+}
+
+function submitResetPassword() {
+  const pw = document.getElementById('resetPwInput').value;
+  if (pw.length < 8) { alert('Password must be at least 8 characters.'); return; }
+  document.getElementById('resetPwHidden').value = pw;
+  document.getElementById('resetPwForm').submit();
+}
+</script>
+
+{% endblock %}

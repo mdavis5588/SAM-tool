@@ -312,9 +312,22 @@
          href="{{ url_for('clients') }}"><i class="bi bi-people"></i><span>{{ t('nav.clients') }}</span></a>
       <a class="sidebar-link {% if request.endpoint == 'settings' %}active{% endif %}"
          href="{{ url_for('settings') }}"><i class="bi bi-gear"></i><span>{{ t('nav.alert_settings') }}</span></a>
+      {% if is_superadmin %}
+      <a class="sidebar-link {% if request.endpoint == 'admin_users' %}active{% endif %}"
+         href="{{ url_for('admin_users') }}"><i class="bi bi-person-lock"></i><span>Users &amp; Access</span></a>
+      {% endif %}
     </nav>
 
     <div class="sidebar-bottom">
+      {% if current_user %}
+      <div class="sidebar-link" style="cursor:default;opacity:.8;pointer-events:none">
+        <i class="bi bi-person-circle"></i>
+        <span style="font-size:.8rem">
+          {{ current_user.display_name or current_user.username }}
+          <span style="font-size:.65rem;opacity:.65;display:block;margin-top:-.1rem">{{ current_user.role }}</span>
+        </span>
+      </div>
+      {% endif %}
       <a class="sidebar-link text-warning-link" href="{{ url_for('export_lms') }}">
         <i class="bi bi-file-earmark-excel"></i><span>{{ t('nav.lms_export') }}</span>
       </a>

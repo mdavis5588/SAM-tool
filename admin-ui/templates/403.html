@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Access Denied — Helios{% endblock %}
+{% block content %}
+<div class="d-flex flex-column align-items-center justify-content-center" style="min-height:60vh;text-align:center">
+  <i class="bi bi-shield-lock" style="font-size:3rem;color:#dc2626;margin-bottom:1rem"></i>
+  <h3 class="mb-2">Access Denied</h3>
+  <p class="text-muted mb-4">Your account does not have permission to view this page.</p>
+  <a href="{{ url_for('servers') }}" class="btn btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
+  </a>
+</div>
+{% endblock %}

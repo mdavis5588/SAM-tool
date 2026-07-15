@@ -9,11 +9,12 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from functools import wraps
 
+import bcrypt
 import psycopg2
 import psycopg2.extras
 import requests
 from flask import (Flask, Response, render_template, request, redirect,
-                   url_for, session, flash, jsonify)
+                   url_for, session, flash, jsonify, abort)
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 
@@ -157,8 +158,67 @@ def _is_compatible_product(family, product_detail, line_family, line_product_nam
 
 
 # ---------------------------------------------------------------------------
-# Auth
 # ---------------------------------------------------------------------------
+# Auth & RBAC
+# ---------------------------------------------------------------------------
+
+def _hash_password(plain: str) -> str:
+    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
+
+def _check_password(plain: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
+    except Exception:
+        return False
+
+def _ensure_bootstrap_admin():
+    """On startup: upsert the env-var admin account into app_users with a bcrypt hash."""
+    try:
+        existing = query(
+            "SELECT user_id, password_hash FROM sam_admin.app_users WHERE username = %s",
+            (ADMIN_USER,), fetchall=False
+        )
+        hashed = _hash_password(ADMIN_PASSWORD)
+        if existing is None:
+            execute(
+                """INSERT INTO sam_admin.app_users
+                   (username, display_name, role, auth_method, password_hash, created_by)
+                   VALUES (%s, 'Administrator', 'superadmin', 'local', %s, 'bootstrap')""",
+                (ADMIN_USER, hashed)
+            )
+        elif not existing["password_hash"]:
+            execute(
+                "UPDATE sam_admin.app_users SET password_hash = %s WHERE username = %s",
+                (hashed, ADMIN_USER)
+            )
+    except Exception:
+        pass  # Table may not exist yet (pre-migration); fall back to env-var auth below
+
+def _get_user_from_db(username: str):
+    try:
+        return query(
+            """SELECT u.user_id, u.username, u.display_name, u.email,
+                      u.password_hash, u.role, u.client_id, u.is_active,
+                      u.auth_method, u.ad_username, u.force_password_change,
+                      c.schema_name AS client_schema, c.client_code, c.client_name
+               FROM sam_admin.app_users u
+               LEFT JOIN sam_admin.clients c ON c.client_id = u.client_id
+               WHERE u.username = %s AND u.is_active""",
+            (username,), fetchall=False
+        )
+    except Exception:
+        return None
+
+def current_user():
+    """Return the full user dict for the logged-in user (from session cache)."""
+    return session.get("user") or {}
+
+def current_role():
+    return current_user().get("role", "")
+
+def is_superadmin():
+    return current_role() == "superadmin"
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -167,15 +227,91 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
+def roles_required(*roles):
+    """Decorator: allow only users whose role is in *roles."""
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if not session.get("logged_in"):
+                return redirect(url_for("login", next=request.path))
+            if current_role() not in roles:
+                abort(403)
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
+
+def superadmin_required(f):
+    return roles_required("superadmin")(f)
+
+def can_write_contracts():
+    return current_role() in ("superadmin", "contracting")
+
+def can_write_licences():
+    return current_role() in ("superadmin", "dba")
+
+def _enforce_client_scope():
+    """For client-scoped users, force the active schema to their assigned client."""
+    user = current_user()
+    if user.get("role") == "client" and user.get("client_schema"):
+        session["client_schema"] = user["client_schema"]
+
+@app.before_request
+def _apply_client_scope():
+    if session.get("logged_in"):
+        _enforce_client_scope()
+
+@app.context_processor
+def _inject_user():
+    return {
+        "current_user":       current_user(),
+        "current_role":       current_role(),
+        "can_write_contracts": can_write_contracts(),
+        "can_write_licences":  can_write_licences(),
+        "is_superadmin":       is_superadmin(),
+    }
+
+with app.app_context():
+    try:
+        _ensure_bootstrap_admin()
+    except Exception:
+        pass
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        if (request.form.get("username") == ADMIN_USER and
-                request.form.get("password") == ADMIN_PASSWORD):
-            session["logged_in"] = True
-            return redirect(request.args.get("next") or url_for("servers"))
+        username = (request.form.get("username") or "").strip()
+        password = request.form.get("password") or ""
+
+        user = _get_user_from_db(username)
+        if user:
+            # DB-backed login
+            authed = False
+            if user["auth_method"] == "local" and user["password_hash"]:
+                authed = _check_password(password, user["password_hash"])
+            # AD placeholder: when auth_method='active_directory', integrate LDAP here
+            if authed:
+                execute(
+                    "UPDATE sam_admin.app_users SET last_login = NOW() WHERE user_id = %s",
+                    (user["user_id"],)
+                )
+                session["logged_in"] = True
+                session["user"] = dict(user)
+                # Client-scoped users are locked to their client
+                if user["role"] == "client" and user["client_schema"]:
+                    session["client_schema"] = user["client_schema"]
+                return redirect(request.args.get("next") or url_for("servers"))
+        else:
+            # Legacy fallback: env-var admin (covers pre-migration deployments)
+            if username == ADMIN_USER and password == ADMIN_PASSWORD:
+                session["logged_in"] = True
+                session["user"] = {
+                    "username": ADMIN_USER, "display_name": "Administrator",
+                    "role": "superadmin", "client_id": None,
+                    "client_schema": None, "client_code": None,
+                }
+                return redirect(request.args.get("next") or url_for("servers"))
+
         flash("Invalid username or password.", "danger")
     return render_template("login.html")
 
@@ -184,6 +320,142 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+# ---------------------------------------------------------------------------
+# User management  (superadmin only)
+# ---------------------------------------------------------------------------
+@app.route("/admin/users")
+@superadmin_required
+def admin_users():
+    users = query("""
+        SELECT u.user_id, u.username, u.display_name, u.email,
+               u.role, u.is_active, u.auth_method, u.ad_username,
+               u.last_login::DATE AS last_login, u.created_at::DATE AS created_at,
+               c.client_name
+        FROM sam_admin.app_users u
+        LEFT JOIN sam_admin.clients c ON c.client_id = u.client_id
+        ORDER BY u.role, u.username
+    """)
+    clients = query(
+        "SELECT client_id, client_name, client_code FROM sam_admin.clients "
+        "WHERE is_active ORDER BY client_name"
+    )
+    return render_template("admin_users.html", users=users, clients=clients)
+
+
+@app.route("/admin/users/new", methods=["POST"])
+@superadmin_required
+def admin_user_create():
+    username     = (request.form.get("username") or "").strip()
+    display_name = (request.form.get("display_name") or "").strip() or None
+    email        = (request.form.get("email") or "").strip() or None
+    role         = request.form.get("role", "client")
+    client_id    = request.form.get("client_id") or None
+    auth_method  = request.form.get("auth_method", "local")
+    ad_username  = (request.form.get("ad_username") or "").strip() or None
+    password     = request.form.get("password") or ""
+
+    if not username:
+        flash("Username is required.", "danger")
+        return redirect(url_for("admin_users"))
+
+    if role not in ("superadmin", "contracting", "dba", "client"):
+        flash("Invalid role.", "danger")
+        return redirect(url_for("admin_users"))
+
+    if role == "client" and not client_id:
+        flash("A client must be selected for client-scoped users.", "danger")
+        return redirect(url_for("admin_users"))
+
+    if role != "client":
+        client_id = None
+
+    pw_hash = _hash_password(password) if auth_method == "local" and password else None
+
+    try:
+        execute(
+            """INSERT INTO sam_admin.app_users
+               (username, display_name, email, role, client_id, auth_method,
+                ad_username, password_hash, created_by)
+               VALUES (%s,%s,%s,%s::sam_admin.app_role,%s,%s::sam_admin.auth_method,%s,%s,%s)""",
+            (username, display_name, email, role, client_id, auth_method,
+             ad_username, pw_hash, current_user().get("username", "admin"))
+        )
+        flash(f"User '{username}' created.", "success")
+    except Exception as e:
+        if "unique" in str(e).lower():
+            flash(f"Username '{username}' already exists.", "danger")
+        else:
+            flash(f"Error creating user: {e}", "danger")
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/<int:user_id>/edit", methods=["POST"])
+@superadmin_required
+def admin_user_edit(user_id):
+    action = request.form.get("action")
+
+    if action == "toggle_active":
+        execute(
+            "UPDATE sam_admin.app_users SET is_active = NOT is_active WHERE user_id = %s",
+            (user_id,)
+        )
+        flash("User status updated.", "success")
+
+    elif action == "reset_password":
+        new_pw = request.form.get("new_password") or ""
+        if len(new_pw) < 8:
+            flash("Password must be at least 8 characters.", "danger")
+            return redirect(url_for("admin_users"))
+        execute(
+            "UPDATE sam_admin.app_users SET password_hash = %s, force_password_change = TRUE "
+            "WHERE user_id = %s",
+            (_hash_password(new_pw), user_id)
+        )
+        flash("Password reset. User will be prompted to change it on next login.", "success")
+
+    elif action == "update":
+        display_name = (request.form.get("display_name") or "").strip() or None
+        email        = (request.form.get("email") or "").strip() or None
+        role         = request.form.get("role", "client")
+        client_id    = request.form.get("client_id") or None
+        auth_method  = request.form.get("auth_method", "local")
+        ad_username  = (request.form.get("ad_username") or "").strip() or None
+
+        if role != "client":
+            client_id = None
+
+        # Prevent locking out the bootstrap admin
+        target = query(
+            "SELECT username FROM sam_admin.app_users WHERE user_id = %s",
+            (user_id,), fetchall=False
+        )
+        if target and target["username"] == ADMIN_USER and role != "superadmin":
+            flash("Cannot change the role of the bootstrap admin account.", "danger")
+            return redirect(url_for("admin_users"))
+
+        execute(
+            """UPDATE sam_admin.app_users
+               SET display_name=%s, email=%s, role=%s::sam_admin.app_role,
+                   client_id=%s, auth_method=%s::sam_admin.auth_method, ad_username=%s
+               WHERE user_id=%s""",
+            (display_name, email, role, client_id, auth_method, ad_username, user_id)
+        )
+        flash("User updated.", "success")
+
+    elif action == "delete":
+        target = query(
+            "SELECT username FROM sam_admin.app_users WHERE user_id = %s",
+            (user_id,), fetchall=False
+        )
+        if target and target["username"] == ADMIN_USER:
+            flash("Cannot delete the bootstrap admin account.", "danger")
+            return redirect(url_for("admin_users"))
+        execute("DELETE FROM sam_admin.app_users WHERE user_id = %s", (user_id,))
+        flash("User deleted.", "success")
+
+    return redirect(url_for("admin_users"))
 
 
 # ---------------------------------------------------------------------------
@@ -3903,6 +4175,11 @@ def inject_globals():
         "active_schema": get_schema() if session.get("logged_in") else DEFAULT_CLIENT_SCHEMA,
         "all_clients":   get_clients() if session.get("logged_in") else [],
     }
+
+
+@app.errorhandler(403)
+def forbidden(e):
+    return render_template("403.html"), 403
 
 
 if __name__ == "__main__":
