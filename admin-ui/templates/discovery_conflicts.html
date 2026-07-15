@@ -177,7 +177,7 @@
 
   <p class="mb-1" style="font-size:.85rem; font-weight:600;">{{ t('discovery_conflicts.func_ansible') }}</p>
   <div class="code-block">
-<span class="comment"># tasks/register_servers.yml</span>
+{% raw %}<span class="comment"># tasks/register_servers.yml</span>
 - name: Register server with SAM dedup function
   community.postgresql.postgresql_query:
     db: "{{ sam_db_name }}"
@@ -219,7 +219,7 @@
 
 - name: Log registration result
   debug:
-    msg: "{{ register_result.query_result[0].register_server }}"
+    msg: "{{ register_result.query_result[0].register_server }}"{% endraw %}
   </div>
 
   <p class="mb-1" style="font-size:.85rem; font-weight:600;">{{ t('discovery_conflicts.func_psql') }}</p>
