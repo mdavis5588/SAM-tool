@@ -1352,9 +1352,25 @@ def _build_licence_detail(entitlement_rows):
     # Fetch license_position data: required + NUP info per (hostname, product_detail)
     lp_data = {}  # (hostname, product_detail) -> {required, nup_minimum, nup_users, licence_metric}
     if active_schemas:
+        # Check if the NUP columns exist (added by migration 05)
+        first_schema = active_schemas[0]
+        _nup_check = query(
+            """
+            SELECT COUNT(*) AS n FROM information_schema.columns
+            WHERE table_schema = %s AND table_name = 'license_position'
+              AND column_name IN ('licence_metric','nup_minimum','nup_active_users')
+            """,
+            (first_schema,), fetchall=False
+        )
+        _has_nup = (_nup_check or {}).get("n", 0) == 3
+
+        if _has_nup:
+            _nup_select = "nup_minimum, nup_active_users, licence_metric"
+        else:
+            _nup_select = "NULL::NUMERIC AS nup_minimum, NULL::NUMERIC AS nup_active_users, 'processor_perpetual'::TEXT AS licence_metric"
+
         lp_union = " UNION ALL ".join(
-            f"SELECT hostname, product_detail, licences_required, "
-            f"nup_minimum, nup_active_users, licence_metric "
+            f"SELECT hostname, product_detail, licences_required, {_nup_select} "
             f"FROM {s}.license_position"
             for s in active_schemas
         )
@@ -3047,6 +3063,34 @@ def compliance_client(client_code):
         flash("Client not found.", "danger")
         return redirect(url_for("compliance"))
     s = client["schema_name"]
+    # Detect whether the license_position view has the NUP columns added by
+    # migration 05_nup_license_position.sql so the page works before and after.
+    _nup_cols_exist = query(
+        """
+        SELECT COUNT(*) AS n
+        FROM   information_schema.columns
+        WHERE  table_schema = %s
+          AND  table_name   = 'license_position'
+          AND  column_name  IN ('licence_metric','nup_minimum','nup_active_users')
+        """,
+        (s,), fetchall=False
+    )
+    _has_nup_cols = (_nup_cols_exist or {}).get("n", 0) == 3
+
+    _nup_issue_fields = (
+        """
+                    'licence_metric', lp.licence_metric,
+                    'nup_minimum',    lp.nup_minimum,
+                    'nup_users',      lp.nup_active_users
+        """
+        if _has_nup_cols else
+        """
+                    'licence_metric', 'processor_perpetual'::TEXT,
+                    'nup_minimum',    NULL::NUMERIC,
+                    'nup_users',      NULL::NUMERIC
+        """
+    )
+
     try:
         servers = query(f"""
             SELECT
@@ -3067,9 +3111,7 @@ def compliance_client(client_code):
                     'required',       lp.licences_required,
                     'assigned',       lp.total_licensed,
                     'short',          GREATEST(lp.licences_required - lp.total_licensed, 0),
-                    'licence_metric', lp.licence_metric,
-                    'nup_minimum',    lp.nup_minimum,
-                    'nup_users',      lp.nup_active_users
+                    {_nup_issue_fields}
                 ) ORDER BY lp.product_family)
                     FILTER (WHERE lp.compliance_status = 'under_licensed') AS issues
             FROM {s}.oracle_servers srv
