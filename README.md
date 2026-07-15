@@ -196,13 +196,29 @@ Afterwards the `license_position` view recalculates automatically on next query.
 
 ## Licence calculation rules
 
-### Oracle Database
+### Oracle Database — Processor Perpetual (default)
 
 | Edition | Calculation |
 |---------|-------------|
 | Enterprise Edition | `physical_cores × core_factor` |
 | Standard Edition 2 | `MIN(cpu_sockets, 2)` |
 | Standard Edition | `cpu_sockets` |
+
+Core factors are maintained centrally in `shared.core_factor_table`.
+Intel Xeon / AMD EPYC = 0.5. IBM POWER = 1.0. SPARC T-series = 0.25.
+
+### Oracle Database — Named User Plus (NUP)
+
+Set `licence_metric_override = 'named_user_plus'` on a server to switch it to NUP metric.
+
+| Edition | Minimum floor | Licences required |
+|---------|--------------|-------------------|
+| Enterprise Edition | `physical_cores × core_factor × 25` | `GREATEST(nup_minimum, active_users)` |
+| Standard Edition 2 | `cpu_sockets × 10` | `GREATEST(nup_minimum, active_users)` |
+
+Active user counts are populated by the Ansible discovery playbook via `upsert_oracle_extended_discovery`.
+NUP CSI contracts must be assigned separately from processor contracts — the UI filters the Add CSI
+dropdown to only show NUP lines when a server is in NUP mode.
 
 ### Oracle WebLogic
 
@@ -212,9 +228,6 @@ Afterwards the `license_position` view recalculates automatically on next query.
 | Oracle SOA Suite | `physical_cores × core_factor` (separate licence) |
 | Oracle Coherence | `physical_cores × core_factor` (separate licence) |
 | Oracle Service Bus | `physical_cores × core_factor` (separate licence) |
-
-Core factors are maintained centrally in `shared.core_factor_table`.
-Intel Xeon / AMD EPYC = 0.5. IBM POWER = 1.0. SPARC T-series = 0.25.
 
 ## CSI allocation examples
 
@@ -285,11 +298,10 @@ docker compose down
 - **Executive Summary** — top-level KPI dashboard: compliance score, licence gaps, contract portfolio value, and per-client RAG status
 - **Servers** — see every discovered server with its calculated licence requirement
   (processor count and type), CSI assignment status, and compliance badge
-- **Edit a server** — switch between Processor Perpetual (default) and Named User Plus;
+- **Edit a server** — switch between Processor Perpetual (default) and Named User Plus (NUP);
   assign or remove CSI contracts with optional licence quantity override;
-  view change history and acknowledge entries
-- **Contracts** — browse all CSI contracts, view entitlement lines and which servers
-  are consuming them
+  view change history and acknowledge entries. NUP servers show minimum floor and active user counts in the licence summary
+- **Contracts** — browse all CSI contracts, view entitlement lines and which servers are consuming them
   - **Renewal Calendar** — timeline view of upcoming support and ULA expiry dates, bucketed by urgency
 - **FinOps** — cost summary by product across all clients
   - **Server Costs** — per-server support cost breakdown
@@ -297,14 +309,16 @@ docker compose down
 - **Licence Summary** — aggregate licence position across all active contracts
 - **Compliance** — detailed audit-ready compliance findings
   - **Audit Readiness** — five-section audit report: licence gaps, unassigned servers, contract risks, empty contracts, ULA scope violations
-- **Visibility / Lifecycle Management** — Oracle DB version distribution across the estate
-- **Alerts** — live compliance alerts: expiring contracts, ULA deadlines,
-  unacknowledged HIGH severity changes, SE2 violations, unrecognised CPUs, and VMware exposure
-- **VMware** — vSphere cluster inventory showing Oracle VM workloads and the full
-  physical core count that Oracle requires to be licensed across each cluster
-- **LMS Export** — download a 10-sheet Excel workbook covering the full audit pack
-  (see below)
+  - **VMware** — vSphere cluster inventory showing Oracle VM workloads and the full physical core count that Oracle requires to be licensed across each cluster
+- **Visibility**
+  - **Lifecycle Management** — Oracle DB and WebLogic version distribution per client, with lifecycle status (Supported / Extended Support / Approaching EOL / Out of Support) shown as donut charts on the overview and per-server tables on the client detail page
+  - **Licence History** — trend charts from monthly licence snapshots: licences required vs. assigned over time, monthly compliance breakdown (stacked bar), and per-product-family requirements; up to 24 months of history
+- **Alerts** — live compliance alerts: expiring contracts, ULA deadlines, unacknowledged HIGH severity changes, SE2 violations, unrecognised CPUs, and VMware exposure
+- **LMS Export** — download a 10-sheet Excel workbook covering the full audit pack (see below)
 - **Settings** — configure email, Slack, or Teams alert channels
+- **Administration** (sidebar, superadmin only)
+  - **Users & Access** — create and manage application users; assign roles and client scope; enable/disable accounts; reset passwords
+  - **Audit & Snapshots** — take monthly licence position snapshots per client; view/delete snapshots; browse the full user activity audit trail with inline change diffs; run the retention purge
 
 The UI supports **English and French** — use the language toggle in the top navigation bar.
 
@@ -521,8 +535,17 @@ psql oracle_sam -f database/migrations/02_vmware_se2_cpu_alerts.sql
 psql oracle_sam -f database/migrations/03_merge_tuning_pack_names.sql
 psql oracle_sam -f database/migrations/04_ula_covered_products.sql
 
-# Per-line CSI assignment (top-level — not inside the migrations/ folder)
+# Per-line CSI assignment (lives at the top level of database/, not in migrations/)
 psql oracle_sam -f database/05_migration_per_line_csi.sql
+
+# NUP licence metric support
+psql oracle_sam -f database/migrations/05_nup_license_position.sql
+
+# Role-based access control (requires bcrypt in requirements.txt)
+psql oracle_sam -f database/migrations/06_rbac_users.sql
+
+# Audit logging and monthly licence snapshots
+psql oracle_sam -f database/migrations/07_audit_logging.sql
 ```
 
 | Script | What it adds |
@@ -532,9 +555,9 @@ psql oracle_sam -f database/05_migration_per_line_csi.sql
 | `migrations/03_merge_tuning_pack_names.sql` | Data fix: merges duplicate "Tuning Pack" / "Oracle Tuning Pack" product lines and re-points any server assignments |
 | `migrations/04_ula_covered_products.sql` | `shared.ula_covered_products` — stores which specific products a ULA contract covers; required for ULA scope violation detection in Audit Readiness |
 | `05_migration_per_line_csi.sql` | `shared.oracle_licensed_options` table; adds `product_detail` and `line_id` columns to `server_csi_map` in every client schema; enables per-line CSI assignment and Oracle option licence lines |
-| `migrations/05_nup_license_position.sql` | Reinstalls the `license_position` view in every client schema to add NUP columns: `licence_metric`, `nup_minimum`, `nup_active_users`, and NUP-aware `licences_required` |
-| `migrations/06_rbac_users.sql` | `sam_admin.app_role` and `sam_admin.auth_method` enum types; `sam_admin.app_users` table; seeds bootstrap admin row |
-| `migrations/07_audit_logging.sql` | `sam_admin.licence_snapshots` + `sam_admin.licence_snapshot_lines` (monthly licence position history, 24-month retention); `sam_admin.audit_log` (user activity trail, 6-month retention); `sam_admin.purge_old_audit_data()` function |
+| `migrations/05_nup_license_position.sql` | Reinstalls the `license_position` view in every client schema to add NUP columns: `licence_metric`, `nup_minimum`, `nup_active_users`, and NUP-aware `licences_required`. NUP minimum floors: EE = cores × core_factor × 25; SE2 = sockets × 10. `licences_required` = GREATEST(active_users, nup_minimum) |
+| `migrations/06_rbac_users.sql` | `sam_admin.app_role` enum (`superadmin`, `contracting`, `dba`, `client`); `sam_admin.auth_method` enum (`local`, `active_directory`); `sam_admin.app_users` table with bcrypt password hash, AD UPN, client scope, and force-password-change flag; seeds bootstrap admin row |
+| `migrations/07_audit_logging.sql` | `sam_admin.licence_snapshots` + `sam_admin.licence_snapshot_lines` (monthly licence position snapshots, 24-month retention); `sam_admin.audit_log` (user activity trail — server edits, CSI assignments, user management, 6-month retention); `sam_admin.purge_old_audit_data()` function |
 
 > **New installs:** `01_admin_schema.sql` and `02_shared_schema.sql` already include all of
 > the above. The migration scripts are only needed when upgrading an existing database.
@@ -552,22 +575,28 @@ SAM-tool/
 │   ├── 00_init.sql                     Roles, sample clients, seed data (edit before running)
 │   ├── 01_admin_schema.sql             Client registry + provisioning functions
 │   ├── 02_shared_schema.sql            CSI entitlements, core factor table, shared views
-│   ├── 03_client_template_functions.sql  Per-client views + discovery upsert functions
+│   ├── 03_client_template_functions.sql  Per-client views + discovery upsert functions (includes NUP support)
 │   ├── 05_migration_per_line_csi.sql   Migration: per-line CSI assignment + oracle option lines
-│   ├── sample_data.sql                 Sample data for client_acme
+│   ├── sample_data.sql                 Sample data for client_acme (processor metric)
 │   ├── sample_data_globex.sql          Sample data for client_globex
+│   ├── sample_data_nup.sql             Sample NUP licence data for client_acme
+│   ├── sample_data_weblogic.sql        Sample WebLogic discovery data
 │   └── migrations/
 │       ├── 01_java_licence_exemptions.sql   Java exemption columns
 │       ├── 02_vmware_se2_cpu_alerts.sql     VMware, SE2, CPU alert tables
 │       ├── 03_merge_tuning_pack_names.sql   Data fix: Tuning Pack deduplication
 │       ├── 04_ula_covered_products.sql      ULA covered products table
 │       ├── 05_nup_license_position.sql      NUP columns in license_position view
-│       └── 06_rbac_users.sql               RBAC: app_users table and role enums
+│       ├── 06_rbac_users.sql               RBAC: app_users table and role enums
+│       └── 07_audit_logging.sql            Licence snapshots + user activity audit log
 ├── admin-ui/
 │   ├── app.py                          Flask application
-│   ├── requirements.txt                Python dependencies
+│   ├── requirements.txt                Python dependencies (includes bcrypt)
 │   ├── templates/
 │   │   ├── admin_users.html            User management page (superadmin only)
+│   │   ├── admin_audit.html            Audit & Snapshots page (superadmin only)
+│   │   ├── admin_snapshot_view.html    Licence snapshot detail view
+│   │   ├── visibility_licence_history.html  Licence history trend charts
 │   │   ├── 403.html                    Access denied page
 │   │   └── ...                         All other Jinja2 templates
 │   └── translations/                   en.json / fr.json — bilingual strings
