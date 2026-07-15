@@ -439,6 +439,75 @@ ports:
 
 Then restart: `docker compose up -d`
 
+## User Roles & Access Control
+
+Helios uses role-based access control (RBAC) backed by the `sam_admin.app_users` table.
+User accounts are managed through the web UI and are ready for Active Directory integration.
+
+### Roles
+
+| Role | Who | What they can do |
+|---|---|---|
+| **superadmin** | Platform administrators | Full access: all clients, all data, user management, settings |
+| **contracting** | Procurement / contract managers | Add and edit CSI contracts and entitlements; read-only access to all other data |
+| **dba** | Database administrators | Add and remove licence assignments to servers; read-only access to all other data |
+| **client** | Client-specific users | Read-only access to their assigned client only — no cross-client data visible |
+
+### Applying the RBAC migration
+
+```bash
+psql oracle_sam -f database/migrations/06_rbac_users.sql
+```
+
+This creates the `sam_admin.app_users` table, the `app_role` and `auth_method` enum types,
+and seeds the bootstrap admin row. Safe to re-run on an existing database.
+
+Install the bcrypt dependency if you are running outside Docker:
+
+```bash
+pip install bcrypt==4.1.3
+# or: pip install -r admin-ui/requirements.txt  (already included)
+```
+
+### Bootstrap admin account
+
+On first start, the application automatically creates (or updates) a superadmin account
+seeded from the environment variables you already set:
+
+```
+ADMIN_USER=admin
+ADMIN_PASSWORD=changeme
+```
+
+The password is stored as a bcrypt hash — the plain-text value is never written to the
+database. If you change `ADMIN_PASSWORD` in `.env` and restart, the hash is updated
+automatically on the next request.
+
+The bootstrap admin account cannot be deleted or have its role changed through the UI,
+preventing accidental lockout.
+
+### Managing users
+
+Users are managed at **http://your-server:5000/admin/users** — accessible only to superadmin accounts. The link appears as **Users & Access** under the *Administration* section of the sidebar.
+
+From this page a superadmin can:
+
+- Create users with any role
+- Assign **client** users to a specific client so they only see that client's data
+- Enable or disable accounts
+- Force a password reset on next login
+- Delete accounts (except the bootstrap admin)
+
+### Active Directory integration
+
+Each user record has an `auth_method` field (`local` or `active_directory`) and an
+`ad_username` field for the user's UPN (e.g. `jsmith@corp.example.com`).
+
+The current implementation authenticates all users against the local bcrypt-hashed
+password. To wire up LDAP/AD authentication, replace the `_check_password()` call in
+`login()` inside `admin-ui/app.py` with your LDAP bind logic when `user["auth_method"] == "active_directory"`. The `ad_groups` JSONB column is available to store group memberships
+returned by the directory for future group-to-role mapping.
+
 ## Database migrations
 
 When upgrading an existing database (rather than doing a clean install), run the migration
@@ -463,6 +532,8 @@ psql oracle_sam -f database/05_migration_per_line_csi.sql
 | `migrations/03_merge_tuning_pack_names.sql` | Data fix: merges duplicate "Tuning Pack" / "Oracle Tuning Pack" product lines and re-points any server assignments |
 | `migrations/04_ula_covered_products.sql` | `shared.ula_covered_products` — stores which specific products a ULA contract covers; required for ULA scope violation detection in Audit Readiness |
 | `05_migration_per_line_csi.sql` | `shared.oracle_licensed_options` table; adds `product_detail` and `line_id` columns to `server_csi_map` in every client schema; enables per-line CSI assignment and Oracle option licence lines |
+| `migrations/05_nup_license_position.sql` | Reinstalls the `license_position` view in every client schema to add NUP columns: `licence_metric`, `nup_minimum`, `nup_active_users`, and NUP-aware `licences_required` |
+| `migrations/06_rbac_users.sql` | `sam_admin.app_role` and `sam_admin.auth_method` enum types; `sam_admin.app_users` table; seeds bootstrap admin row |
 
 > **New installs:** `01_admin_schema.sql` and `02_shared_schema.sql` already include all of
 > the above. The migration scripts are only needed when upgrading an existing database.
@@ -488,11 +559,16 @@ SAM-tool/
 │       ├── 01_java_licence_exemptions.sql   Java exemption columns
 │       ├── 02_vmware_se2_cpu_alerts.sql     VMware, SE2, CPU alert tables
 │       ├── 03_merge_tuning_pack_names.sql   Data fix: Tuning Pack deduplication
-│       └── 04_ula_covered_products.sql      ULA covered products table
+│       ├── 04_ula_covered_products.sql      ULA covered products table
+│       ├── 05_nup_license_position.sql      NUP columns in license_position view
+│       └── 06_rbac_users.sql               RBAC: app_users table and role enums
 ├── admin-ui/
 │   ├── app.py                          Flask application
 │   ├── requirements.txt                Python dependencies
-│   ├── templates/                      Jinja2 HTML templates
+│   ├── templates/
+│   │   ├── admin_users.html            User management page (superadmin only)
+│   │   ├── 403.html                    Access denied page
+│   │   └── ...                         All other Jinja2 templates
 │   └── translations/                   en.json / fr.json — bilingual strings
 ├── PowerBI/POWERBI_SETUP.md           Power BI connection + DAX guide
 └── README.md
