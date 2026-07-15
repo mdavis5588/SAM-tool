@@ -49,9 +49,16 @@ CREATE OR REPLACE FUNCTION sam_admin.touch_app_user()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END; $$;
 
--- Drop old name variants in case of partial prior runs
-DROP TRIGGER IF EXISTS trg_app_usr_updated  ON sam_admin.app_users;
-DROP TRIGGER IF EXISTS trg_app_user_updated ON sam_admin.app_users;
+-- Drop old name variants safely (table may not exist on a first failed run)
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'sam_admin' AND table_name = 'app_users'
+  ) THEN
+    DROP TRIGGER IF EXISTS trg_app_usr_updated  ON sam_admin.app_users;
+    DROP TRIGGER IF EXISTS trg_app_user_updated ON sam_admin.app_users;
+  END IF;
+END $$;
 CREATE TRIGGER trg_app_user_updated
   BEFORE UPDATE ON sam_admin.app_users
   FOR EACH ROW EXECUTE FUNCTION sam_admin.touch_app_user();
