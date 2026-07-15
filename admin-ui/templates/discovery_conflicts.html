@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block title %}{{ t('discovery_conflicts.title') }}{% endblock %}
+{% block content %}
+<style>
+  :root {
+    --dc-surface: #fff;
+    --dc-border: #dee2e6;
+    --dc-muted: #6c757d;
+    --dc-badge-bg: #dc3545;
+    --dc-code-bg: #f8f9fa;
+    --dc-code-border: #e9ecef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --dc-surface: #1e2228;
+      --dc-border: #373c44;
+      --dc-muted: #8b95a1;
+      --dc-badge-bg: #b02a37;
+      --dc-code-bg: #161b22;
+      --dc-code-border: #30363d;
+    }
+  }
+  :root[data-theme="dark"] {
+    --dc-surface: #1e2228;
+    --dc-border: #373c44;
+    --dc-muted: #8b95a1;
+    --dc-badge-bg: #b02a37;
+    --dc-code-bg: #161b22;
+    --dc-code-border: #30363d;
+  }
+
+  .dc-header { margin-bottom: 1.5rem; }
+  .dc-header h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: .25rem; }
+  .dc-header p  { color: var(--dc-muted); font-size: .9rem; margin: 0; }
+
+  .dc-table-wrap { overflow-x: auto; }
+  .dc-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  .dc-table th {
+    background: var(--dc-surface);
+    border-bottom: 2px solid var(--dc-border);
+    padding: .55rem .75rem;
+    text-align: left;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .dc-table td {
+    border-bottom: 1px solid var(--dc-border);
+    padding: .55rem .75rem;
+    vertical-align: top;
+  }
+  .dc-table tr:last-child td { border-bottom: none; }
+  .dc-table tr:hover td { background: rgba(128,128,128,.05); }
+
+  .badge-conflict {
+    display: inline-block;
+    background: var(--dc-badge-bg);
+    color: #fff;
+    font-size: .7rem;
+    font-weight: 600;
+    padding: .2em .5em;
+    border-radius: 3px;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+  }
+  .detail-text {
+    font-size: .8rem;
+    color: var(--dc-muted);
+    max-width: 340px;
+    word-break: break-word;
+  }
+
+  .info-card {
+    background: var(--dc-surface);
+    border: 1px solid var(--dc-border);
+    border-radius: 6px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.25rem;
+  }
+  .info-card h5 { font-size: .95rem; font-weight: 700; margin-bottom: .5rem; }
+  .info-card p  { font-size: .875rem; margin-bottom: 0; line-height: 1.6; }
+
+  .code-block {
+    background: var(--dc-code-bg);
+    border: 1px solid var(--dc-code-border);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: .78rem;
+    line-height: 1.6;
+    overflow-x: auto;
+    margin-bottom: 1.25rem;
+  }
+  .code-block .comment { color: var(--dc-muted); }
+
+  .empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--dc-muted);
+  }
+  .empty-state i { font-size: 2.5rem; display: block; margin-bottom: .75rem; opacity: .5; }
+</style>
+
+<div class="container-fluid py-4">
+
+  <div class="dc-header">
+    <h1><i class="bi bi-exclamation-triangle me-2 text-warning"></i>{{ t('discovery_conflicts.title') }}</h1>
+    <p>{{ t('discovery_conflicts.subtitle') }}</p>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+      <div class="alert alert-{{ cat }} alert-dismissible fade show py-2" role="alert">
+        {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}
+  {% endwith %}
+
+  {% if conflicts %}
+  <div class="info-card">
+    <h5><i class="bi bi-info-circle me-1"></i>{{ t('discovery_conflicts.how_title') }}</h5>
+    <p>{{ t('discovery_conflicts.how_body') }}</p>
+  </div>
+
+  <div class="dc-table-wrap">
+    <table class="dc-table">
+      <thead>
+        <tr>
+          <th>{{ t('discovery_conflicts.col_client') }}</th>
+          <th>{{ t('discovery_conflicts.col_server_id') }}</th>
+          <th>{{ t('discovery_conflicts.col_hostname') }}</th>
+          <th>{{ t('discovery_conflicts.col_fqdn') }}</th>
+          <th>{{ t('discovery_conflicts.col_ip') }}</th>
+          <th>{{ t('discovery_conflicts.col_source') }}</th>
+          <th>{{ t('discovery_conflicts.col_last_seen') }}</th>
+          <th>{{ t('discovery_conflicts.col_detail') }}</th>
+          <th>{{ t('discovery_conflicts.col_actions') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in conflicts %}
+        <tr>
+          <td>{{ row.client_name }}</td>
+          <td>{{ row.server_id }}</td>
+          <td><span class="badge-conflict">{{ t('discovery_conflicts.badge_conflict') }}</span> {{ row.hostname }}</td>
+          <td>{{ row.fqdn or '—' }}</td>
+          <td>{{ row.ip_address or '—' }}</td>
+          <td>{{ row.discovery_source or '—' }}</td>
+          <td style="white-space:nowrap">{{ row.last_seen.strftime('%Y-%m-%d %H:%M') if row.last_seen else '—' }}</td>
+          <td><span class="detail-text">{{ row.conflict_detail or '—' }}</span></td>
+          <td>
+            <form method="post"
+                  action="{{ url_for('resolve_conflict', schema=row.schema_name, server_id=row.server_id) }}"
+                  style="display:inline">
+              <input type="hidden" name="hostname" value="{{ row.hostname }}">
+              <button type="submit" class="btn btn-sm btn-outline-success"
+                      onclick="return confirm('Mark this conflict as resolved?')">
+                <i class="bi bi-check-lg"></i> {{ t('discovery_conflicts.btn_resolve') }}
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% else %}
+  <div class="empty-state">
+    <i class="bi bi-check-circle"></i>
+    {{ t('discovery_conflicts.no_conflicts') }}
+  </div>
+  {% endif %}
+
+  <hr class="my-4">
+
+  <h5 class="mb-3"><i class="bi bi-terminal me-1"></i>{{ t('discovery_conflicts.func_title') }}</h5>
+
+  <p class="mb-1" style="font-size:.85rem; font-weight:600;">{{ t('discovery_conflicts.func_ansible') }}</p>
+  <div class="code-block">
+<span class="comment"># tasks/register_servers.yml</span>
+- name: Register server with SAM dedup function
+  community.postgresql.postgresql_query:
+    db: "{{ sam_db_name }}"
+    login_user: "{{ sam_db_user }}"
+    login_password: "{{ sam_db_password }}"
+    login_host: "{{ sam_db_host }}"
+    query: >
+      SELECT sam_admin.register_server(
+        p_schema            => %(schema)s,
+        p_hostname          => %(hostname)s,
+        p_source            => 'ansible',
+        p_fqdn              => %(fqdn)s,
+        p_ip_address        => %(ip)s,
+        p_os_family         => %(os_family)s,
+        p_os_distribution   => %(os_dist)s,
+        p_os_version        => %(os_ver)s,
+        p_environment       => %(env)s,
+        p_total_ram_mb      => %(ram_mb)s,
+        p_datacenter        => %(dc)s,
+        p_physical_cores    => %(cores)s,
+        p_cpu_sockets       => %(sockets)s,
+        p_cores_per_socket  => %(cps)s
+      )
+    named_args:
+      schema:    "{{ client_schema }}"
+      hostname:  "{{ inventory_hostname_short }}"
+      fqdn:      "{{ ansible_fqdn }}"
+      ip:        "{{ ansible_default_ipv4.address }}"
+      os_family: "{{ ansible_os_family }}"
+      os_dist:   "{{ ansible_distribution }}"
+      os_ver:    "{{ ansible_distribution_version }}"
+      env:       "{{ server_environment | default('PROD') }}"
+      ram_mb:    "{{ (ansible_memtotal_mb | int) }}"
+      dc:        "{{ datacenter | default(None) }}"
+      cores:     "{{ ansible_processor_cores * ansible_processor_count }}"
+      sockets:   "{{ ansible_processor_count }}"
+      cps:       "{{ ansible_processor_cores }}"
+  register: register_result
+
+- name: Log registration result
+  debug:
+    msg: "{{ register_result.query_result[0].register_server }}"
+  </div>
+
+  <p class="mb-1" style="font-size:.85rem; font-weight:600;">{{ t('discovery_conflicts.func_psql') }}</p>
+  <div class="code-block">
+<span class="comment">#!/bin/bash
+# cron: */30 * * * * /opt/sam/discover_psql.sh
+# Runs on each Oracle host; pipe result into log</span>
+
+SCHEMA="${SAM_CLIENT_SCHEMA:-client_acme}"
+HOSTNAME=$(hostname -s)
+FQDN=$(hostname -f)
+IP=$(hostname -I | awk '{print $1}')
+OS_FAMILY="Linux"
+OS_DIST=$(. /etc/os-release && echo "$ID")
+OS_VER=$(. /etc/os-release && echo "$VERSION_ID")
+
+psql "$SAM_DB_URL" -At -c "
+  SELECT sam_admin.register_server(
+    p_schema           => '$SCHEMA',
+    p_hostname         => '$HOSTNAME',
+    p_source           => 'psql_cron',
+    p_fqdn             => '$FQDN',
+    p_ip_address       => '$IP',
+    p_os_family        => '$OS_FAMILY',
+    p_os_distribution  => '$OS_DIST',
+    p_os_version       => '$OS_VER'
+  );
+"
+  </div>
+
+</div>
+{% endblock %}

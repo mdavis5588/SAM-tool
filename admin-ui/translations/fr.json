@@ -481,5 +481,30 @@
   "licence_history.col_status": "Statut",
   "licence_history.col_csi": "CSI",
   "licence_history.no_clients": "Aucun instantané n'a encore été pris.",
-  "licence_history.go_audit": "Audit & Instantanés"
+  "licence_history.go_audit": "Audit & Instantanés",
+
+  "nav.discovery_conflicts": "Conflits de détection",
+
+  "discovery_conflicts.title": "Conflits de détection de serveurs",
+  "discovery_conflicts.subtitle": "Serveurs signalés lors de la détection nécessitant une révision manuelle avant fusion.",
+  "discovery_conflicts.no_conflicts": "Aucun conflit de détection trouvé. Tous les serveurs ont été résolus correctement.",
+  "discovery_conflicts.col_client": "Client",
+  "discovery_conflicts.col_server_id": "ID",
+  "discovery_conflicts.col_hostname": "Nom d'hôte",
+  "discovery_conflicts.col_fqdn": "FQDN",
+  "discovery_conflicts.col_ip": "Adresse IP",
+  "discovery_conflicts.col_source": "Source de détection",
+  "discovery_conflicts.col_last_seen": "Dernière vue",
+  "discovery_conflicts.col_detail": "Détail du conflit",
+  "discovery_conflicts.col_actions": "Actions",
+  "discovery_conflicts.badge_conflict": "Conflit",
+  "discovery_conflicts.btn_resolve": "Marquer comme résolu",
+  "discovery_conflicts.resolved_ok": "Conflit marqué comme résolu pour le serveur {hostname}.",
+  "discovery_conflicts.resolved_err": "Impossible de marquer comme résolu — vérifiez l'enregistrement du serveur.",
+  "discovery_conflicts.migration_warning": "La migration 09 n'a pas encore été exécutée — colonne discovery_conflict introuvable.",
+  "discovery_conflicts.how_title": "Comment les conflits surviennent",
+  "discovery_conflicts.how_body": "Lorsqu'Ansible et le script cron PSQL détectent tous deux le même serveur physique, register_server() tente de le faire correspondre par nom d'hôte, nom court, FQDN puis adresse IP dans cet ordre. Un conflit est signalé uniquement lorsque deux lignes différentes revendiqueraient le même nom d'hôte entrant — la fonction s'arrête sans fusionner automatiquement. Examinez le détail ci-dessous, supprimez la ligne en double dans la base de données, puis relancez la détection pour effacer le signalement.",
+  "discovery_conflicts.func_title": "Appel de register_server()",
+  "discovery_conflicts.func_ansible": "Ansible (module postgresql_query)",
+  "discovery_conflicts.func_psql": "Script cron PSQL"
 }

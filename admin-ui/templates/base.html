@@ -321,6 +321,8 @@
          href="{{ url_for('admin_users') }}"><i class="bi bi-person-lock"></i><span>{{ t('nav.users_access') }}</span></a>
       <a class="sidebar-link {% if request.endpoint in ['admin_audit','admin_snapshot_view'] %}active{% endif %}"
          href="{{ url_for('admin_audit') }}"><i class="bi bi-journal-text"></i><span>{{ t('nav.audit_snapshots') }}</span></a>
+      <a class="sidebar-link {% if request.endpoint == 'discovery_conflicts' %}active{% endif %}"
+         href="{{ url_for('discovery_conflicts') }}"><i class="bi bi-exclamation-triangle"></i><span>{{ t('nav.discovery_conflicts') }}</span></a>
       {% endif %}
     </nav>
 

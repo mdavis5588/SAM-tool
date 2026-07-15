@@ -481,5 +481,30 @@
   "licence_history.col_status": "Status",
   "licence_history.col_csi": "CSI",
   "licence_history.no_clients": "No snapshots have been taken yet.",
-  "licence_history.go_audit": "Audit & Snapshots"
+  "licence_history.go_audit": "Audit & Snapshots",
+
+  "nav.discovery_conflicts": "Discovery Conflicts",
+
+  "discovery_conflicts.title": "Server Discovery Conflicts",
+  "discovery_conflicts.subtitle": "Servers flagged during discovery that need manual review before they can be merged.",
+  "discovery_conflicts.no_conflicts": "No discovery conflicts found. All servers resolved cleanly.",
+  "discovery_conflicts.col_client": "Client",
+  "discovery_conflicts.col_server_id": "ID",
+  "discovery_conflicts.col_hostname": "Hostname",
+  "discovery_conflicts.col_fqdn": "FQDN",
+  "discovery_conflicts.col_ip": "IP Address",
+  "discovery_conflicts.col_source": "Discovery Source",
+  "discovery_conflicts.col_last_seen": "Last Seen",
+  "discovery_conflicts.col_detail": "Conflict Detail",
+  "discovery_conflicts.col_actions": "Actions",
+  "discovery_conflicts.badge_conflict": "Conflict",
+  "discovery_conflicts.btn_resolve": "Mark Resolved",
+  "discovery_conflicts.resolved_ok": "Conflict marked as resolved for server {hostname}.",
+  "discovery_conflicts.resolved_err": "Could not mark resolved — check the server record.",
+  "discovery_conflicts.migration_warning": "Migration 09 has not been run yet — discovery_conflict column not found.",
+  "discovery_conflicts.how_title": "How conflicts occur",
+  "discovery_conflicts.how_body": "When Ansible and the PSQL cron job both discover the same physical server, register_server() matches on hostname, short-name, FQDN, and IP in priority order. A conflict is flagged only when two different rows would both claim the incoming hostname — the function stops and does not merge automatically. Review the detail below, delete the duplicate row in the database, then re-run discovery to clear the flag.",
+  "discovery_conflicts.func_title": "Calling register_server()",
+  "discovery_conflicts.func_ansible": "Ansible (postgresql_query module)",
+  "discovery_conflicts.func_psql": "PSQL cron script"
 }

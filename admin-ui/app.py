@@ -12,6 +12,7 @@ from functools import wraps
 import bcrypt
 import psycopg2
 import psycopg2.extras
+import psycopg2.sql
 import requests
 from flask import (Flask, Response, render_template, request, redirect,
                    url_for, session, flash, jsonify, abort)
@@ -1030,6 +1031,36 @@ def assignment_withdraw(request_id):
            client_schema=req["client_schema"])
     flash("Request withdrawn.", "info")
     return redirect(url_for("assignment_queue"))
+
+
+# ---------------------------------------------------------------------------
+# Server discovery conflicts
+# ---------------------------------------------------------------------------
+
+@app.route("/admin/discovery-conflicts")
+@superadmin_required
+def discovery_conflicts():
+    try:
+        rows = query("SELECT * FROM sam_admin.list_conflicts() ORDER BY schema_name, server_id")
+    except Exception:
+        flash("Migration 09 has not been run yet — discovery_conflict column not found.", "warning")
+        rows = []
+    return render_template("discovery_conflicts.html", conflicts=rows)
+
+
+@app.route("/admin/discovery-conflicts/<schema>/<int:server_id>/resolve", methods=["POST"])
+@superadmin_required
+def resolve_conflict(schema, server_id):
+    try:
+        sql = psycopg2.sql.SQL(
+            "UPDATE {}.oracle_servers SET discovery_conflict = FALSE, conflict_detail = NULL WHERE server_id = %s"
+        ).format(psycopg2.sql.Identifier(schema))
+        execute(sql, (server_id,))
+        hostname = request.form.get("hostname") or str(server_id)
+        flash(f"Conflict marked as resolved for server {hostname}.", "success")
+    except Exception:
+        flash("Could not mark resolved — check the server record.", "danger")
+    return redirect(url_for("discovery_conflicts"))
 
 
 # ---------------------------------------------------------------------------
