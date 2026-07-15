@@ -49,6 +49,8 @@ CREATE OR REPLACE FUNCTION sam_admin.touch_app_user()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END; $$;
 
+-- Drop old name variants in case of partial prior runs
+DROP TRIGGER IF EXISTS trg_app_usr_updated  ON sam_admin.app_users;
 DROP TRIGGER IF EXISTS trg_app_user_updated ON sam_admin.app_users;
 CREATE TRIGGER trg_app_user_updated
   BEFORE UPDATE ON sam_admin.app_users
