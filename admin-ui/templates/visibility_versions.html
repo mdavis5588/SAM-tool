@@ -85,6 +85,7 @@
     flex-direction: column;
     align-items: center;
     gap: .7rem;
+    min-width: 0;
   }
   .pie-panel-label {
     font-size: .7rem; font-weight: 700; text-transform: uppercase;
@@ -205,16 +206,21 @@
       <i class="bi bi-chevron-right" style="font-size:.75rem;color:var(--text-muted)"></i>
     </div>
 
-    <div class="pie-panels">
+    <div class="pie-panels" style="{{ 'grid-template-columns:1fr' if c.mw_total == 0 else '' }}">
       <!-- Database -->
-      <div class="pie-panel">
-        <div class="pie-panel-label db">
-          <i class="bi bi-database-fill"></i> Database
+      <div class="pie-panel" style="{{ 'flex-direction:row;align-items:flex-start;gap:1.5rem' if c.mw_total == 0 else '' }}">
+        <div>
+          <div class="pie-panel-label db" style="{{ 'margin-bottom:.6rem' if c.mw_total == 0 else '' }}">
+            <i class="bi bi-database-fill"></i> Database
+          </div>
+          {{ donut(c.db_status_counts, c.db_total) }}
         </div>
-        {{ donut(c.db_status_counts, c.db_total) }}
-        {{ status_legend(c.db_status_counts) }}
+        <div style="flex:1;min-width:0;{{ 'padding-top:.25rem' if c.mw_total == 0 else '' }}">
+          {{ status_legend(c.db_status_counts) }}
+        </div>
       </div>
 
+      {% if c.mw_total > 0 %}
       <div class="pie-divider"></div>
 
       <!-- Middleware -->
@@ -222,16 +228,10 @@
         <div class="pie-panel-label mw">
           <i class="bi bi-boxes"></i> Middleware
         </div>
-        {% if c.mw_total == 0 %}
-        <div class="no-servers-text" style="padding-top:1.5rem">
-          <i class="bi bi-dash-circle" style="font-size:1.5rem;display:block;margin-bottom:.4rem;opacity:.35"></i>
-          No WebLogic servers
-        </div>
-        {% else %}
         {{ donut(c.mw_status_counts, c.mw_total) }}
         {{ status_legend(c.mw_status_counts) }}
-        {% endif %}
       </div>
+      {% endif %}
     </div>
 
   </a>
