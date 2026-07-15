@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Audit & Snapshots — Helios{% endblock %}
+{% block title %}{{ t('admin_audit.title') }} — Helios{% endblock %}
 {% block content %}
 <div class="d-flex align-items-center justify-content-between mb-3">
-  <h4 class="mb-0"><i class="bi bi-journal-text me-2"></i>Audit &amp; Snapshots</h4>
+  <h4 class="mb-0"><i class="bi bi-journal-text me-2"></i>{{ t('admin_audit.title') }}</h4>
   <form method="post" action="{{ url_for('admin_audit_purge') }}"
-        onsubmit="return confirm('Run retention purge now?\n- Snapshots older than 24 months will be deleted.\n- Audit log entries older than 6 months will be deleted.')">
+        onsubmit="return confirm('{{ t('admin_audit.purge_confirm') }}')">
     <button class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-trash me-1"></i>Run Retention Purge
+      <i class="bi bi-trash me-1"></i>{{ t('admin_audit.btn_purge') }}
     </button>
   </form>
 </div>
@@ -15,13 +15,13 @@
 <ul class="nav nav-tabs mb-3" id="auditTabs">
   <li class="nav-item">
     <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-snapshots">
-      <i class="bi bi-camera me-1"></i>Licence Snapshots
+      <i class="bi bi-camera me-1"></i>{{ t('admin_audit.tab_snapshots') }}
       <span class="badge bg-secondary ms-1">{{ snapshots|length }}</span>
     </button>
   </li>
   <li class="nav-item">
     <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-activity">
-      <i class="bi bi-clock-history me-1"></i>User Activity
+      <i class="bi bi-clock-history me-1"></i>{{ t('admin_audit.tab_activity') }}
       <span class="badge bg-secondary ms-1">{{ audit_rows|length }}</span>
     </button>
   </li>
@@ -34,11 +34,11 @@
 
     <!-- Take snapshot form -->
     <div class="card mb-4">
-      <div class="card-header fw-semibold"><i class="bi bi-plus-circle me-1"></i>Take a New Snapshot</div>
+      <div class="card-header fw-semibold"><i class="bi bi-plus-circle me-1"></i>{{ t('admin_audit.take_title') }}</div>
       <div class="card-body">
         <form method="post" action="{{ url_for('admin_snapshot_take') }}" class="row g-3 align-items-end">
           <div class="col-md-4">
-            <label class="form-label">Client</label>
+            <label class="form-label">{{ t('label.client') }}</label>
             <select name="client_id" class="form-select" required>
               <option value="">— select —</option>
               {% for c in all_clients %}
@@ -47,17 +47,17 @@
             </select>
           </div>
           <div class="col-md-5">
-            <label class="form-label">Note <span class="text-muted">(optional)</span></label>
-            <input type="text" name="note" class="form-control" placeholder="e.g. Q2 2026 audit review">
+            <label class="form-label">{{ t('admin_audit.take_note') }}</label>
+            <input type="text" name="note" class="form-control" placeholder="{{ t('admin_audit.take_note_hint') }}">
           </div>
           <div class="col-md-3">
             <button class="btn btn-primary w-100">
-              <i class="bi bi-camera me-1"></i>Take Snapshot
+              <i class="bi bi-camera me-1"></i>{{ t('admin_audit.btn_take') }}
             </button>
           </div>
         </form>
         <div class="mt-2 small text-muted">
-          One snapshot is saved per client per calendar month. Snapshots are retained for up to 24 months.
+          {{ t('admin_audit.retention_hint') }}
         </div>
       </div>
     </div>
@@ -68,12 +68,12 @@
       <table class="table table-sm table-hover align-middle">
         <thead class="table-light">
           <tr>
-            <th>Month</th>
-            <th>Client</th>
-            <th>Lines</th>
-            <th>Taken By</th>
-            <th>Taken At</th>
-            <th>Note</th>
+            <th>{{ t('admin_audit.col_month') }}</th>
+            <th>{{ t('admin_audit.col_client') }}</th>
+            <th>{{ t('admin_audit.col_lines') }}</th>
+            <th>{{ t('admin_audit.col_taken_by') }}</th>
+            <th>{{ t('admin_audit.col_taken_at') }}</th>
+            <th>{{ t('admin_audit.col_note') }}</th>
             <th></th>
           </tr>
         </thead>
@@ -94,7 +94,7 @@
               <form method="post"
                     action="{{ url_for('admin_snapshot_delete', snapshot_id=s.snapshot_id) }}"
                     style="display:inline"
-                    onsubmit="return confirm('Delete this snapshot?')">
+                    onsubmit="return confirm('{{ t('admin_audit.confirm_delete_snap') }}')">
                 <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
               </form>
             </td>
@@ -104,7 +104,7 @@
       </table>
     </div>
     {% else %}
-    <p class="text-muted">No snapshots yet. Use the form above to capture the current licence position for a client.</p>
+    <p class="text-muted">{{ t('admin_audit.no_snapshots') }}</p>
     {% endif %}
   </div>
 
@@ -115,11 +115,11 @@
     <div class="row g-2 mb-3">
       <div class="col-md-4">
         <input type="text" id="auditSearch" class="form-control form-control-sm"
-               placeholder="Filter by user, action, entity…">
+               placeholder="{{ t('admin_audit.filter_placeholder') }}">
       </div>
       <div class="col-md-3">
         <select id="auditActionFilter" class="form-select form-select-sm">
-          <option value="">All actions</option>
+          <option value="">{{ t('admin_audit.filter_all_actions') }}</option>
           {% set seen_actions = namespace(v=[]) %}
           {% for r in audit_rows %}
             {% if r.action not in seen_actions.v %}
@@ -136,13 +136,13 @@
       <table class="table table-sm table-hover align-middle" id="auditTable">
         <thead class="table-light">
           <tr>
-            <th>When</th>
-            <th>User</th>
-            <th>Role</th>
-            <th>Action</th>
-            <th>Entity</th>
-            <th>Client</th>
-            <th>Changes</th>
+            <th>{{ t('admin_audit.col_when') }}</th>
+            <th>{{ t('admin_audit.col_user') }}</th>
+            <th>{{ t('admin_audit.col_role') }}</th>
+            <th>{{ t('admin_audit.col_action') }}</th>
+            <th>{{ t('admin_audit.col_entity') }}</th>
+            <th>{{ t('label.client') }}</th>
+            <th>{{ t('admin_audit.col_changes') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -181,9 +181,9 @@
         </tbody>
       </table>
     </div>
-    <p class="text-muted small">Showing most recent {{ audit_rows|length }} entries. Entries older than 6 months are automatically purged.</p>
+    <p class="text-muted small">{{ audit_rows|length }} — {{ t('admin_audit.activity_retention') }}</p>
     {% else %}
-    <p class="text-muted">No audit log entries yet. Actions will appear here as users make changes.</p>
+    <p class="text-muted">{{ t('admin_audit.no_activity') }}</p>
     {% endif %}
   </div>
 

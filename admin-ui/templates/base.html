@@ -311,9 +311,9 @@
          href="{{ url_for('settings') }}"><i class="bi bi-gear"></i><span>{{ t('nav.alert_settings') }}</span></a>
       {% if is_superadmin %}
       <a class="sidebar-link {% if request.endpoint == 'admin_users' %}active{% endif %}"
-         href="{{ url_for('admin_users') }}"><i class="bi bi-person-lock"></i><span>Users &amp; Access</span></a>
+         href="{{ url_for('admin_users') }}"><i class="bi bi-person-lock"></i><span>{{ t('nav.users_access') }}</span></a>
       <a class="sidebar-link {% if request.endpoint in ['admin_audit','admin_snapshot_view'] %}active{% endif %}"
-         href="{{ url_for('admin_audit') }}"><i class="bi bi-journal-text"></i><span>Audit &amp; Snapshots</span></a>
+         href="{{ url_for('admin_audit') }}"><i class="bi bi-journal-text"></i><span>{{ t('nav.audit_snapshots') }}</span></a>
       {% endif %}
     </nav>
 
@@ -372,10 +372,10 @@
 
   <div id="visibilityFlyoutPanel">
     <a class="sidebar-flyout-item" href="{{ url_for('visibility_versions') }}">
-      <i class="bi bi-calendar-check"></i>Lifecycle Management
+      <i class="bi bi-calendar-check"></i>{{ t('nav.versions') }}
     </a>
     <a class="sidebar-flyout-item" href="{{ url_for('visibility_licence_history') }}">
-      <i class="bi bi-graph-up"></i>Licence History
+      <i class="bi bi-graph-up"></i>{{ t('nav.licence_history') }}
     </a>
   </div>
 

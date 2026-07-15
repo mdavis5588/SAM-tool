@@ -4,7 +4,7 @@
 
 <div class="d-flex align-items-center gap-2 mb-3">
   <a href="{{ url_for('admin_audit') }}" class="btn btn-sm btn-outline-secondary">
-    <i class="bi bi-arrow-left me-1"></i>Back
+    <i class="bi bi-arrow-left me-1"></i>{{ t('snapshot_view.back') }}
   </a>
   <h5 class="mb-0">
     <i class="bi bi-camera me-2"></i>
@@ -14,21 +14,21 @@
 
 <div class="row g-3 mb-4">
   <div class="col-auto">
-    <small class="text-muted d-block">Taken by</small>
+    <small class="text-muted d-block">{{ t('snapshot_view.taken_by') }}</small>
     <strong>{{ snap.taken_by }}</strong>
   </div>
   <div class="col-auto">
-    <small class="text-muted d-block">Taken at</small>
+    <small class="text-muted d-block">{{ t('snapshot_view.taken_at') }}</small>
     <strong>{{ snap.taken_at.strftime('%Y-%m-%d %H:%M') }}</strong>
   </div>
   {% if snap.note %}
   <div class="col-auto">
-    <small class="text-muted d-block">Note</small>
+    <small class="text-muted d-block">{{ t('label.notes') }}</small>
     <strong>{{ snap.note }}</strong>
   </div>
   {% endif %}
   <div class="col-auto">
-    <small class="text-muted d-block">Lines</small>
+    <small class="text-muted d-block">{{ t('snapshot_view.lines') }}</small>
     <strong>{{ lines|length }}</strong>
   </div>
 </div>
@@ -41,15 +41,15 @@
 <div class="d-flex gap-3 mb-3 flex-wrap">
   <div class="border rounded px-3 py-2 text-center">
     <div class="fs-4 fw-bold text-danger">{{ under }}</div>
-    <div class="small text-muted">Under-licensed</div>
+    <div class="small text-muted">{{ t('snapshot_view.under_licensed') }}</div>
   </div>
   <div class="border rounded px-3 py-2 text-center">
     <div class="fs-4 fw-bold text-success">{{ ok }}</div>
-    <div class="small text-muted">Compliant</div>
+    <div class="small text-muted">{{ t('snapshot_view.compliant') }}</div>
   </div>
   <div class="border rounded px-3 py-2 text-center">
     <div class="fs-4 fw-bold text-secondary">{{ over }}</div>
-    <div class="small text-muted">Over-licensed</div>
+    <div class="small text-muted">{{ t('snapshot_view.over_licensed') }}</div>
   </div>
 </div>
 
@@ -57,15 +57,15 @@
   <table class="table table-sm table-hover align-middle">
     <thead class="table-light">
       <tr>
-        <th>Hostname</th>
-        <th>Env</th>
-        <th>Product</th>
-        <th>Edition / Detail</th>
-        <th class="text-end">Required</th>
-        <th class="text-end">Assigned</th>
-        <th class="text-end">Surplus/Deficit</th>
-        <th>Status</th>
-        <th>CSI / Contract</th>
+        <th>{{ t('snapshot_view.col_hostname') }}</th>
+        <th>{{ t('snapshot_view.col_env') }}</th>
+        <th>{{ t('snapshot_view.col_product') }}</th>
+        <th>{{ t('snapshot_view.col_edition') }}</th>
+        <th class="text-end">{{ t('snapshot_view.col_required') }}</th>
+        <th class="text-end">{{ t('snapshot_view.col_assigned') }}</th>
+        <th class="text-end">{{ t('snapshot_view.col_delta') }}</th>
+        <th>{{ t('snapshot_view.col_status') }}</th>
+        <th>{{ t('snapshot_view.col_csi') }}</th>
       </tr>
     </thead>
     <tbody>
@@ -90,11 +90,11 @@
         </td>
         <td>
           {% if l.compliance_status == 'under_licensed' %}
-            <span class="badge bg-danger">Under</span>
+            <span class="badge bg-danger">{{ t('snapshot_view.badge_under') }}</span>
           {% elif l.compliance_status == 'over_licensed' %}
-            <span class="badge bg-success">Over</span>
+            <span class="badge bg-success">{{ t('snapshot_view.badge_over') }}</span>
           {% elif l.compliance_status == 'compliant' %}
-            <span class="badge bg-success">OK</span>
+            <span class="badge bg-success">{{ t('snapshot_view.badge_ok') }}</span>
           {% else %}
             <span class="badge bg-secondary">{{ l.compliance_status or '—' }}</span>
           {% endif %}
@@ -106,6 +106,6 @@
   </table>
 </div>
 {% else %}
-<p class="text-muted">No lines recorded in this snapshot.</p>
+<p class="text-muted">{{ t('snapshot_view.no_lines') }}</p>
 {% endif %}
 {% endblock %}

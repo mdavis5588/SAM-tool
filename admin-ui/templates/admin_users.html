@@ -101,49 +101,48 @@
 <div class="um-root">
 
 <div class="d-flex align-items-baseline gap-3 mb-4">
-  <h4 class="mb-0"><i class="bi bi-people-fill me-2"></i>User Management</h4>
-  <span style="font-size:.8rem;color:var(--text-muted)">Superadmin only</span>
+  <h4 class="mb-0"><i class="bi bi-people-fill me-2"></i>{{ t('admin_users.title') }}</h4>
 </div>
 
 <!-- ── Role reference ── -->
 <div class="d-flex gap-2 flex-wrap mb-4">
   <div style="background:rgba(109,40,217,.06);border:1px solid rgba(109,40,217,.2);border-radius:8px;padding:.6rem .9rem;font-size:.78rem">
     <span class="role-badge superadmin">superadmin</span>
-    <div class="role-hint mt-1">Full access to all features</div>
+    <div class="role-hint mt-1">{{ t('admin_users.role_superadmin_desc') }}</div>
   </div>
   <div style="background:rgba(37,99,235,.06);border:1px solid rgba(37,99,235,.2);border-radius:8px;padding:.6rem .9rem;font-size:.78rem">
     <span class="role-badge contracting">contracting</span>
-    <div class="role-hint mt-1">Add/manage contracts · view everything</div>
+    <div class="role-hint mt-1">{{ t('admin_users.role_contracting_desc') }}</div>
   </div>
   <div style="background:rgba(5,150,105,.06);border:1px solid rgba(5,150,105,.2);border-radius:8px;padding:.6rem .9rem;font-size:.78rem">
     <span class="role-badge dba">dba</span>
-    <div class="role-hint mt-1">View everything · manage licence assignments</div>
+    <div class="role-hint mt-1">{{ t('admin_users.role_dba_desc') }}</div>
   </div>
   <div style="background:rgba(107,114,128,.06);border:1px solid var(--border);border-radius:8px;padding:.6rem .9rem;font-size:.78rem">
     <span class="role-badge client">client</span>
-    <div class="role-hint mt-1">View-only · scoped to one client</div>
+    <div class="role-hint mt-1">{{ t('admin_users.role_client_desc') }}</div>
   </div>
 </div>
 
 <!-- ── Create new user ── -->
 <div class="new-user-form">
-  <div class="fw-bold mb-3" style="font-size:.9rem"><i class="bi bi-person-plus me-1"></i>Add New User</div>
+  <div class="fw-bold mb-3" style="font-size:.9rem"><i class="bi bi-person-plus me-1"></i>{{ t('admin_users.create_title') }}</div>
   <form method="post" action="{{ url_for('admin_user_create') }}" id="newUserForm">
     <div class="form-grid mb-3">
       <div>
-        <div class="form-label-sm">Username *</div>
+        <div class="form-label-sm">{{ t('admin_users.field_username') }} *</div>
         <input type="text" name="username" class="form-control form-control-sm" required placeholder="jdoe">
       </div>
       <div>
-        <div class="form-label-sm">Display Name</div>
+        <div class="form-label-sm">{{ t('admin_users.field_display_name') }}</div>
         <input type="text" name="display_name" class="form-control form-control-sm" placeholder="Jane Doe">
       </div>
       <div>
-        <div class="form-label-sm">Email</div>
+        <div class="form-label-sm">{{ t('admin_users.field_email') }}</div>
         <input type="email" name="email" class="form-control form-control-sm" placeholder="jane@acme.com">
       </div>
       <div>
-        <div class="form-label-sm">Role *</div>
+        <div class="form-label-sm">{{ t('admin_users.field_role') }} *</div>
         <select name="role" class="form-select form-select-sm" id="newRoleSelect" onchange="toggleClientField()">
           <option value="client">client</option>
           <option value="dba">dba</option>
@@ -152,32 +151,32 @@
         </select>
       </div>
       <div id="clientField">
-        <div class="form-label-sm">Client *</div>
+        <div class="form-label-sm">{{ t('admin_users.field_client_scope') }} *</div>
         <select name="client_id" class="form-select form-select-sm" id="newClientSelect">
-          <option value="">— select client —</option>
+          <option value="">{{ t('admin_users.select_client') }}</option>
           {% for cl in clients %}
           <option value="{{ cl.client_id }}">{{ cl.client_name }}</option>
           {% endfor %}
         </select>
       </div>
       <div>
-        <div class="form-label-sm">Auth Method</div>
+        <div class="form-label-sm">{{ t('admin_users.field_auth_method') }}</div>
         <select name="auth_method" class="form-select form-select-sm" id="newAuthMethod" onchange="toggleAuthFields()">
-          <option value="local">Local (password)</option>
-          <option value="active_directory">Active Directory</option>
+          <option value="local">{{ t('admin_users.auth_local') }}</option>
+          <option value="active_directory">{{ t('admin_users.auth_ad') }}</option>
         </select>
       </div>
       <div id="passwordField">
-        <div class="form-label-sm">Password</div>
-        <input type="password" name="password" class="form-control form-control-sm" placeholder="min 8 characters" autocomplete="new-password">
+        <div class="form-label-sm">{{ t('admin_users.field_password') }}</div>
+        <input type="password" name="password" class="form-control form-control-sm" placeholder="{{ t('admin_users.field_password_hint') }}" autocomplete="new-password">
       </div>
       <div id="adField" style="display:none">
-        <div class="form-label-sm">AD Username (UPN)</div>
-        <input type="text" name="ad_username" class="form-control form-control-sm" placeholder="jane@corp.acme.com">
+        <div class="form-label-sm">{{ t('admin_users.field_ad_upn') }}</div>
+        <input type="text" name="ad_username" class="form-control form-control-sm" placeholder="{{ t('admin_users.ad_upn_hint') }}">
       </div>
     </div>
     <button type="submit" class="btn btn-sm btn-primary">
-      <i class="bi bi-person-plus me-1"></i>Create User
+      <i class="bi bi-person-plus me-1"></i>{{ t('admin_users.btn_create') }}
     </button>
   </form>
 </div>
@@ -185,24 +184,24 @@
 <!-- ── Users table ── -->
 <div class="um-card">
   <div class="um-card-header">
-    <i class="bi bi-people"></i> All Users
+    <i class="bi bi-people"></i> {{ t('admin_users.table_title') }}
     <span class="ms-auto" style="font-size:.75rem;font-weight:400;color:var(--text-muted)">{{ users|length }} total</span>
   </div>
   {% if not users %}
-  <div class="p-4 text-center text-muted">No users found.</div>
+  <div class="p-4 text-center text-muted">{{ t('admin_users.none') }}</div>
   {% else %}
   <div style="overflow-x:auto">
     <table class="um-table">
       <thead>
         <tr>
-          <th>Username</th>
-          <th>Display Name</th>
-          <th>Email</th>
-          <th>Role</th>
-          <th>Client Scope</th>
-          <th>Auth</th>
-          <th>Status</th>
-          <th>Last Login</th>
+          <th>{{ t('admin_users.col_username') }}</th>
+          <th>{{ t('admin_users.col_display_name') }}</th>
+          <th>{{ t('admin_users.col_email') }}</th>
+          <th>{{ t('admin_users.col_role') }}</th>
+          <th>{{ t('admin_users.col_scope') }}</th>
+          <th>{{ t('admin_users.col_auth') }}</th>
+          <th>{{ t('admin_users.col_status') }}</th>
+          <th>{{ t('admin_users.col_last_login') }}</th>
           <th></th>
         </tr>
       </thead>
@@ -213,15 +212,15 @@
           <td>{{ u.display_name or '—' }}</td>
           <td style="color:var(--text-sec)">{{ u.email or '—' }}</td>
           <td><span class="role-badge {{ u.role }}">{{ u.role }}</span></td>
-          <td style="color:var(--text-sec)">{{ u.client_name or '<span style="color:var(--text-muted)">All clients</span>' | safe }}</td>
+          <td style="color:var(--text-sec)">{{ u.client_name or ('<span style="color:var(--text-muted)">' + t('admin_users.scope_all') + '</span>') | safe }}</td>
           <td>
             <span class="auth-badge {{ 'ad' if u.auth_method == 'active_directory' else '' }}">
-              {{ 'AD' if u.auth_method == 'active_directory' else 'local' }}
+              {{ t('admin_users.auth_ad') if u.auth_method == 'active_directory' else t('admin_users.auth_local') }}
             </span>
           </td>
           <td>
             <span class="status-dot {{ 'active' if u.is_active else 'inactive' }}"></span>
-            <span style="font-size:.78rem;color:var(--text-sec);margin-left:.3rem">{{ 'Active' if u.is_active else 'Inactive' }}</span>
+            <span style="font-size:.78rem;color:var(--text-sec);margin-left:.3rem">{{ t('admin_users.status_active') if u.is_active else t('admin_users.status_inactive') }}</span>
           </td>
           <td style="font-size:.78rem;color:var(--text-muted)">{{ u.last_login or 'Never' }}</td>
           <td>
@@ -252,29 +251,29 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Edit User</h5>
+        <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>{{ t('admin_users.modal_edit_title') }}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <form method="post" id="editUserForm">
         <input type="hidden" name="action" value="update">
         <div class="modal-body">
           <div class="mb-3">
-            <label class="form-label form-label-sm fw-bold">Username</label>
+            <label class="form-label form-label-sm fw-bold">{{ t('admin_users.field_username') }}</label>
             <input type="text" id="editUsername" class="form-control form-control-sm" disabled>
           </div>
           <div class="row g-2 mb-3">
             <div class="col">
-              <label class="form-label form-label-sm fw-bold">Display Name</label>
+              <label class="form-label form-label-sm fw-bold">{{ t('admin_users.field_display_name') }}</label>
               <input type="text" name="display_name" id="editDisplayName" class="form-control form-control-sm">
             </div>
             <div class="col">
-              <label class="form-label form-label-sm fw-bold">Email</label>
+              <label class="form-label form-label-sm fw-bold">{{ t('admin_users.field_email') }}</label>
               <input type="email" name="email" id="editEmail" class="form-control form-control-sm">
             </div>
           </div>
           <div class="row g-2 mb-3">
             <div class="col">
-              <label class="form-label form-label-sm fw-bold">Role</label>
+              <label class="form-label form-label-sm fw-bold">{{ t('admin_users.field_role') }}</label>
               <select name="role" id="editRole" class="form-select form-select-sm" onchange="toggleEditClientField()">
                 <option value="client">client</option>
                 <option value="dba">dba</option>
@@ -283,9 +282,9 @@
               </select>
             </div>
             <div class="col" id="editClientFieldWrap">
-              <label class="form-label form-label-sm fw-bold">Client Scope</label>
+              <label class="form-label form-label-sm fw-bold">{{ t('admin_users.field_client_scope') }}</label>
               <select name="client_id" id="editClientId" class="form-select form-select-sm">
-                <option value="">— All clients —</option>
+                <option value="">{{ t('admin_users.select_client') }}</option>
                 {% for cl in clients %}
                 <option value="{{ cl.client_id }}">{{ cl.client_name }}</option>
                 {% endfor %}
@@ -294,35 +293,35 @@
           </div>
           <div class="row g-2 mb-3">
             <div class="col">
-              <label class="form-label form-label-sm fw-bold">Auth Method</label>
+              <label class="form-label form-label-sm fw-bold">{{ t('admin_users.field_auth_method') }}</label>
               <select name="auth_method" id="editAuthMethod" class="form-select form-select-sm" onchange="toggleEditAdField()">
-                <option value="local">Local (password)</option>
-                <option value="active_directory">Active Directory</option>
+                <option value="local">{{ t('admin_users.auth_local') }}</option>
+                <option value="active_directory">{{ t('admin_users.auth_ad') }}</option>
               </select>
             </div>
             <div class="col" id="editAdFieldWrap">
-              <label class="form-label form-label-sm fw-bold">AD Username (UPN)</label>
+              <label class="form-label form-label-sm fw-bold">{{ t('admin_users.field_ad_upn') }}</label>
               <input type="text" name="ad_username" id="editAdUsername" class="form-control form-control-sm">
             </div>
           </div>
 
           <hr>
-          <div class="mb-1 fw-bold" style="font-size:.8rem">Reset Password</div>
+          <div class="mb-1 fw-bold" style="font-size:.8rem">{{ t('admin_users.modal_reset_title') }}</div>
           <div class="d-flex gap-2 align-items-end">
             <div style="flex:1">
-              <input type="password" id="resetPwInput" class="form-control form-control-sm" placeholder="New password (min 8 chars)" autocomplete="new-password">
+              <input type="password" id="resetPwInput" class="form-control form-control-sm" placeholder="{{ t('admin_users.field_password_hint') }}" autocomplete="new-password">
             </div>
             <button type="button" class="btn btn-sm btn-outline-warning" onclick="submitResetPassword()">
-              Reset
+              {{ t('admin_users.btn_reset_pw') }}
             </button>
           </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-sm btn-outline-danger me-auto" onclick="confirmDelete()">
-            <i class="bi bi-trash me-1"></i>Delete User
+            <i class="bi bi-trash me-1"></i>{{ t('admin_users.btn_delete') }}
           </button>
-          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-sm btn-primary">Save Changes</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">{{ t('action.cancel') }}</button>
+          <button type="submit" class="btn btn-sm btn-primary">{{ t('admin_users.btn_save') }}</button>
         </div>
       </form>
     </div>
@@ -379,7 +378,7 @@ function openEditModal(u) {
 }
 
 function confirmDelete() {
-  if (confirm('Permanently delete this user? This cannot be undone.')) {
+  if (confirm('{{ t('admin_users.confirm_delete') }}')) {
     document.getElementById('deleteUserForm').submit();
   }
 }
