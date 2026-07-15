@@ -40,9 +40,10 @@
 
   /* ── Client grid ── */
   .client-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: 1.25rem;
+    align-items: flex-start;
   }
 
   /* ── Client card ── */
@@ -54,6 +55,9 @@
     text-decoration: none;
     color: inherit;
     display: block;
+    flex: 0 1 auto;
+    min-width: 280px;
+    max-width: 520px;
     transition: border-color .15s, box-shadow .15s;
   }
   .client-card:hover {
