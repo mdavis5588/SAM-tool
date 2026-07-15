@@ -3325,6 +3325,124 @@ def visibility_versions_client(client_code):
 
 
 # ---------------------------------------------------------------------------
+# Visibility — Licence history (snapshot trend charts)
+# ---------------------------------------------------------------------------
+@app.route("/visibility/licence-history")
+@login_required
+def visibility_licence_history():
+    """Client picker page — redirects to client-specific view."""
+    clients_with_snaps = query("""
+        SELECT c.client_id, c.client_code, c.client_name,
+               COUNT(s.snapshot_id)      AS snapshot_count,
+               MIN(s.snapshot_month)     AS earliest,
+               MAX(s.snapshot_month)     AS latest
+        FROM sam_admin.clients c
+        JOIN sam_admin.licence_snapshots s ON s.client_id = c.client_id
+        GROUP BY c.client_id, c.client_code, c.client_name
+        ORDER BY c.client_name
+    """)
+    return render_template("visibility_licence_history.html",
+                           clients=clients_with_snaps, selected=None,
+                           chart_data=None)
+
+
+@app.route("/visibility/licence-history/<client_code>")
+@login_required
+def visibility_licence_history_client(client_code):
+    client = query(
+        "SELECT client_id, client_code, client_name, schema_name "
+        "FROM sam_admin.clients WHERE client_code = %s AND is_active",
+        (client_code,), fetchall=False
+    )
+    if not client:
+        flash("Client not found.", "danger")
+        return redirect(url_for("visibility_licence_history"))
+
+    # Enforce client-scope users can only see their own client
+    u = current_user()
+    if u.get("role") == "client" and u.get("client_code") != client_code:
+        abort(403)
+
+    # All clients list for the switcher
+    clients_with_snaps = query("""
+        SELECT c.client_id, c.client_code, c.client_name,
+               COUNT(s.snapshot_id) AS snapshot_count
+        FROM sam_admin.clients c
+        JOIN sam_admin.licence_snapshots s ON s.client_id = c.client_id
+        GROUP BY c.client_id, c.client_code, c.client_name
+        ORDER BY c.client_name
+    """)
+
+    # Monthly aggregates
+    monthly = query("""
+        SELECT s.snapshot_month,
+               COALESCE(SUM(l.licences_required), 0)  AS total_required,
+               COALESCE(SUM(l.licences_assigned), 0)  AS total_assigned,
+               COUNT(*) FILTER (WHERE l.compliance_status = 'under_licensed') AS under_count,
+               COUNT(*) FILTER (WHERE l.compliance_status = 'compliant')      AS compliant_count,
+               COUNT(*) FILTER (WHERE l.compliance_status = 'over_licensed')  AS over_count,
+               COUNT(DISTINCT l.hostname)                                      AS server_count
+        FROM sam_admin.licence_snapshots s
+        JOIN sam_admin.licence_snapshot_lines l ON l.snapshot_id = s.snapshot_id
+        WHERE s.client_id = %s
+        GROUP BY s.snapshot_month
+        ORDER BY s.snapshot_month
+    """, (client["client_id"],))
+
+    # Per-product-family monthly required (capped: DB + WLS only to stay <= 4 series)
+    family_monthly = query("""
+        SELECT s.snapshot_month, l.product_family,
+               COALESCE(SUM(l.licences_required), 0) AS required
+        FROM sam_admin.licence_snapshots s
+        JOIN sam_admin.licence_snapshot_lines l ON l.snapshot_id = s.snapshot_id
+        WHERE s.client_id = %s
+          AND l.product_family IN ('oracle_database', 'oracle_weblogic')
+        GROUP BY s.snapshot_month, l.product_family
+        ORDER BY s.snapshot_month, l.product_family
+    """, (client["client_id"],))
+
+    # Latest snapshot detail lines (for the table at the bottom)
+    latest_snap = query("""
+        SELECT snapshot_id, snapshot_month, taken_at
+        FROM sam_admin.licence_snapshots
+        WHERE client_id = %s
+        ORDER BY snapshot_month DESC LIMIT 1
+    """, (client["client_id"],), fetchall=False)
+
+    latest_lines = []
+    if latest_snap:
+        latest_lines = query("""
+            SELECT hostname, environment, product_family, product_detail,
+                   licences_required, licences_assigned, surplus_deficit, compliance_status,
+                   csi_number
+            FROM sam_admin.licence_snapshot_lines
+            WHERE snapshot_id = %s
+            ORDER BY hostname, product_family, product_detail
+        """, (latest_snap["snapshot_id"],))
+
+    def _row(r):
+        d = dict(r)
+        for k, v in d.items():
+            if hasattr(v, 'isoformat'):
+                d[k] = v.isoformat()
+            elif hasattr(v, '__float__'):
+                d[k] = float(v)
+        return d
+
+    chart_data = {
+        "monthly":       [_row(r) for r in monthly],
+        "family_monthly": [_row(r) for r in family_monthly],
+        "latest_snap":   _row(latest_snap) if latest_snap else None,
+    }
+
+    return render_template("visibility_licence_history.html",
+                           clients=clients_with_snaps,
+                           selected=client,
+                           chart_data=chart_data,
+                           latest_lines=latest_lines)
+
+
+# ---------------------------------------------------------------------------
 # Visibility — WebLogic versions
 # ---------------------------------------------------------------------------
 @app.route("/visibility/wls-versions")

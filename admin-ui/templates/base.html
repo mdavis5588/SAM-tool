@@ -300,7 +300,7 @@
         <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
       </a>
 
-      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['visibility_versions','visibility_versions_client','visibility_wls_versions'] %}active{% endif %}"
+      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['visibility_versions','visibility_versions_client','visibility_wls_versions','visibility_licence_history','visibility_licence_history_client'] %}active{% endif %}"
          href="{{ url_for('visibility_versions') }}" id="visibilityFlyoutTrigger"
          data-flyout="visibilityFlyoutPanel">
         <i class="bi bi-binoculars"></i><span>{{ t('nav.visibility') }}</span>
@@ -373,6 +373,9 @@
   <div id="visibilityFlyoutPanel">
     <a class="sidebar-flyout-item" href="{{ url_for('visibility_versions') }}">
       <i class="bi bi-calendar-check"></i>Lifecycle Management
+    </a>
+    <a class="sidebar-flyout-item" href="{{ url_for('visibility_licence_history') }}">
+      <i class="bi bi-graph-up"></i>Licence History
     </a>
   </div>
 
