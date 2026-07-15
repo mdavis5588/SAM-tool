@@ -273,9 +273,6 @@
       <div class="sidebar-section-label">{{ t('nav.inventory') }}</div>
       <a class="sidebar-link {% if request.endpoint == 'servers' %}active{% endif %}"
          href="{{ url_for('servers') }}"><i class="bi bi-server"></i><span>{{ t('nav.servers') }}</span></a>
-      <a class="sidebar-link {% if request.endpoint == 'vmware' %}active{% endif %}"
-         href="{{ url_for('vmware') }}"><i class="bi bi-diagram-3"></i><span>{{ t('nav.vmware') }}</span></a>
-
       <div class="sidebar-section-label">{{ t('nav.licensing') }}</div>
       <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['contracts','contract_detail','renewal_calendar'] %}active{% endif %}"
          href="{{ url_for('contracts') }}" id="contractsFlyoutTrigger"
@@ -293,7 +290,7 @@
       <a class="sidebar-link {% if request.endpoint == 'alerts' %}active{% endif %}"
          href="{{ url_for('alerts') }}"><i class="bi bi-exclamation-triangle"></i><span>{{ t('nav.alerts') }}</span></a>
 
-      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['compliance','compliance_client','audit_readiness'] %}active{% endif %}"
+      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['compliance','compliance_client','audit_readiness','vmware'] %}active{% endif %}"
          href="{{ url_for('compliance') }}" id="complianceFlyoutTrigger"
          data-flyout="complianceFlyoutPanel">
         <i class="bi bi-shield-check"></i><span>{{ t('nav.compliance') }}</span>
@@ -367,6 +364,9 @@
     </a>
     <a class="sidebar-flyout-item" href="{{ url_for('audit_readiness') }}">
       <i class="bi bi-clipboard2-pulse"></i>{{ t('nav.audit_readiness') }}
+    </a>
+    <a class="sidebar-flyout-item" href="{{ url_for('vmware') }}">
+      <i class="bi bi-diagram-3"></i>{{ t('nav.vmware') }}
     </a>
   </div>
 
