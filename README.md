@@ -534,6 +534,7 @@ psql oracle_sam -f database/05_migration_per_line_csi.sql
 | `05_migration_per_line_csi.sql` | `shared.oracle_licensed_options` table; adds `product_detail` and `line_id` columns to `server_csi_map` in every client schema; enables per-line CSI assignment and Oracle option licence lines |
 | `migrations/05_nup_license_position.sql` | Reinstalls the `license_position` view in every client schema to add NUP columns: `licence_metric`, `nup_minimum`, `nup_active_users`, and NUP-aware `licences_required` |
 | `migrations/06_rbac_users.sql` | `sam_admin.app_role` and `sam_admin.auth_method` enum types; `sam_admin.app_users` table; seeds bootstrap admin row |
+| `migrations/07_audit_logging.sql` | `sam_admin.licence_snapshots` + `sam_admin.licence_snapshot_lines` (monthly licence position history, 24-month retention); `sam_admin.audit_log` (user activity trail, 6-month retention); `sam_admin.purge_old_audit_data()` function |
 
 > **New installs:** `01_admin_schema.sql` and `02_shared_schema.sql` already include all of
 > the above. The migration scripts are only needed when upgrading an existing database.

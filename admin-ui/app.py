@@ -382,6 +382,9 @@ def admin_user_create():
             (username, display_name, email, role, client_id, auth_method,
              ad_username, pw_hash, current_user().get("username", "admin"))
         )
+        _audit("user.create", entity_type="user", entity_name=username,
+               new_values={"role": role, "auth_method": auth_method},
+               client_schema="sam_admin")
         flash(f"User '{username}' created.", "success")
     except Exception as e:
         if "unique" in str(e).lower():
@@ -397,10 +400,18 @@ def admin_user_edit(user_id):
     action = request.form.get("action")
 
     if action == "toggle_active":
+        target_u = query(
+            "SELECT username, is_active FROM sam_admin.app_users WHERE user_id = %s",
+            (user_id,), fetchall=False
+        )
         execute(
             "UPDATE sam_admin.app_users SET is_active = NOT is_active WHERE user_id = %s",
             (user_id,)
         )
+        _audit("user.toggle_active", entity_type="user", entity_id=user_id,
+               entity_name=(target_u or {}).get("username"),
+               old_values={"is_active": (target_u or {}).get("is_active")},
+               client_schema="sam_admin")
         flash("User status updated.", "success")
 
     elif action == "reset_password":
@@ -408,11 +419,17 @@ def admin_user_edit(user_id):
         if len(new_pw) < 8:
             flash("Password must be at least 8 characters.", "danger")
             return redirect(url_for("admin_users"))
+        target_u = query(
+            "SELECT username FROM sam_admin.app_users WHERE user_id = %s",
+            (user_id,), fetchall=False
+        )
         execute(
             "UPDATE sam_admin.app_users SET password_hash = %s, force_password_change = TRUE "
             "WHERE user_id = %s",
             (_hash_password(new_pw), user_id)
         )
+        _audit("user.reset_password", entity_type="user", entity_id=user_id,
+               entity_name=(target_u or {}).get("username"), client_schema="sam_admin")
         flash("Password reset. User will be prompted to change it on next login.", "success")
 
     elif action == "update":
@@ -435,6 +452,10 @@ def admin_user_edit(user_id):
             flash("Cannot change the role of the bootstrap admin account.", "danger")
             return redirect(url_for("admin_users"))
 
+        old_u = query(
+            "SELECT username, role::TEXT AS role, auth_method::TEXT FROM sam_admin.app_users "
+            "WHERE user_id = %s", (user_id,), fetchall=False
+        )
         execute(
             """UPDATE sam_admin.app_users
                SET display_name=%s, email=%s, role=%s::sam_admin.app_role,
@@ -442,6 +463,11 @@ def admin_user_edit(user_id):
                WHERE user_id=%s""",
             (display_name, email, role, client_id, auth_method, ad_username, user_id)
         )
+        _audit("user.update", entity_type="user", entity_id=user_id,
+               entity_name=(old_u or {}).get("username"),
+               old_values={"role": (old_u or {}).get("role")},
+               new_values={"role": role, "auth_method": auth_method},
+               client_schema="sam_admin")
         flash("User updated.", "success")
 
     elif action == "delete":
@@ -452,10 +478,257 @@ def admin_user_edit(user_id):
         if target and target["username"] == ADMIN_USER:
             flash("Cannot delete the bootstrap admin account.", "danger")
             return redirect(url_for("admin_users"))
+        del_u = query(
+            "SELECT username, role::TEXT FROM sam_admin.app_users WHERE user_id = %s",
+            (user_id,), fetchall=False
+        )
         execute("DELETE FROM sam_admin.app_users WHERE user_id = %s", (user_id,))
+        _audit("user.delete", entity_type="user", entity_id=user_id,
+               entity_name=(del_u or {}).get("username"),
+               old_values={"role": (del_u or {}).get("role")},
+               client_schema="sam_admin")
         flash("User deleted.", "success")
 
     return redirect(url_for("admin_users"))
+
+
+# ---------------------------------------------------------------------------
+# Audit logging helper
+# ---------------------------------------------------------------------------
+def _audit(action, entity_type=None, entity_id=None, entity_name=None,
+           old_values=None, new_values=None, client_schema=None):
+    """Write one row to sam_admin.audit_log. Silently swallows errors so a
+    logging failure never breaks the underlying operation."""
+    try:
+        u = current_user()
+        execute(
+            """INSERT INTO sam_admin.audit_log
+               (username, user_role, action, entity_type, entity_id, entity_name,
+                client_schema, old_values, new_values, ip_address)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (
+                u.get("username", "unknown"),
+                u.get("role", ""),
+                action,
+                entity_type,
+                str(entity_id) if entity_id is not None else None,
+                entity_name,
+                client_schema or get_schema(),
+                json.dumps(old_values) if old_values else None,
+                json.dumps(new_values) if new_values else None,
+                request.remote_addr,
+            )
+        )
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Audit & Snapshots  (superadmin only)
+# ---------------------------------------------------------------------------
+@app.route("/admin/audit")
+@superadmin_required
+def admin_audit():
+    # All clients for the snapshot tab
+    all_clients = query(
+        "SELECT client_id, client_code, client_name, schema_name "
+        "FROM sam_admin.clients WHERE is_active ORDER BY client_name"
+    )
+
+    # Snapshot list with client name
+    try:
+        snapshots = query("""
+            SELECT s.snapshot_id, s.snapshot_month, s.taken_at, s.taken_by, s.note,
+                   c.client_name, c.client_code,
+                   (SELECT COUNT(*) FROM sam_admin.licence_snapshot_lines l
+                    WHERE l.snapshot_id = s.snapshot_id) AS line_count
+            FROM sam_admin.licence_snapshots s
+            JOIN sam_admin.clients c ON c.client_id = s.client_id
+            ORDER BY s.snapshot_month DESC, c.client_name
+        """)
+    except Exception:
+        snapshots = []
+
+    # Audit log — most recent 500 rows
+    try:
+        audit_rows = query("""
+            SELECT audit_id, username, user_role, action, entity_type,
+                   entity_id, entity_name, client_schema,
+                   old_values, new_values, ip_address,
+                   created_at
+            FROM sam_admin.audit_log
+            ORDER BY created_at DESC
+            LIMIT 500
+        """)
+    except Exception:
+        audit_rows = []
+
+    return render_template("admin_audit.html",
+                           all_clients=all_clients,
+                           snapshots=snapshots,
+                           audit_rows=audit_rows)
+
+
+@app.route("/admin/snapshot/take", methods=["POST"])
+@superadmin_required
+def admin_snapshot_take():
+    client_id = request.form.get("client_id")
+    note      = (request.form.get("note") or "").strip() or None
+
+    client = query(
+        "SELECT client_id, client_code, client_name, schema_name "
+        "FROM sam_admin.clients WHERE client_id = %s AND is_active",
+        (client_id,), fetchall=False
+    )
+    if not client:
+        flash("Client not found.", "danger")
+        return redirect(url_for("admin_audit"))
+
+    schema = client["schema_name"]
+    snap_month = date.today().replace(day=1)  # first of current month
+
+    # Check if a snapshot already exists for this client/month
+    existing = query(
+        "SELECT snapshot_id FROM sam_admin.licence_snapshots "
+        "WHERE client_id = %s AND snapshot_month = %s",
+        (client_id, snap_month), fetchall=False
+    )
+    if existing:
+        flash(f"A snapshot for {client['client_name']} already exists for this month "
+              f"({snap_month.strftime('%B %Y')}). Delete it first to retake.", "warning")
+        return redirect(url_for("admin_audit"))
+
+    # Read the current licence position
+    try:
+        lp_rows = query(f"""
+            SELECT hostname, environment::TEXT AS environment,
+                   product_family::TEXT AS product_family,
+                   product_detail, licences_required,
+                   total_licensed, licence_surplus_deficit, compliance_status::TEXT
+            FROM {schema}.license_position
+            ORDER BY hostname, product_family, product_detail
+        """)
+    except Exception as e:
+        flash(f"Could not read licence position for {client['client_name']}: {e}", "danger")
+        return redirect(url_for("admin_audit"))
+
+    # CSI assignments per (server, product_family, product_detail)
+    try:
+        assign_rows = query(f"""
+            SELECT sv.hostname,
+                   m.product_family::TEXT, m.product_detail,
+                   cs.csi_number, cs.contract_name
+            FROM {schema}.server_csi_map m
+            JOIN {schema}.oracle_servers sv ON sv.server_id = m.server_id
+            JOIN shared.csi_contracts cs    ON cs.csi_id   = m.csi_id
+        """)
+        assign_map = {}
+        for a in assign_rows:
+            key = (a["hostname"], a["product_family"], a["product_detail"] or "")
+            assign_map.setdefault(key, []).append(
+                f"{a['csi_number']} – {a['contract_name'] or ''}"
+            )
+    except Exception:
+        assign_map = {}
+
+    taken_by = current_user().get("username", "admin")
+
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO sam_admin.licence_snapshots
+                   (client_id, snapshot_month, taken_by, note)
+                   VALUES (%s, %s, %s, %s) RETURNING snapshot_id""",
+                (client_id, snap_month, taken_by, note)
+            )
+            snap_id = cur.fetchone()[0]
+            for r in lp_rows:
+                key = (r["hostname"], r["product_family"], r["product_detail"] or "")
+                csides = assign_map.get(key, [])
+                cur.execute(
+                    """INSERT INTO sam_admin.licence_snapshot_lines
+                       (snapshot_id, hostname, environment, product_family, product_detail,
+                        licences_required, licences_assigned, surplus_deficit,
+                        compliance_status, csi_number, contract_ref)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (
+                        snap_id,
+                        r["hostname"],
+                        r["environment"],
+                        r["product_family"],
+                        r["product_detail"],
+                        r["licences_required"],
+                        r["total_licensed"],
+                        r["licence_surplus_deficit"],
+                        r["compliance_status"],
+                        "; ".join(c.split(" – ")[0] for c in csides) or None,
+                        "; ".join(csides) or None,
+                    )
+                )
+        conn.commit()
+
+    _audit("snapshot.take",
+           entity_type="snapshot", entity_id=snap_id,
+           entity_name=f"{client['client_name']} {snap_month.strftime('%Y-%m')}",
+           client_schema=schema)
+
+    flash(f"Snapshot taken for {client['client_name']} — "
+          f"{snap_month.strftime('%B %Y')} ({len(lp_rows)} lines).", "success")
+    return redirect(url_for("admin_audit"))
+
+
+@app.route("/admin/snapshot/<int:snapshot_id>")
+@superadmin_required
+def admin_snapshot_view(snapshot_id):
+    snap = query("""
+        SELECT s.snapshot_id, s.snapshot_month, s.taken_at, s.taken_by, s.note,
+               c.client_name, c.client_code
+        FROM sam_admin.licence_snapshots s
+        JOIN sam_admin.clients c ON c.client_id = s.client_id
+        WHERE s.snapshot_id = %s
+    """, (snapshot_id,), fetchall=False)
+
+    if not snap:
+        flash("Snapshot not found.", "danger")
+        return redirect(url_for("admin_audit"))
+
+    lines = query("""
+        SELECT hostname, environment, product_family, product_detail,
+               licences_required, licences_assigned, surplus_deficit,
+               compliance_status, csi_number, contract_ref
+        FROM sam_admin.licence_snapshot_lines
+        WHERE snapshot_id = %s
+        ORDER BY hostname, product_family, product_detail
+    """, (snapshot_id,))
+
+    return render_template("admin_snapshot_view.html", snap=snap, lines=lines)
+
+
+@app.route("/admin/snapshot/<int:snapshot_id>/delete", methods=["POST"])
+@superadmin_required
+def admin_snapshot_delete(snapshot_id):
+    snap = query(
+        "SELECT s.snapshot_id, c.client_name, s.snapshot_month "
+        "FROM sam_admin.licence_snapshots s "
+        "JOIN sam_admin.clients c ON c.client_id = s.client_id "
+        "WHERE s.snapshot_id = %s",
+        (snapshot_id,), fetchall=False
+    )
+    if snap:
+        execute("DELETE FROM sam_admin.licence_snapshots WHERE snapshot_id = %s", (snapshot_id,))
+        _audit("snapshot.delete",
+               entity_type="snapshot", entity_id=snapshot_id,
+               entity_name=f"{snap['client_name']} {snap['snapshot_month']}")
+        flash("Snapshot deleted.", "success")
+    return redirect(url_for("admin_audit"))
+
+
+@app.route("/admin/audit/purge", methods=["POST"])
+@superadmin_required
+def admin_audit_purge():
+    result = query("SELECT sam_admin.purge_old_audit_data() AS msg", fetchall=False)
+    flash(result["msg"] if result else "Purge complete.", "success")
+    return redirect(url_for("admin_audit"))
 
 
 # ---------------------------------------------------------------------------
@@ -820,6 +1093,11 @@ def edit_server(server_id):
 
         if action == "set_metric":
             metric = request.form.get("metric")
+            old_metric_row = query(
+                f"SELECT COALESCE(licence_metric_override,'processor_perpetual') AS m "
+                f"FROM {schema}.oracle_servers WHERE server_id = %s",
+                (server_id,), fetchall=False
+            )
             if metric == "processor_perpetual":
                 execute(
                     f"UPDATE {schema}.oracle_servers "
@@ -832,6 +1110,9 @@ def edit_server(server_id):
                     f"SET licence_metric_override = %s WHERE server_id = %s",
                     (metric, server_id)
                 )
+            _audit("server.set_metric", entity_type="server", entity_id=server_id,
+                   old_values={"metric": (old_metric_row or {}).get("m")},
+                   new_values={"metric": metric}, client_schema=schema)
             flash("Licence metric updated.", "success")
 
         elif action == "assign_csi":
@@ -998,11 +1279,25 @@ def edit_server(server_id):
                    licences_consumed, notes, assigned_by)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
             """, (server_id, csi_id, family, product_detail, consumed, notes, ADMIN_USER))
+            _audit("csi.assign", entity_type="csi_assignment", entity_id=server_id,
+                   entity_name=f"server {server_id} / CSI {csi_id}",
+                   new_values={"csi_id": csi_id, "product_family": family,
+                               "product_detail": product_detail,
+                               "licences_consumed": str(consumed) if consumed else None},
+                   client_schema=schema)
             flash("CSI assignment saved.", "success")
 
         elif action == "remove_csi":
             map_id = request.form.get("map_id")
+            old_csi = query(
+                f"SELECT csi_id, product_family::TEXT, product_detail, licences_consumed "
+                f"FROM {schema}.server_csi_map WHERE map_id = %s", (map_id,), fetchall=False
+            )
             execute(f"DELETE FROM {schema}.server_csi_map WHERE map_id = %s", (map_id,))
+            _audit("csi.remove", entity_type="csi_assignment", entity_id=server_id,
+                   entity_name=f"server {server_id} / map {map_id}",
+                   old_values=dict(old_csi) if old_csi else None,
+                   client_schema=schema)
             flash("CSI assignment removed.", "success")
 
         elif action == "assign_ula":

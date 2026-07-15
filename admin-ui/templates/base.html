@@ -315,6 +315,8 @@
       {% if is_superadmin %}
       <a class="sidebar-link {% if request.endpoint == 'admin_users' %}active{% endif %}"
          href="{{ url_for('admin_users') }}"><i class="bi bi-person-lock"></i><span>Users &amp; Access</span></a>
+      <a class="sidebar-link {% if request.endpoint in ['admin_audit','admin_snapshot_view'] %}active{% endif %}"
+         href="{{ url_for('admin_audit') }}"><i class="bi bi-journal-text"></i><span>Audit &amp; Snapshots</span></a>
       {% endif %}
     </nav>
 
