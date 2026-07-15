@@ -1040,12 +1040,19 @@ def assignment_withdraw(request_id):
 @app.route("/admin/discovery-conflicts")
 @superadmin_required
 def discovery_conflicts():
+    conflicts = []
     try:
-        rows = query("SELECT * FROM sam_admin.list_conflicts() ORDER BY schema_name, server_id")
-    except Exception:
-        flash("Migration 09 has not been run yet — discovery_conflict column not found.", "warning")
-        rows = []
-    return render_template("discovery_conflicts.html", conflicts=rows)
+        conflicts = query(
+            "SELECT * FROM sam_admin.list_conflicts() ORDER BY schema_name, server_id"
+        ) or []
+    except Exception as e:
+        app.logger.warning("discovery_conflicts query failed: %s", e)
+        flash(f"Could not load conflict data: {e}", "warning")
+    try:
+        return render_template("discovery_conflicts.html", conflicts=conflicts)
+    except Exception as e:
+        app.logger.error("discovery_conflicts template error: %s", e)
+        raise
 
 
 @app.route("/admin/discovery-conflicts/<schema>/<int:server_id>/resolve", methods=["POST"])
