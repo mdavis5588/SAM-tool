@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ client.client_name }} — DB Versions{% endblock %}
+{% block title %}{{ client.client_name }} — Lifecycle — Helios{% endblock %}
 {% block content %}
 
 <style>
@@ -26,6 +26,77 @@
   :root[data-theme="dark"]  .vvc-root{--ok:#34d399;--extended:#60a5fa;--warn:#fbbf24;--eol:#f87171;--unknown:#9ca3af;--text-pri:#f0eeeb;--text-sec:#c3c2b7;--text-muted:#898781;--surface:#1e1e1d;--border:#2e2e2b;--bg:#141413;}
   :root[data-theme="light"] .vvc-root{--ok:#059669;--extended:#2563eb;--warn:#d97706;--eol:#dc2626;--unknown:#6b7280;--text-pri:#0f0e0d;--text-sec:#52514e;--text-muted:#8a8884;--surface:#ffffff;--border:#e4e2dc;--bg:#f4f6f8;}
 
+  /* ── Toggle pills ── */
+  .type-toggle {
+    display: inline-flex;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .type-pill {
+    display: inline-flex; align-items: center; gap: .35rem;
+    padding: .3rem .85rem;
+    border-radius: 6px;
+    font-size: .8rem; font-weight: 600;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: var(--text-sec);
+    transition: background .12s, color .12s;
+  }
+  .type-pill.active-db {
+    background: #dbeafe; color: #1d4ed8;
+  }
+  .type-pill.active-mw {
+    background: #ede9fe; color: #6d28d9;
+  }
+  :root[data-theme="dark"] .type-pill.active-db,
+  @media (prefers-color-scheme: dark) { .type-pill.active-db {
+    background: rgba(37,99,235,.25); color: #93c5fd;
+  }}
+  :root[data-theme="dark"] .type-pill.active-mw {
+    background: rgba(109,40,217,.25); color: #c4b5fd;
+  }
+
+  /* ── Summary stat tiles ── */
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: .75rem;
+    margin-bottom: 1.25rem;
+  }
+  .stat-tile {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: .85rem 1rem;
+    display: flex; flex-direction: column; gap: .2rem;
+  }
+  .stat-tile-label {
+    font-size: .67rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--text-muted);
+    display: flex; align-items: center; gap: .3rem;
+  }
+  .stat-tile-value {
+    font-size: 1.6rem; font-weight: 800; line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-pri);
+  }
+  .stat-tile-value.ok       { color: var(--ok); }
+  .stat-tile-value.extended { color: var(--extended); }
+  .stat-tile-value.warn     { color: var(--warn); }
+  .stat-tile-value.eol      { color: var(--eol); }
+  .stat-tile-sublabel { font-size: .68rem; color: var(--text-muted); }
+
+  /* ── Server table ── */
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
   .vvc-table {
     width: 100%;
     border-collapse: collapse;
@@ -33,16 +104,14 @@
   }
   .vvc-table th {
     text-align: left;
-    font-size: .72rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .04em;
+    font-size: .7rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .04em;
     color: var(--text-muted);
-    padding: .45rem .75rem;
+    padding: .5rem .85rem;
     border-bottom: 2px solid var(--border);
   }
   .vvc-table td {
-    padding: .55rem .75rem;
+    padding: .55rem .85rem;
     border-bottom: 1px solid var(--border);
     color: var(--text-pri);
     vertical-align: middle;
@@ -52,29 +121,24 @@
 
   .status-badge {
     display: inline-flex; align-items: center; gap: .35rem;
-    font-size: .72rem; font-weight: 700;
-    padding: .2rem .55rem;
+    font-size: .7rem; font-weight: 700;
+    padding: .18rem .5rem;
     border-radius: 20px;
     white-space: nowrap;
   }
-  .status-badge .dot {
-    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-  }
-  .status-badge.ok       { background: rgba(5,150,105,.1);  color: var(--ok); }
-  .status-badge.extended { background: rgba(37,99,235,.1);  color: var(--extended); }
-  .status-badge.warning  { background: rgba(217,119,6,.1);  color: var(--warn); }
-  .status-badge.eol      { background: rgba(220,38,38,.1);  color: var(--eol); }
-  .status-badge.unknown  { background: rgba(107,114,128,.1);color: var(--unknown); }
-  .status-badge .dot.ok       { background: var(--ok); }
-  .status-badge .dot.extended { background: var(--extended); }
-  .status-badge .dot.warning  { background: var(--warn); }
-  .status-badge .dot.eol      { background: var(--eol); }
-  .status-badge .dot.unknown  { background: var(--unknown); }
+  .status-badge .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .status-badge.supported { background: rgba(5,150,105,.1);  color: var(--ok); }
+  .status-badge.extended  { background: rgba(37,99,235,.1);  color: var(--extended); }
+  .status-badge.warning   { background: rgba(217,119,6,.1);  color: var(--warn); }
+  .status-badge.eol       { background: rgba(220,38,38,.1);  color: var(--eol); }
+  .status-badge.unknown   { background: rgba(107,114,128,.1);color: var(--unknown); }
+  .dot.supported { background: var(--ok); }
+  .dot.extended  { background: var(--extended); }
+  .dot.warning   { background: var(--warn); }
+  .dot.eol       { background: var(--eol); }
+  .dot.unknown   { background: var(--unknown); }
 
-  .enddate {
-    font-size: .72rem;
-    color: var(--text-muted);
-  }
+  .enddate { font-size: .72rem; color: var(--text-muted); }
   .enddate.extended { color: var(--extended); }
   .enddate.warning  { color: var(--warn); font-weight: 600; }
   .enddate.eol      { color: var(--eol);  font-weight: 600; }
@@ -85,75 +149,214 @@
     color: var(--text-sec); white-space: nowrap;
   }
 
-  .table-wrap {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: hidden;
+  .edition-chip {
+    font-size: .62rem; font-weight: 600; padding: .08rem .35rem;
+    border-radius: 4px; background: rgba(109,40,217,.08);
+    color: #7c3aed; white-space: nowrap;
+  }
+
+  .empty-panel {
+    padding: 2.5rem 1rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: .875rem;
   }
 </style>
 
 <div class="vvc-root">
 
-<div class="d-flex align-items-baseline gap-3 mb-4">
+<div class="d-flex align-items-center gap-3 mb-4" style="flex-wrap:wrap">
   <a href="{{ url_for('visibility_versions') }}" class="btn btn-sm btn-outline-secondary">
     <i class="bi bi-arrow-left me-1"></i>{{ t('action.back') }}
   </a>
   <h4 class="mb-0"><i class="bi bi-building me-1"></i>{{ client.client_name }}</h4>
-  <span style="font-size:.85rem;color:var(--text-muted)">— {{ t('visibility.versions_title') }}</span>
+  <span style="font-size:.85rem;color:var(--text-muted)">— Lifecycle Management</span>
+
+  <div class="ms-auto type-toggle" role="group" aria-label="Server type">
+    <button class="type-pill active-db" id="pill-db" onclick="switchType('db')">
+      <i class="bi bi-database-fill"></i> Database
+      {% if db_servers %}<span style="font-size:.65rem;opacity:.7;margin-left:.2rem">({{ db_servers|length }})</span>{% endif %}
+    </button>
+    <button class="type-pill" id="pill-mw" onclick="switchType('mw')">
+      <i class="bi bi-boxes"></i> Middleware
+      {% if mw_servers %}<span style="font-size:.65rem;opacity:.7;margin-left:.2rem">({{ mw_servers|length }})</span>{% endif %}
+    </button>
+  </div>
 </div>
 
-{% if not servers %}
-<div class="alert alert-info">{{ t('visibility.no_data') }}</div>
-{% else %}
+<!-- ── DATABASE PANEL ── -->
+<div id="panel-db">
+  {% if not db_servers %}
+  <div class="empty-panel">
+    <i class="bi bi-database" style="font-size:2rem;display:block;margin-bottom:.5rem;opacity:.3"></i>
+    No database servers found for this client.
+  </div>
+  {% else %}
 
-<div class="table-wrap">
-  <table class="vvc-table">
-    <thead>
-      <tr>
-        <th>{{ t('label.hostname') }}</th>
-        <th>{{ t('label.environment') }}</th>
-        <th>{{ t('label.datacenter') }}</th>
-        <th>DB Version</th>
-        <th>{{ t('label.status') }}</th>
-        <th>End Date</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for srv in servers %}
-      {% set st = srv.status %}
-      <tr>
-        <td><span style="font-weight:600;font-variant-numeric:tabular-nums">{{ srv.hostname }}</span></td>
-        <td>{% if srv.environment %}<span class="env-chip">{{ srv.environment }}</span>{% endif %}</td>
-        <td style="color:var(--text-sec)">{{ srv.datacenter or '—' }}</td>
-        <td style="font-variant-numeric:tabular-nums;font-weight:600">{{ srv.db_version }}</td>
-        <td>
-          <span class="status-badge {{ st }}">
-            <span class="dot {{ st }}"></span>
-            {% if st == 'supported' %}{{ t('visibility.supported') }}
-            {% elif st == 'extended' %}{{ t('visibility.extended_support') }}
-            {% elif st == 'warning' %}{{ t('visibility.approaching_eol') }}
-            {% elif st == 'eol' %}{{ t('visibility.out_of_support') }}
-            {% else %}{{ t('visibility.unknown') }}{% endif %}
-          </span>
-        </td>
-        <td>
-          {% if srv.end_date %}
-          <span class="enddate {{ st if st in ('extended','warning','eol') else '' }}">
-            {% if st == 'eol' %}ended
-            {% elif st == 'extended' %}ext. ends
-            {% else %}ends{% endif %}
-            {{ srv.end_date }}
-          </span>
-          {% else %}—{% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="stat-row">
+    <div class="stat-tile">
+      <div class="stat-tile-label"><span class="dot supported" style="display:inline-block"></span>Supported</div>
+      <div class="stat-tile-value ok">{{ db_counts.get('supported', 0) }}</div>
+      <div class="stat-tile-sublabel">servers</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-tile-label"><span class="dot extended" style="display:inline-block"></span>Extended Support</div>
+      <div class="stat-tile-value extended">{{ db_counts.get('extended', 0) }}</div>
+      <div class="stat-tile-sublabel">servers</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-tile-label"><span class="dot warning" style="display:inline-block"></span>Approaching EOL</div>
+      <div class="stat-tile-value warn">{{ db_counts.get('warning', 0) }}</div>
+      <div class="stat-tile-sublabel">within 12 months</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-tile-label"><span class="dot eol" style="display:inline-block"></span>Out of Support</div>
+      <div class="stat-tile-value eol">{{ db_counts.get('eol', 0) }}</div>
+      <div class="stat-tile-sublabel">servers</div>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="vvc-table">
+      <thead>
+        <tr>
+          <th>{{ t('label.hostname') }}</th>
+          <th>{{ t('label.environment') }}</th>
+          <th>{{ t('label.datacenter') }}</th>
+          <th>DB Version</th>
+          <th>{{ t('label.status') }}</th>
+          <th>End Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for srv in db_servers | sort(attribute='status') %}
+        {% set st = srv.status %}
+        <tr>
+          <td style="font-weight:600">{{ srv.hostname }}</td>
+          <td>{% if srv.environment %}<span class="env-chip">{{ srv.environment }}</span>{% endif %}</td>
+          <td style="color:var(--text-sec)">{{ srv.datacenter or '—' }}</td>
+          <td style="font-variant-numeric:tabular-nums;font-weight:600">{{ srv.version }}</td>
+          <td>
+            <span class="status-badge {{ st }}">
+              <span class="dot {{ st }}"></span>
+              {% if st == 'supported' %}Supported
+              {% elif st == 'extended' %}Extended Support
+              {% elif st == 'warning' %}Approaching EOL
+              {% elif st == 'eol' %}Out of Support
+              {% else %}Unknown{% endif %}
+            </span>
+          </td>
+          <td>
+            {% if srv.end_date %}
+            <span class="enddate {{ st if st in ('extended','warning','eol') else '' }}">
+              {% if st == 'eol' %}ended
+              {% elif st == 'extended' %}ext. ends
+              {% else %}ends{% endif %}
+              {{ srv.end_date }}
+            </span>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% endif %}
 </div>
 
-{% endif %}
+<!-- ── MIDDLEWARE PANEL ── -->
+<div id="panel-mw" style="display:none">
+  {% if not mw_servers %}
+  <div class="empty-panel">
+    <i class="bi bi-boxes" style="font-size:2rem;display:block;margin-bottom:.5rem;opacity:.3"></i>
+    No WebLogic / middleware servers found for this client.
+  </div>
+  {% else %}
+
+  <div class="stat-row">
+    <div class="stat-tile">
+      <div class="stat-tile-label"><span class="dot supported" style="display:inline-block"></span>Supported</div>
+      <div class="stat-tile-value ok">{{ mw_counts.get('supported', 0) }}</div>
+      <div class="stat-tile-sublabel">servers</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-tile-label"><span class="dot extended" style="display:inline-block"></span>Extended Support</div>
+      <div class="stat-tile-value extended">{{ mw_counts.get('extended', 0) }}</div>
+      <div class="stat-tile-sublabel">servers</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-tile-label"><span class="dot warning" style="display:inline-block"></span>Approaching EOL</div>
+      <div class="stat-tile-value warn">{{ mw_counts.get('warning', 0) }}</div>
+      <div class="stat-tile-sublabel">within 12 months</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-tile-label"><span class="dot eol" style="display:inline-block"></span>Out of Support</div>
+      <div class="stat-tile-value eol">{{ mw_counts.get('eol', 0) }}</div>
+      <div class="stat-tile-sublabel">servers</div>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="vvc-table">
+      <thead>
+        <tr>
+          <th>{{ t('label.hostname') }}</th>
+          <th>{{ t('label.environment') }}</th>
+          <th>{{ t('label.datacenter') }}</th>
+          <th>WLS Version</th>
+          <th>Edition</th>
+          <th>{{ t('label.status') }}</th>
+          <th>End Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for srv in mw_servers | sort(attribute='status') %}
+        {% set st = srv.status %}
+        <tr>
+          <td style="font-weight:600">{{ srv.hostname }}</td>
+          <td>{% if srv.environment %}<span class="env-chip">{{ srv.environment }}</span>{% endif %}</td>
+          <td style="color:var(--text-sec)">{{ srv.datacenter or '—' }}</td>
+          <td style="font-variant-numeric:tabular-nums;font-weight:600">{{ srv.version }}</td>
+          <td>{% if srv.edition %}<span class="edition-chip">{{ srv.edition }}</span>{% endif %}</td>
+          <td>
+            <span class="status-badge {{ st }}">
+              <span class="dot {{ st }}"></span>
+              {% if st == 'supported' %}Supported
+              {% elif st == 'extended' %}Extended Support
+              {% elif st == 'warning' %}Approaching EOL
+              {% elif st == 'eol' %}Out of Support
+              {% else %}Unknown{% endif %}
+            </span>
+          </td>
+          <td>
+            {% if srv.end_date %}
+            <span class="enddate {{ st if st in ('extended','warning','eol') else '' }}">
+              {% if st == 'eol' %}ended
+              {% elif st == 'extended' %}ext. ends
+              {% else %}ends{% endif %}
+              {{ srv.end_date }}
+            </span>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% endif %}
+</div>
 
 </div>
+
+<script>
+function switchType(type) {
+  document.getElementById('panel-db').style.display = type === 'db' ? '' : 'none';
+  document.getElementById('panel-mw').style.display = type === 'mw' ? '' : 'none';
+  document.getElementById('pill-db').className = 'type-pill' + (type === 'db' ? ' active-db' : '');
+  document.getElementById('pill-mw').className = 'type-pill' + (type === 'mw' ? ' active-mw' : '');
+}
+</script>
+
 {% endblock %}

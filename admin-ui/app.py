@@ -2481,6 +2481,38 @@ def add_contract_lines(csi_id):
 
 # Oracle DB version → Premier/Extended support end dates (yyyy-mm-dd)
 # Source: Oracle Lifetime Support Policy
+_WLS_SUPPORT = {
+    "14.1": {"premier": "2027-01-31", "extended": "2030-01-31"},
+    "12.2": {"premier": "2022-03-31", "extended": "2025-12-31"},
+    "12.1": {"premier": "2019-12-31", "extended": "2023-12-31"},
+    "10.3": {"premier": "2016-12-31", "extended": "2021-12-31"},
+}
+
+def _wls_support_status(wls_version):
+    """Return ('supported'|'extended'|'warning'|'eol', end_date_str) for a WLS version string."""
+    from datetime import date, timedelta
+    if not wls_version:
+        return "unknown", None
+    v = (wls_version or "").strip()
+    matched = None
+    for key in sorted(_WLS_SUPPORT, key=len, reverse=True):
+        if v.startswith(key):
+            matched = _WLS_SUPPORT[key]
+            break
+    if not matched:
+        return "unknown", None
+    today = date.today()
+    premier_end  = date.fromisoformat(matched["premier"])
+    extended_end = date.fromisoformat(matched["extended"])
+    warning_threshold = extended_end - timedelta(days=365)
+    if today > extended_end:
+        return "eol", matched["extended"]
+    elif today >= warning_threshold:
+        return "warning", matched["extended"]
+    elif today > premier_end:
+        return "extended", matched["extended"]
+    return "supported", matched["premier"]
+
 _ORACLE_DB_SUPPORT = {
     "23":   {"premier": "2028-04-30", "extended": "2031-04-30"},
     "21":   {"premier": "2024-04-30", "extended": "2027-04-30"},
@@ -2528,32 +2560,61 @@ def visibility_versions():
     clients_data = []
     for c in active_clients:
         s = c["schema_name"]
+
+        # ── Database servers: count per version ──────────────────────────────
         try:
-            rows = query(f"""
+            db_rows = query(f"""
                 SELECT COALESCE(i.db_version, 'Unknown') AS db_version,
-                       COUNT(DISTINCT s.server_id) AS server_count
-                FROM {s}.oracle_servers s
-                JOIN {s}.oracle_instances i ON i.server_id = s.server_id AND i.is_active
-                WHERE s.is_active
+                       COUNT(DISTINCT srv.server_id) AS server_count
+                FROM {s}.oracle_servers srv
+                JOIN {s}.oracle_instances i ON i.server_id = srv.server_id AND i.is_active
+                WHERE srv.is_active
                 GROUP BY i.db_version
             """)
         except Exception as e:
-            app.logger.error("visibility_versions query failed for %s: %s", s, e)
-            continue
-        versions = []
-        for r in rows:
+            app.logger.error("visibility_versions db query failed for %s: %s", s, e)
+            db_rows = []
+
+        db_status_counts = {"supported": 0, "extended": 0, "warning": 0, "eol": 0, "unknown": 0}
+        for r in db_rows:
             ver = r["db_version"] or "Unknown"
             cnt = int(r["server_count"] or 0)
-            status, end_date = _version_support_status(ver)
-            versions.append({"version": ver, "count": cnt,
-                             "status": status, "end_date": end_date})
-        versions.sort(key=lambda v: v["version"], reverse=True)
-        max_count = max((v["count"] for v in versions), default=1)
+            status, _ = _version_support_status(ver)
+            db_status_counts[status] = db_status_counts.get(status, 0) + cnt
+
+        # ── Middleware (WLS) servers: count per version ──────────────────────
+        try:
+            wls_rows = query(f"""
+                SELECT COALESCE(d.wls_version, 'Unknown') AS wls_version,
+                       COUNT(DISTINCT srv.server_id) AS server_count
+                FROM {s}.oracle_servers srv
+                JOIN {s}.wls_domains d ON d.server_id = srv.server_id AND d.is_active
+                WHERE srv.is_active
+                GROUP BY d.wls_version
+            """)
+        except Exception as e:
+            app.logger.error("visibility_versions wls query failed for %s: %s", s, e)
+            wls_rows = []
+
+        mw_status_counts = {"supported": 0, "extended": 0, "warning": 0, "eol": 0, "unknown": 0}
+        for r in wls_rows:
+            ver = r["wls_version"] or "Unknown"
+            cnt = int(r["server_count"] or 0)
+            status, _ = _wls_support_status(ver)
+            mw_status_counts[status] = mw_status_counts.get(status, 0) + cnt
+
+        db_total = sum(db_status_counts.values())
+        mw_total = sum(mw_status_counts.values())
+        if db_total == 0 and mw_total == 0:
+            continue
+
         clients_data.append({
-            "client_name": c["client_name"],
-            "client_code": c["client_code"],
-            "versions": versions,
-            "max_count": max_count,
+            "client_name":      c["client_name"],
+            "client_code":      c["client_code"],
+            "db_status_counts": db_status_counts,
+            "mw_status_counts": mw_status_counts,
+            "db_total":         db_total,
+            "mw_total":         mw_total,
         })
     return render_template("visibility_versions.html", clients=clients_data)
 
@@ -2570,33 +2631,76 @@ def visibility_versions_client(client_code):
         abort(404)
     client = rows_c[0]
     s = client["schema_name"]
-    rows = query(f"""
-        SELECT s.hostname,
-               COALESCE(s.environment::TEXT, '') AS environment,
-               COALESCE(s.datacenter, '')         AS datacenter,
-               COALESCE(i.db_version, 'Unknown')  AS db_version
-        FROM {s}.oracle_servers s
+
+    # ── Database servers ─────────────────────────────────────────────────────
+    db_rows = query(f"""
+        SELECT srv.hostname,
+               COALESCE(srv.environment::TEXT, '') AS environment,
+               COALESCE(srv.datacenter, '')         AS datacenter,
+               COALESCE(i.db_version, 'Unknown')    AS db_version
+        FROM {s}.oracle_servers srv
         LEFT JOIN {s}.oracle_instances i
-               ON i.server_id = s.server_id AND i.is_active
-        WHERE s.is_active
-        ORDER BY s.hostname
+               ON i.server_id = srv.server_id AND i.is_active
+        WHERE srv.is_active
+        ORDER BY srv.hostname
     """)
-    servers = []
-    for r in rows:
+    db_servers = []
+    for r in db_rows:
         ver = r["db_version"] or "Unknown"
         status, end_date = _version_support_status(ver)
-        servers.append({
+        db_servers.append({
             "hostname":    r["hostname"],
             "environment": r["environment"],
             "datacenter":  r["datacenter"],
-            "db_version":  ver,
+            "version":     ver,
             "status":      status,
             "end_date":    end_date,
         })
+
+    # ── Middleware (WLS) servers ─────────────────────────────────────────────
+    try:
+        wls_rows = query(f"""
+            SELECT DISTINCT ON (srv.server_id)
+                   srv.hostname,
+                   COALESCE(srv.environment::TEXT, '') AS environment,
+                   COALESCE(srv.datacenter, '')         AS datacenter,
+                   COALESCE(d.wls_version, 'Unknown')   AS wls_version,
+                   d.wls_edition
+            FROM {s}.oracle_servers srv
+            JOIN {s}.wls_domains d ON d.server_id = srv.server_id AND d.is_active
+            WHERE srv.is_active
+            ORDER BY srv.server_id, d.domain_name
+        """)
+    except Exception:
+        wls_rows = []
+
+    mw_servers = []
+    for r in wls_rows:
+        ver = r["wls_version"] or "Unknown"
+        status, end_date = _wls_support_status(ver)
+        mw_servers.append({
+            "hostname":    r["hostname"],
+            "environment": r["environment"],
+            "datacenter":  r["datacenter"],
+            "version":     ver,
+            "edition":     r.get("wls_edition") or "",
+            "status":      status,
+            "end_date":    end_date,
+        })
+
+    def _status_counts(srv_list):
+        c = {"supported": 0, "extended": 0, "warning": 0, "eol": 0, "unknown": 0}
+        for sv in srv_list:
+            c[sv["status"]] = c.get(sv["status"], 0) + 1
+        return c
+
     return render_template(
         "visibility_versions_client.html",
         client=client,
-        servers=servers,
+        db_servers=db_servers,
+        mw_servers=mw_servers,
+        db_counts=_status_counts(db_servers),
+        mw_counts=_status_counts(mw_servers),
     )
 
 
