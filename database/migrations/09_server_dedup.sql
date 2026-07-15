@@ -294,31 +294,9 @@ END;
 $$;
 
 
--- ── Conflict view — easy way to find servers that need human review ──────────
--- This is a helper view in sam_admin; it unions across all active client schemas.
-
-CREATE OR REPLACE VIEW sam_admin.server_discovery_conflicts AS
-SELECT
-    c.client_name,
-    c.schema_name,
-    s.server_id,
-    s.hostname,
-    s.fqdn,
-    s.ip_address::TEXT,
-    s.discovery_source,
-    s.last_seen,
-    s.conflict_detail
-FROM sam_admin.clients c
-CROSS JOIN LATERAL (
-    -- We use a function to query each client schema dynamically.
-    -- Populated by the trigger below; for now callers can query per-schema.
-    SELECT 1 WHERE FALSE  -- placeholder — see note below
-) s(server_id, hostname, fqdn, ip_address, discovery_source, last_seen, conflict_detail)
-WHERE c.is_active;
-
--- NOTE: PostgreSQL doesn't support truly dynamic cross-schema UNION in a view
--- without PL/pgSQL.  The conflict view above is a placeholder.
--- Use the per-schema query instead:
+-- NOTE: PostgreSQL doesn't support truly dynamic cross-schema UNION in a plain
+-- view without PL/pgSQL.  Use sam_admin.list_conflicts() defined below, or
+-- query per-schema directly:
 --
 --   SELECT 'client_acme' AS schema_name, server_id, hostname, fqdn,
 --          ip_address::TEXT, discovery_source, last_seen, conflict_detail
@@ -326,8 +304,6 @@ WHERE c.is_active;
 --   WHERE discovery_conflict = TRUE;
 --
 -- Or call sam_admin.list_conflicts() defined below.
-
-DROP VIEW IF EXISTS sam_admin.server_discovery_conflicts;
 
 CREATE OR REPLACE FUNCTION sam_admin.list_conflicts()
 RETURNS TABLE (
