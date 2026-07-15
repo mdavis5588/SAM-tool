@@ -1349,14 +1349,47 @@ def _build_licence_detail(entitlement_rows):
         )
         product_totals[pname]["assigned_qty"] += consumed
 
+    # Fetch license_position data: required + NUP info per (hostname, product_detail)
+    lp_data = {}  # (hostname, product_detail) -> {required, nup_minimum, nup_users, licence_metric}
+    if active_schemas:
+        lp_union = " UNION ALL ".join(
+            f"SELECT hostname, product_detail, licences_required, "
+            f"nup_minimum, nup_active_users, licence_metric "
+            f"FROM {s}.license_position"
+            for s in active_schemas
+        )
+        for r in query(f"SELECT * FROM ({lp_union}) t"):
+            key = (r["hostname"], (r["product_detail"] or "").lower())
+            lp_data[key] = {
+                "required":        float(r["licences_required"] or 0),
+                "nup_minimum":     float(r["nup_minimum"]) if r["nup_minimum"] is not None else None,
+                "nup_users":       int(r["nup_active_users"]) if r["nup_active_users"] is not None else None,
+                "licence_metric":  r["licence_metric"] or "processor_perpetual",
+            }
+
     lines = sorted(product_totals.values(), key=lambda x: _line_sort(x["product_name"]))
     for ln in lines:
         ln["unassigned_qty"] = max(ln["total_qty"] - ln["assigned_qty"], 0)
-        # Convert servers dict to sorted list
-        ln["servers"] = sorted(
-            [{"hostname": h, "consumed": c} for h, c in ln["servers"].items()],
-            key=lambda x: x["hostname"]
-        )
+        pname_lower = (ln["product_name"] or "").lower()
+        # Convert servers dict to sorted list, enriched with license_position data
+        server_list = []
+        any_nup = False
+        for h, c in ln["servers"].items():
+            lp = lp_data.get((h, pname_lower)) or lp_data.get((h, ""))
+            is_nup = lp and lp["licence_metric"] == "named_user_plus"
+            if is_nup:
+                any_nup = True
+            server_list.append({
+                "hostname":       h,
+                "consumed":       c,
+                "required":       lp["required"] if lp else None,
+                "nup_minimum":    lp["nup_minimum"] if lp else None,
+                "nup_users":      lp["nup_users"] if lp else None,
+                "licence_metric": lp["licence_metric"] if lp else None,
+                "is_nup":         is_nup,
+            })
+        ln["servers"] = sorted(server_list, key=lambda x: x["hostname"])
+        ln["any_nup"] = any_nup
     return lines
 
 
@@ -3029,11 +3062,14 @@ def compliance_client(client_code):
                 COALESCE(BOOL_OR(lp.product_family != 'oracle_database'
                     AND lp.compliance_status = 'under_licensed'), FALSE) AS mw_non_compliant,
                 JSON_AGG(JSON_BUILD_OBJECT(
-                    'product',  COALESCE(lp.product_detail, lp.product_family),
+                    'product',        COALESCE(lp.product_detail, lp.product_family),
                     'product_family', lp.product_family,
-                    'required', lp.licences_required,
-                    'assigned', lp.total_licensed,
-                    'short',    GREATEST(lp.licences_required - lp.total_licensed, 0)
+                    'required',       lp.licences_required,
+                    'assigned',       lp.total_licensed,
+                    'short',          GREATEST(lp.licences_required - lp.total_licensed, 0),
+                    'licence_metric', lp.licence_metric,
+                    'nup_minimum',    lp.nup_minimum,
+                    'nup_users',      lp.nup_active_users
                 ) ORDER BY lp.product_family)
                     FILTER (WHERE lp.compliance_status = 'under_licensed') AS issues
             FROM {s}.oracle_servers srv

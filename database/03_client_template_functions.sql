@@ -44,6 +44,23 @@ BEGIN
       FROM latest_proc lp
     ),
 
+    -- Latest named-user-plus count per server (sum across all active instances)
+    nup_totals AS (
+      SELECT
+        s.server_id,
+        SUM(COALESCE(n.active_user_count, 0)) AS total_nup_users
+      FROM %I.oracle_servers s
+      JOIN %I.oracle_instances i ON i.server_id = s.server_id AND i.is_active
+      LEFT JOIN LATERAL (
+        SELECT active_user_count
+        FROM %I.oracle_nup_users nu
+        WHERE nu.instance_id = i.instance_id
+        ORDER BY snapshot_date DESC, recorded_at DESC LIMIT 1
+      ) n ON TRUE
+      WHERE s.is_active
+      GROUP BY s.server_id
+    ),
+
     -- One row per server+edition (DISTINCT ON deduplicates multiple instances
     -- with the same edition — the licence is per physical server, not per instance)
     db_required AS (
@@ -53,7 +70,32 @@ BEGIN
         i.edition               AS product_detail,
         cf.cpu_sockets, cf.total_physical_cores, cf.cpu_model,
         cf.core_factor, cf.virt_type::TEXT, cf.is_vmware,
+        -- NUP minimum floor: 25 per processor-licence for EE, 10 per socket for SE2/SE
         CASE
+          WHEN i.edition ILIKE '%%Enterprise%%'
+            THEN ROUND(cf.total_physical_cores * cf.core_factor * 25, 0)
+          WHEN i.edition ILIKE '%%Standard Edition 2%%'
+            THEN (LEAST(cf.cpu_sockets, 2) * 10)::NUMERIC
+          WHEN i.edition ILIKE '%%Standard%%'
+            THEN (cf.cpu_sockets * 10)::NUMERIC
+          ELSE ROUND(cf.total_physical_cores * cf.core_factor * 25, 0)
+        END AS nup_minimum,
+        COALESCE(nt.total_nup_users, 0)::NUMERIC AS nup_active_users,
+        COALESCE(s.licence_metric_override, 'processor_perpetual')::TEXT AS licence_metric,
+        CASE
+          WHEN COALESCE(s.licence_metric_override, 'processor_perpetual') = 'named_user_plus'
+            THEN GREATEST(
+              COALESCE(nt.total_nup_users, 0)::NUMERIC,
+              CASE
+                WHEN i.edition ILIKE '%%Enterprise%%'
+                  THEN ROUND(cf.total_physical_cores * cf.core_factor * 25, 0)
+                WHEN i.edition ILIKE '%%Standard Edition 2%%'
+                  THEN (LEAST(cf.cpu_sockets, 2) * 10)::NUMERIC
+                WHEN i.edition ILIKE '%%Standard%%'
+                  THEN (cf.cpu_sockets * 10)::NUMERIC
+                ELSE ROUND(cf.total_physical_cores * cf.core_factor * 25, 0)
+              END
+            )
           WHEN i.edition ILIKE '%%Enterprise%%'         THEN ROUND(cf.total_physical_cores * cf.core_factor, 2)
           WHEN i.edition ILIKE '%%Standard Edition 2%%' THEN LEAST(cf.cpu_sockets, 2)::NUMERIC
           WHEN i.edition ILIKE '%%Standard%%'           THEN cf.cpu_sockets::NUMERIC
@@ -62,6 +104,7 @@ BEGIN
       FROM %I.oracle_servers s
       JOIN %I.oracle_instances i ON i.server_id = s.server_id AND i.is_active
       JOIN core_factor cf        ON cf.server_id = s.server_id
+      LEFT JOIN nup_totals nt    ON nt.server_id = s.server_id
       WHERE s.is_active = TRUE
       ORDER BY s.server_id, i.edition
     ),
@@ -73,6 +116,9 @@ BEGIN
         d.wls_edition           AS product_detail,
         cf.cpu_sockets, cf.total_physical_cores, cf.cpu_model,
         cf.core_factor, cf.virt_type::TEXT, cf.is_vmware,
+        NULL::NUMERIC           AS nup_minimum,
+        NULL::NUMERIC           AS nup_active_users,
+        'processor_perpetual'::TEXT AS licence_metric,
         CASE
           WHEN lr.uses_core_factor THEN ROUND(cf.total_physical_cores * cf.core_factor, 2)
           ELSE cf.cpu_sockets::NUMERIC
@@ -97,6 +143,9 @@ BEGIN
         olo.display_name         AS product_detail,
         cf.cpu_sockets, cf.total_physical_cores, cf.cpu_model,
         cf.core_factor, cf.virt_type::TEXT, cf.is_vmware,
+        NULL::NUMERIC            AS nup_minimum,
+        NULL::NUMERIC            AS nup_active_users,
+        'processor_perpetual'::TEXT AS licence_metric,
         ROUND(cf.total_physical_cores * cf.core_factor, 2) AS licences_required
       FROM %I.oracle_servers s
       JOIN %I.oracle_instances  i   ON i.server_id   = s.server_id
@@ -147,6 +196,9 @@ BEGIN
       ar.core_factor,
       ar.virt_type,
       ar.is_vmware,
+      ar.licence_metric,
+      ar.nup_minimum,
+      ar.nup_active_users,
       ar.licences_required,
       COALESCE(lcc.assigned_csi_numbers, '')       AS assigned_csi_numbers,
       COALESCE(lcc.csi_assignment_count, 0)        AS csi_assignment_count,
@@ -170,14 +222,17 @@ BEGIN
   $view$,
   p_schema,   -- 1  view schema
   p_schema,   -- 2  oracle_processors
-  p_schema,   -- 3  oracle_servers  (db_required)
-  p_schema,   -- 4  oracle_instances (db_required)
-  p_schema,   -- 5  oracle_servers  (wls_required)
-  p_schema,   -- 6  wls_domains
-  p_schema,   -- 7  oracle_servers  (option_required)
-  p_schema,   -- 8  oracle_instances (option_required)
-  p_schema,   -- 9  oracle_options
-  p_schema    -- 10 server_csi_map
+  p_schema,   -- 3  oracle_servers  (nup_totals)
+  p_schema,   -- 4  oracle_instances (nup_totals)
+  p_schema,   -- 5  oracle_nup_users (nup_totals)
+  p_schema,   -- 6  oracle_servers  (db_required)
+  p_schema,   -- 7  oracle_instances (db_required)
+  p_schema,   -- 8  oracle_servers  (wls_required)
+  p_schema,   -- 9  wls_domains
+  p_schema,   -- 10 oracle_servers  (option_required)
+  p_schema,   -- 11 oracle_instances (option_required)
+  p_schema,   -- 12 oracle_options
+  p_schema    -- 13 server_csi_map
   );
 END;
 $$;

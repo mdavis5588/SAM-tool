@@ -339,6 +339,7 @@
     </button>
     <div class="collapse" id="{{ card_id }}">
       <div class="issue-body">
+        {% set has_nup = sv.issues | selectattr('licence_metric', 'equalto', 'named_user_plus') | list | length > 0 %}
         <table class="issue-table">
           <thead>
             <tr>
@@ -346,15 +347,34 @@
               <th>{{ t('compliance.required') }}</th>
               <th>{{ t('label.assigned') }}</th>
               <th>{{ t('compliance.short') }}</th>
+              {% if has_nup %}<th>Min NUP</th><th>NUP Users</th>{% endif %}
             </tr>
           </thead>
           <tbody>
             {% for issue in sv.issues %}
             <tr>
-              <td>{{ issue.product | replace('oracle_','') | replace('_',' ') | title }}</td>
-              <td>{{ issue.required }}</td>
-              <td>{{ issue.assigned }}</td>
-              <td><span class="short-badge"><i class="bi bi-exclamation-circle"></i> {{ issue.short }}</span></td>
+              <td>
+                {{ issue.product | replace('oracle_','') | replace('_',' ') | title }}
+                {% if issue.licence_metric == 'named_user_plus' %}
+                <span style="font-size:.62rem;font-weight:600;color:#7c3aed;margin-left:.3rem;
+                             background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.2);
+                             border-radius:10px;padding:.05rem .35rem">NUP</span>
+                {% endif %}
+              </td>
+              <td>{{ issue.required | int }}</td>
+              <td>{{ issue.assigned | int }}</td>
+              <td><span class="short-badge"><i class="bi bi-exclamation-circle"></i> {{ issue.short | int }}</span></td>
+              {% if has_nup %}
+              <td>
+                {% if issue.nup_minimum is not none %}
+                  <span style="color:#7c3aed;font-weight:600">{{ issue.nup_minimum | int }}</span>
+                {% else %}<span class="text-muted">—</span>{% endif %}
+              </td>
+              <td>
+                {% if issue.nup_users is not none %}{{ issue.nup_users | int }}
+                {% else %}<span class="text-muted">—</span>{% endif %}
+              </td>
+              {% endif %}
             </tr>
             {% endfor %}
           </tbody>
