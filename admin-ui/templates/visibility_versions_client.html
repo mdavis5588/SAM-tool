@@ -171,8 +171,11 @@
   </a>
   <h4 class="mb-0"><i class="bi bi-building me-1"></i>{{ client.client_name }}</h4>
   <span style="font-size:.85rem;color:var(--text-muted)">— Lifecycle Management</span>
+</div>
 
-  <div class="ms-auto type-toggle" role="group" aria-label="Server type">
+<!-- ── Toggle sits between stat tiles and table ── -->
+<div class="mb-3">
+  <div class="type-toggle" role="group" aria-label="Server type">
     <button class="type-pill active-db" id="pill-db" onclick="switchType('db')">
       <i class="bi bi-database-fill"></i> Database
       {% if db_servers %}<span style="font-size:.65rem;opacity:.7;margin-left:.2rem">({{ db_servers|length }})</span>{% endif %}
