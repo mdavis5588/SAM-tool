@@ -198,5 +198,5 @@ JOIN client_acme.oracle_servers s USING (hostname)
 JOIN shared.csi_contracts c ON c.vendor_reference = 'ORD-2025-ACME-NUP'
 JOIN shared.license_entitlement_lines l
   ON l.csi_id = c.csi_id
-  AND l.product_detail = v.product_detail
+  AND l.product_name = v.product_detail
 ON CONFLICT DO NOTHING;
