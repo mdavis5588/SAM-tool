@@ -854,9 +854,28 @@ def edit_server(server_id):
         ORDER BY cs.csi_number
     """, (server_client_code,))
 
-    licence_position = query(
-        f"SELECT * FROM {schema}.license_position WHERE server_id = %s", (server_id,)
+    # Detect NUP columns (added by migration 05)
+    _nup_col_check = query(
+        """SELECT COUNT(*) AS n FROM information_schema.columns
+           WHERE table_schema = %s AND table_name = 'license_position'
+             AND column_name IN ('licence_metric','nup_minimum','nup_active_users')""",
+        (schema,), fetchall=False
     )
+    _lp_has_nup = (_nup_col_check or {}).get("n", 0) == 3
+
+    if _lp_has_nup:
+        licence_position = query(
+            f"SELECT *, licence_metric, nup_minimum, nup_active_users "
+            f"FROM {schema}.license_position WHERE server_id = %s", (server_id,)
+        )
+    else:
+        licence_position = query(
+            f"SELECT * FROM {schema}.license_position WHERE server_id = %s", (server_id,)
+        )
+        for row in licence_position:
+            row["licence_metric"]    = "processor_perpetual"
+            row["nup_minimum"]       = None
+            row["nup_active_users"]  = None
 
     def _licence_sort_key(row):
         d = (row.get("product_detail") or "").lower()

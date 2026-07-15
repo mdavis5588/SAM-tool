@@ -288,12 +288,23 @@
           {% endif %}
         {% endif %}
       </div>
+      {% set _is_nup = server.licence_metric == 'named_user_plus' %}
       <div class="table-responsive">
         <table class="table table-sm mb-0">
           <thead class="table-light">
             <tr>
               <th>Product</th>
               <th class="text-end">Required</th>
+              {% if _is_nup %}
+              <th class="text-end" title="Minimum NUP licences based on processors/sockets">
+                Min NUP
+                <i class="bi bi-info-circle text-muted" style="font-size:.7rem"></i>
+              </th>
+              <th class="text-end" title="Active named users discovered by Ansible">
+                NUP Users
+                <i class="bi bi-info-circle text-muted" style="font-size:.7rem"></i>
+              </th>
+              {% endif %}
               <th class="text-end">Assigned</th>
               <th class="text-end">Still needed</th>
             </tr>
@@ -308,8 +319,28 @@
                 {% elif row.product_family == 'oracle_weblogic' %}<i class="bi bi-boxes me-1 text-muted"></i>
                 {% endif %}
                 {{ row.product_detail or (row.product_family | replace('_',' ') | title) }}
+                {% if _is_nup and row.get('licence_metric') == 'named_user_plus' %}
+                <span style="font-size:.62rem;font-weight:700;padding:.1rem .35rem;border-radius:4px;
+                             background:rgba(124,58,237,.1);color:#7c3aed;margin-left:.3rem">NUP</span>
+                {% endif %}
               </td>
-              <td class="text-end">{{ row.licences_required }}</td>
+              <td class="text-end" style="font-variant-numeric:tabular-nums">{{ row.licences_required }}</td>
+              {% if _is_nup %}
+              <td class="text-end" style="font-variant-numeric:tabular-nums">
+                {% if row.get('nup_minimum') is not none %}
+                  <span style="color:#7c3aed;font-weight:600">{{ row.nup_minimum | int }}</span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td class="text-end" style="font-variant-numeric:tabular-nums">
+                {% if row.get('nup_active_users') is not none %}
+                  {{ row.nup_active_users | int }}
+                {% else %}
+                  <span class="text-muted small">Not discovered</span>
+                {% endif %}
+              </td>
+              {% endif %}
               <td class="text-end">
                 {% if _ula_active %}
                   <span style="color:#7c3aed;font-weight:600"><i class="bi bi-infinity me-1"></i>ULA</span>
