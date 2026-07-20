@@ -307,6 +307,10 @@
       <div class="sidebar-section-label">{{ t('nav.administration') }}</div>
       <a class="sidebar-link {% if request.endpoint == 'clients' %}active{% endif %}"
          href="{{ url_for('clients') }}"><i class="bi bi-people"></i><span>{{ t('nav.clients') }}</span></a>
+      <a class="sidebar-link {% if request.endpoint == 'register_server' %}active{% endif %}"
+         href="{{ url_for('register_server') }}"><i class="bi bi-hdd-network"></i><span>{{ t('nav.register_server') }}</span></a>
+      <a class="sidebar-link {% if request.endpoint == 'discovery_history' %}active{% endif %}"
+         href="{{ url_for('discovery_history') }}"><i class="bi bi-clock-history"></i><span>{{ t('nav.discovery_history') }}</span></a>
       <a class="sidebar-link {% if request.endpoint == 'settings' %}active{% endif %}"
          href="{{ url_for('settings') }}"><i class="bi bi-gear"></i><span>{{ t('nav.alert_settings') }}</span></a>
       <a class="sidebar-link {% if request.endpoint == 'assignment_queue' %}active{% endif %}"

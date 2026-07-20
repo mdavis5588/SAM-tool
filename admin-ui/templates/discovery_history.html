@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+{% block title %}{{ t('discovery_history.title') }}{% endblock %}
+{% block content %}
+<style>
+  :root {
+    --dh-surface: #fff;
+    --dh-border: #dee2e6;
+    --dh-muted: #6c757d;
+    --dh-tab-bg: #f8f9fa;
+    --dh-tab-active: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --dh-surface: #1e2228;
+      --dh-border: #373c44;
+      --dh-muted: #8b95a1;
+      --dh-tab-bg: #161b22;
+      --dh-tab-active: #1e2228;
+    }
+  }
+  :root[data-theme="dark"] {
+    --dh-surface: #1e2228;
+    --dh-border: #373c44;
+    --dh-muted: #8b95a1;
+    --dh-tab-bg: #161b22;
+    --dh-tab-active: #1e2228;
+  }
+
+  .dh-header { margin-bottom: 1.5rem; display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+  .dh-header-text h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: .25rem; }
+  .dh-header-text p  { color: var(--dh-muted); font-size: .875rem; margin: 0; }
+
+  .dh-tabs { display: flex; border-bottom: 2px solid var(--dh-border); margin-bottom: 1.25rem; gap: .25rem; }
+  .dh-tab {
+    padding: .45rem 1.1rem;
+    font-size: .85rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 5px 5px 0 0;
+    cursor: pointer;
+    background: var(--dh-tab-bg);
+    color: var(--dh-muted);
+    transition: background .15s;
+  }
+  .dh-tab.active {
+    background: var(--dh-tab-active);
+    border-color: var(--dh-border);
+    color: inherit;
+    margin-bottom: -2px;
+    border-bottom: 2px solid var(--dh-tab-active);
+  }
+  .dh-tab-panel { display: none; }
+  .dh-tab-panel.active { display: block; }
+
+  .dh-table-wrap { overflow-x: auto; }
+  .dh-table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+  .dh-table th {
+    background: var(--dh-surface);
+    border-bottom: 2px solid var(--dh-border);
+    padding: .5rem .75rem;
+    text-align: left;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .dh-table td {
+    border-bottom: 1px solid var(--dh-border);
+    padding: .5rem .75rem;
+    vertical-align: middle;
+  }
+  .dh-table tr:last-child td { border-bottom: none; }
+  .dh-table tr:hover td { background: rgba(128,128,128,.04); }
+
+  .badge-source {
+    display: inline-block;
+    font-size: .7rem;
+    font-weight: 600;
+    padding: .2em .55em;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+  }
+  .badge-ansible  { background: #e8523a22; color: #e8523a; }
+  .badge-psql     { background: #33679122; color: #336791; }
+  .badge-manual   { background: #6f42c122; color: #6f42c1; }
+  .badge-other    { background: #6c757d22; color: #6c757d; }
+
+  .badge-status-completed { background: #19875422; color: #198754; font-size:.7rem; padding:.2em .5em; border-radius:3px; font-weight:600; }
+  .badge-status-running   { background: #ffc10722; color: #b45309;  font-size:.7rem; padding:.2em .5em; border-radius:3px; font-weight:600; }
+  .badge-status-failed    { background: #dc354522; color: #dc3545;  font-size:.7rem; padding:.2em .5em; border-radius:3px; font-weight:600; }
+
+  .badge-conflict { background: #dc354522; color: #dc3545; font-size:.7rem; padding:.2em .5em; border-radius:3px; font-weight:600; }
+
+  .num-new     { color: #198754; font-weight: 600; }
+  .num-updated { color: #0d6efd; font-weight: 600; }
+  .num-conflict{ color: #dc3545; font-weight: 600; }
+
+  .empty-state { text-align:center; padding:3rem 1rem; color:var(--dh-muted); }
+  .empty-state i { font-size:2.5rem; display:block; margin-bottom:.75rem; opacity:.4; }
+</style>
+
+<div class="container-fluid py-4">
+  <div class="dh-header">
+    <div class="dh-header-text">
+      <h1><i class="bi bi-clock-history me-2"></i>{{ t('discovery_history.title') }}</h1>
+      <p>{{ t('discovery_history.subtitle') }}</p>
+    </div>
+    <a href="{{ url_for('register_server') }}" class="btn btn-success btn-sm">
+      <i class="bi bi-hdd-network me-1"></i>{{ t('discovery_history.btn_register') }}
+    </a>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+      <div class="alert alert-{{ cat }} alert-dismissible fade show py-2" role="alert">
+        {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}
+  {% endwith %}
+
+  <div class="dh-tabs">
+    <div class="dh-tab active" onclick="switchTab('runs', this)">
+      <i class="bi bi-list-task me-1"></i>{{ t('discovery_history.tab_runs') }}
+      {% if runs %}<span class="badge bg-secondary ms-1" style="font-size:.65rem">{{ runs|length }}</span>{% endif %}
+    </div>
+    <div class="dh-tab" onclick="switchTab('servers', this)">
+      <i class="bi bi-hdd me-1"></i>{{ t('discovery_history.tab_servers') }}
+      {% if server_timeline %}<span class="badge bg-secondary ms-1" style="font-size:.65rem">{{ server_timeline|length }}</span>{% endif %}
+    </div>
+  </div>
+
+  <!-- Run Log Tab -->
+  <div id="tab-runs" class="dh-tab-panel active">
+    {% if runs %}
+    <div class="dh-table-wrap">
+      <table class="dh-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            {% if schema == "__all__" %}<th>{{ t('discovery_history.col_client') }}</th>{% endif %}
+            <th>{{ t('discovery_history.col_source') }}</th>
+            <th>{{ t('discovery_history.col_started') }}</th>
+            <th>{{ t('discovery_history.col_finished') }}</th>
+            <th>{{ t('discovery_history.col_seen') }}</th>
+            <th>{{ t('discovery_history.col_new') }}</th>
+            <th>{{ t('discovery_history.col_updated') }}</th>
+            <th>{{ t('discovery_history.col_conflicts') }}</th>
+            <th>{{ t('discovery_history.col_host') }}</th>
+            <th>{{ t('discovery_history.col_status') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for run in runs %}
+          <tr>
+            <td style="color:var(--dh-muted);font-size:.78rem">{{ run.run_id }}</td>
+            {% if schema == "__all__" %}<td>{{ run.client_name }}</td>{% endif %}
+            <td>
+              {% set src = run.source | lower %}
+              {% if 'ansible' in src %}
+                <span class="badge-source badge-ansible">ansible</span>
+              {% elif 'psql' in src or 'cron' in src %}
+                <span class="badge-source badge-psql">psql cron</span>
+              {% elif 'manual' in src %}
+                <span class="badge-source badge-manual">manual</span>
+              {% else %}
+                <span class="badge-source badge-other">{{ run.source }}</span>
+              {% endif %}
+            </td>
+            <td style="white-space:nowrap">{{ run.started_at.strftime('%Y-%m-%d %H:%M') if run.started_at else '—' }}</td>
+            <td style="white-space:nowrap">{{ run.finished_at.strftime('%H:%M:%S') if run.finished_at else '—' }}</td>
+            <td>{{ run.servers_seen }}</td>
+            <td><span class="num-new">{{ run.servers_new }}</span></td>
+            <td><span class="num-updated">{{ run.servers_updated }}</span></td>
+            <td>
+              {% if run.servers_conflict > 0 %}
+                <span class="num-conflict">{{ run.servers_conflict }}</span>
+              {% else %}
+                0
+              {% endif %}
+            </td>
+            <td style="color:var(--dh-muted);font-size:.8rem">{{ run.run_host or '—' }}</td>
+            <td>
+              {% if run.status == 'completed' %}
+                <span class="badge-status-completed">{{ t('discovery_history.status_completed') }}</span>
+              {% elif run.status == 'running' %}
+                <span class="badge-status-running">{{ t('discovery_history.status_running') }}</span>
+              {% else %}
+                <span class="badge-status-failed">{{ t('discovery_history.status_failed') }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <i class="bi bi-clock-history"></i>
+      {{ t('discovery_history.no_runs') }}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Server Timeline Tab -->
+  <div id="tab-servers" class="dh-tab-panel">
+    {% if server_timeline %}
+    <div class="dh-table-wrap">
+      <table class="dh-table">
+        <thead>
+          <tr>
+            <th>{{ t('discovery_history.col_hostname') }}</th>
+            <th>{{ t('discovery_history.col_fqdn') }}</th>
+            <th>{{ t('discovery_history.col_ip') }}</th>
+            <th>{{ t('discovery_history.col_source_col') }}</th>
+            <th>{{ t('discovery_history.col_first_seen') }}</th>
+            <th>{{ t('discovery_history.col_last_seen') }}</th>
+            <th>{{ t('discovery_history.col_conflict') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for srv in server_timeline %}
+          <tr>
+            <td>
+              <a href="{{ url_for('edit_server', server_id=srv.server_id) }}" style="text-decoration:none;font-weight:600">
+                {{ srv.hostname }}
+              </a>
+            </td>
+            <td style="color:var(--dh-muted);font-size:.8rem">{{ srv.fqdn or '—' }}</td>
+            <td style="font-family:monospace;font-size:.8rem">{{ srv.ip_address or '—' }}</td>
+            <td>
+              {% if srv.discovery_source %}
+                {% set src = srv.discovery_source | lower %}
+                {% if 'ansible' in src %}
+                  <span class="badge-source badge-ansible">ansible</span>
+                {% elif 'psql' in src or 'cron' in src %}
+                  <span class="badge-source badge-psql">psql cron</span>
+                {% elif 'manual' in src %}
+                  <span class="badge-source badge-manual">manual</span>
+                {% else %}
+                  <span class="badge-source badge-other">{{ srv.discovery_source }}</span>
+                {% endif %}
+              {% else %}
+                <span style="color:var(--dh-muted)">—</span>
+              {% endif %}
+            </td>
+            <td style="white-space:nowrap;font-size:.8rem">{{ srv.first_seen.strftime('%Y-%m-%d') if srv.first_seen else '—' }}</td>
+            <td style="white-space:nowrap;font-size:.8rem">{{ srv.last_seen.strftime('%Y-%m-%d %H:%M') if srv.last_seen else '—' }}</td>
+            <td>
+              {% if srv.discovery_conflict %}
+                <a href="{{ url_for('discovery_conflicts') }}" class="badge-conflict" style="text-decoration:none">conflict</a>
+              {% else %}
+                <span style="color:var(--dh-muted)">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% elif schema == "__all__" %}
+    <div class="empty-state">
+      <i class="bi bi-hdd"></i>
+      Select a specific client to see the server timeline.
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <i class="bi bi-hdd"></i>
+      {{ t('discovery_history.no_servers') }}
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+function switchTab(name, el) {
+  document.querySelectorAll('.dh-tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.dh-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  el.classList.add('active');
+}
+</script>
+{% endblock %}

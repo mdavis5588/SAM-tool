@@ -1071,6 +1071,161 @@ def resolve_conflict(schema, server_id):
 
 
 # ---------------------------------------------------------------------------
+# Manual server registration
+# ---------------------------------------------------------------------------
+
+@app.route("/servers/register", methods=["GET", "POST"])
+@login_required
+def register_server():
+    schema = get_schema()
+    if schema == "__all__":
+        flash("Select a specific client before registering a server.", "warning")
+        return redirect(url_for("servers"))
+
+    environments = ["production", "non_production", "development", "test", "dr", "unknown"]
+
+    if request.method == "POST":
+        hostname   = request.form.get("hostname", "").strip()
+        fqdn       = request.form.get("fqdn", "").strip() or None
+        ip_address = request.form.get("ip_address", "").strip() or None
+        os_family  = request.form.get("os_family", "").strip() or None
+        os_dist    = request.form.get("os_distribution", "").strip() or None
+        os_ver     = request.form.get("os_version", "").strip() or None
+        environment = request.form.get("environment", "unknown") or "unknown"
+        ram_mb     = request.form.get("total_ram_mb", "").strip() or None
+        datacenter = request.form.get("datacenter", "").strip() or None
+        cores      = request.form.get("physical_cores", "").strip() or None
+        sockets    = request.form.get("cpu_sockets", "").strip() or None
+        cps        = request.form.get("cores_per_socket", "").strip() or None
+        notes      = request.form.get("notes", "").strip() or None
+
+        if not hostname:
+            flash("Hostname is required.", "danger")
+            return render_template("register_server.html",
+                                   environments=environments, schema=schema,
+                                   form=request.form)
+
+        try:
+            result = query(
+                "SELECT sam_admin.register_server("
+                "  p_schema=>%s, p_hostname=>%s, p_source=>'manual',"
+                "  p_fqdn=>%s, p_ip_address=>%s,"
+                "  p_os_family=>%s, p_os_distribution=>%s, p_os_version=>%s,"
+                "  p_environment=>%s, p_total_ram_mb=>%s, p_datacenter=>%s,"
+                "  p_physical_cores=>%s, p_cpu_sockets=>%s, p_cores_per_socket=>%s,"
+                "  p_notes=>%s"
+                ") AS result",
+                (schema, hostname, fqdn, ip_address,
+                 os_family, os_dist, os_ver,
+                 environment,
+                 int(ram_mb) if ram_mb else None,
+                 datacenter,
+                 int(cores) if cores else None,
+                 int(sockets) if sockets else None,
+                 int(cps) if cps else None,
+                 notes),
+                fetchall=False
+            )
+            outcome = (result or {}).get("result", "")
+
+            u = current_user()
+            # Log as a manual discovery run (1 server)
+            try:
+                is_new = outcome.startswith("inserted")
+                query(
+                    "SELECT sam_admin.log_discovery_run("
+                    "  p_schema=>%s, p_source=>'manual',"
+                    "  p_servers_seen=>1,"
+                    "  p_servers_new=>%s, p_servers_updated=>%s,"
+                    "  p_run_host=>%s, p_status=>'completed'"
+                    ")",
+                    (schema, 1 if is_new else 0, 0 if is_new else 1,
+                     u.get("username") if u else "ui"),
+                    fetchall=False
+                )
+            except Exception:
+                pass
+
+            if outcome.startswith("conflict"):
+                flash(f"Conflict detected — {outcome[9:]}. Review in Discovery Conflicts.", "warning")
+            elif outcome.startswith("inserted"):
+                server_id = outcome.split(":")[1]
+                _audit("server.manual_register", entity_type="server", entity_id=int(server_id),
+                       new_values={"hostname": hostname, "source": "manual"}, client_schema=schema)
+                flash(f"Server '{hostname}' registered successfully (new).", "success")
+                return redirect(url_for("edit_server", server_id=int(server_id)))
+            else:
+                server_id = outcome.split(":")[1]
+                _audit("server.manual_register", entity_type="server", entity_id=int(server_id),
+                       new_values={"hostname": hostname, "source": "manual"}, client_schema=schema)
+                flash(f"Server '{hostname}' already exists — record updated.", "info")
+                return redirect(url_for("edit_server", server_id=int(server_id)))
+
+        except Exception as e:
+            flash(f"Registration failed: {e}", "danger")
+
+    return render_template("register_server.html",
+                           environments=environments, schema=schema,
+                           form=request.form)
+
+
+# ---------------------------------------------------------------------------
+# Discovery run history
+# ---------------------------------------------------------------------------
+
+@app.route("/servers/discovery-history")
+@login_required
+def discovery_history():
+    schema = get_schema()
+
+    try:
+        if schema == "__all__":
+            runs = query("""
+                SELECT r.*, c.client_name
+                FROM sam_admin.discovery_runs r
+                JOIN sam_admin.clients c ON c.client_id = r.client_id
+                ORDER BY r.started_at DESC
+                LIMIT 500
+            """)
+        else:
+            client = query(
+                "SELECT client_id, client_name FROM sam_admin.clients WHERE schema_name = %s",
+                (schema,), fetchall=False
+            )
+            runs = query("""
+                SELECT r.*, c.client_name
+                FROM sam_admin.discovery_runs r
+                JOIN sam_admin.clients c ON c.client_id = r.client_id
+                WHERE r.client_schema = %s
+                ORDER BY r.started_at DESC
+                LIMIT 500
+            """, (schema,)) if client else []
+    except Exception as e:
+        flash(f"Could not load discovery history: {e}", "warning")
+        runs = []
+
+    # Per-server last-seen timeline for the active schema
+    server_timeline = []
+    if schema != "__all__":
+        try:
+            server_timeline = query(f"""
+                SELECT server_id, hostname, fqdn, ip_address::TEXT,
+                       discovery_source, last_discovery_run,
+                       first_seen, last_seen,
+                       discovery_conflict
+                FROM {schema}.oracle_servers
+                ORDER BY last_seen DESC NULLS LAST
+            """)
+        except Exception:
+            pass
+
+    return render_template("discovery_history.html",
+                           runs=runs,
+                           server_timeline=server_timeline,
+                           schema=schema)
+
+
+# ---------------------------------------------------------------------------
 # Multi-client switcher
 # ---------------------------------------------------------------------------
 @app.route("/switch-client", methods=["POST"])

@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}{{ t('register_server.title') }}{% endblock %}
+{% block content %}
+<style>
+  :root {
+    --rs-surface: #fff;
+    --rs-border: #dee2e6;
+    --rs-muted: #6c757d;
+    --rs-section-bg: #f8f9fa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --rs-surface: #1e2228;
+      --rs-border: #373c44;
+      --rs-muted: #8b95a1;
+      --rs-section-bg: #161b22;
+    }
+  }
+  :root[data-theme="dark"] {
+    --rs-surface: #1e2228;
+    --rs-border: #373c44;
+    --rs-muted: #8b95a1;
+    --rs-section-bg: #161b22;
+  }
+
+  .rs-card {
+    background: var(--rs-surface);
+    border: 1px solid var(--rs-border);
+    border-radius: 8px;
+    padding: 1.75rem 2rem;
+    max-width: 760px;
+  }
+  .rs-header { margin-bottom: 1.75rem; }
+  .rs-header h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: .25rem; }
+  .rs-header p  { color: var(--rs-muted); font-size: .875rem; margin: 0; }
+
+  .rs-section {
+    background: var(--rs-section-bg);
+    border: 1px solid var(--rs-border);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+  .rs-section-title {
+    font-size: .75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--rs-muted);
+    margin-bottom: .75rem;
+  }
+  .rs-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem 1rem; }
+  .rs-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .75rem 1rem; }
+  @media (max-width: 600px) {
+    .rs-grid-2, .rs-grid-3 { grid-template-columns: 1fr; }
+  }
+
+  .rs-label { font-size: .8rem; font-weight: 600; margin-bottom: .25rem; display: block; }
+  .rs-hint  { font-size: .75rem; color: var(--rs-muted); margin-top: .2rem; }
+  .rs-actions { display: flex; gap: .75rem; margin-top: 1.5rem; }
+</style>
+
+<div class="container-fluid py-4">
+  <div class="rs-header">
+    <h1><i class="bi bi-hdd-network me-2"></i>{{ t('register_server.title') }}</h1>
+    <p>{{ t('register_server.subtitle') }}</p>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+      <div class="alert alert-{{ cat }} alert-dismissible fade show py-2" role="alert" style="max-width:760px">
+        {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}
+  {% endwith %}
+
+  <form method="post" action="{{ url_for('register_server') }}">
+    <div class="rs-card">
+
+      <!-- Identity -->
+      <div class="rs-section">
+        <div class="rs-section-title">{{ t('register_server.section_identity') }}</div>
+        <div class="rs-grid-2">
+          <div>
+            <label class="rs-label" for="hostname">{{ t('register_server.label_hostname') }} <span class="text-danger">*</span></label>
+            <input type="text" id="hostname" name="hostname" class="form-control form-control-sm"
+                   value="{{ form.get('hostname','') }}" required>
+            <div class="rs-hint">{{ t('register_server.hint_hostname') }}</div>
+          </div>
+          <div>
+            <label class="rs-label" for="fqdn">{{ t('register_server.label_fqdn') }}</label>
+            <input type="text" id="fqdn" name="fqdn" class="form-control form-control-sm"
+                   value="{{ form.get('fqdn','') }}" placeholder="srv01.corp.example.com">
+          </div>
+          <div>
+            <label class="rs-label" for="ip_address">{{ t('register_server.label_ip') }}</label>
+            <input type="text" id="ip_address" name="ip_address" class="form-control form-control-sm"
+                   value="{{ form.get('ip_address','') }}" placeholder="10.0.0.1">
+          </div>
+          <div>
+            <label class="rs-label" for="environment">{{ t('register_server.label_environment') }}</label>
+            <select id="environment" name="environment" class="form-select form-select-sm">
+              {% for env in environments %}
+              <option value="{{ env }}" {% if form.get('environment', 'unknown') == env %}selected{% endif %}>
+                {{ env | replace('_',' ') | title }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="rs-label" for="datacenter">{{ t('register_server.label_datacenter') }}</label>
+            <input type="text" id="datacenter" name="datacenter" class="form-control form-control-sm"
+                   value="{{ form.get('datacenter','') }}" placeholder="DC1">
+          </div>
+        </div>
+      </div>
+
+      <!-- OS -->
+      <div class="rs-section">
+        <div class="rs-section-title">{{ t('register_server.section_os') }}</div>
+        <div class="rs-grid-3">
+          <div>
+            <label class="rs-label" for="os_family">{{ t('register_server.label_os_family') }}</label>
+            <input type="text" id="os_family" name="os_family" class="form-control form-control-sm"
+                   value="{{ form.get('os_family','') }}" placeholder="Linux">
+          </div>
+          <div>
+            <label class="rs-label" for="os_distribution">{{ t('register_server.label_os_dist') }}</label>
+            <input type="text" id="os_distribution" name="os_distribution" class="form-control form-control-sm"
+                   value="{{ form.get('os_distribution','') }}" placeholder="RHEL">
+          </div>
+          <div>
+            <label class="rs-label" for="os_version">{{ t('register_server.label_os_ver') }}</label>
+            <input type="text" id="os_version" name="os_version" class="form-control form-control-sm"
+                   value="{{ form.get('os_version','') }}" placeholder="8.9">
+          </div>
+        </div>
+      </div>
+
+      <!-- Hardware -->
+      <div class="rs-section">
+        <div class="rs-section-title">{{ t('register_server.section_hardware') }}</div>
+        <div class="rs-grid-3">
+          <div>
+            <label class="rs-label" for="total_ram_mb">{{ t('register_server.label_ram') }}</label>
+            <input type="number" id="total_ram_mb" name="total_ram_mb" class="form-control form-control-sm"
+                   value="{{ form.get('total_ram_mb','') }}" min="0" placeholder="65536">
+            <div class="rs-hint">{{ t('register_server.hint_cores') }}</div>
+          </div>
+          <div>
+            <label class="rs-label" for="physical_cores">{{ t('register_server.label_cores') }}</label>
+            <input type="number" id="physical_cores" name="physical_cores" class="form-control form-control-sm"
+                   value="{{ form.get('physical_cores','') }}" min="1" placeholder="16">
+            <div class="rs-hint">{{ t('register_server.hint_cores') }}</div>
+          </div>
+          <div>
+            <label class="rs-label" for="cpu_sockets">{{ t('register_server.label_sockets') }}</label>
+            <input type="number" id="cpu_sockets" name="cpu_sockets" class="form-control form-control-sm"
+                   value="{{ form.get('cpu_sockets','') }}" min="1" placeholder="2">
+          </div>
+          <div>
+            <label class="rs-label" for="cores_per_socket">{{ t('register_server.label_cps') }}</label>
+            <input type="number" id="cores_per_socket" name="cores_per_socket" class="form-control form-control-sm"
+                   value="{{ form.get('cores_per_socket','') }}" min="1" placeholder="8">
+          </div>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div>
+        <label class="rs-label" for="notes">{{ t('register_server.label_notes') }}</label>
+        <textarea id="notes" name="notes" class="form-control form-control-sm" rows="2">{{ form.get('notes','') }}</textarea>
+      </div>
+
+      <div class="rs-actions">
+        <button type="submit" class="btn btn-success">
+          <i class="bi bi-hdd-network me-1"></i>{{ t('register_server.btn_register') }}
+        </button>
+        <a href="{{ url_for('servers') }}" class="btn btn-outline-secondary">{{ t('register_server.btn_cancel') }}</a>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}
