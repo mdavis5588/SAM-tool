@@ -7,6 +7,8 @@
     --rs-border: #dee2e6;
     --rs-muted: #6c757d;
     --rs-section-bg: #f8f9fa;
+    --rs-type-active-db:  #0d6efd22;
+    --rs-type-active-wls: #dc354522;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -28,7 +30,7 @@
     border: 1px solid var(--rs-border);
     border-radius: 8px;
     padding: 1.75rem 2rem;
-    max-width: 760px;
+    max-width: 800px;
   }
   .rs-header { margin-bottom: 1.75rem; }
   .rs-header h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: .25rem; }
@@ -58,6 +60,24 @@
   .rs-label { font-size: .8rem; font-weight: 600; margin-bottom: .25rem; display: block; }
   .rs-hint  { font-size: .75rem; color: var(--rs-muted); margin-top: .2rem; }
   .rs-actions { display: flex; gap: .75rem; margin-top: 1.5rem; }
+
+  /* Server type picker */
+  .type-picker { display: flex; gap: .75rem; margin-bottom: 1.25rem; }
+  .type-card {
+    flex: 1;
+    border: 2px solid var(--rs-border);
+    border-radius: 8px;
+    padding: .9rem 1rem;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    user-select: none;
+  }
+  .type-card:hover { border-color: #0d6efd88; }
+  .type-card.selected-db  { border-color: #0d6efd; background: var(--rs-type-active-db); }
+  .type-card.selected-wls { border-color: #dc3545; background: var(--rs-type-active-wls); }
+  .type-card-icon { font-size: 1.5rem; margin-bottom: .3rem; }
+  .type-card-title { font-weight: 700; font-size: .9rem; }
+  .type-card-sub   { font-size: .78rem; color: var(--rs-muted); }
 </style>
 
 <div class="container-fluid py-4">
@@ -68,14 +88,50 @@
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% for cat, msg in messages %}
-      <div class="alert alert-{{ cat }} alert-dismissible fade show py-2" role="alert" style="max-width:760px">
+      <div class="alert alert-{{ cat }} alert-dismissible fade show py-2" role="alert" style="max-width:800px">
         {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
       </div>
     {% endfor %}
   {% endwith %}
 
-  <form method="post" action="{{ url_for('register_server') }}">
+  <form method="post" action="{{ url_for('register_server') }}" id="regForm">
+    <input type="hidden" name="server_type" id="serverTypeInput" value="{{ form.get('server_type','oracle_database') }}">
+
     <div class="rs-card">
+
+      <!-- Client selector -->
+      <div class="rs-section">
+        <div class="rs-section-title">{{ t('register_server.section_client') }}</div>
+        <div>
+          <label class="rs-label" for="client_schema">{{ t('register_server.label_client') }} <span class="text-danger">*</span></label>
+          <select id="client_schema" name="client_schema" class="form-select form-select-sm" required>
+            <option value="">— {{ t('register_server.select_client') }} —</option>
+            {% for c in all_clients %}
+            <option value="{{ c.schema_name }}"
+              {% if form.get('client_schema', schema) == c.schema_name %}selected{% endif %}>
+              {{ c.client_name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <!-- Server type picker -->
+      <div class="rs-section-title">{{ t('register_server.section_type') }}</div>
+      <div class="type-picker mb-3">
+        <div class="type-card {% if form.get('server_type','oracle_database') == 'oracle_database' %}selected-db{% endif %}"
+             id="typeCardDB" onclick="selectType('oracle_database')">
+          <div class="type-card-icon">🗄️</div>
+          <div class="type-card-title">Oracle Database</div>
+          <div class="type-card-sub">{{ t('register_server.type_db_sub') }}</div>
+        </div>
+        <div class="type-card {% if form.get('server_type') == 'oracle_weblogic' %}selected-wls{% endif %}"
+             id="typeCardWLS" onclick="selectType('oracle_weblogic')">
+          <div class="type-card-icon">☕</div>
+          <div class="type-card-title">Oracle WebLogic</div>
+          <div class="type-card-sub">{{ t('register_server.type_wls_sub') }}</div>
+        </div>
+      </div>
 
       <!-- Identity -->
       <div class="rs-section">
@@ -111,6 +167,61 @@
             <label class="rs-label" for="datacenter">{{ t('register_server.label_datacenter') }}</label>
             <input type="text" id="datacenter" name="datacenter" class="form-control form-control-sm"
                    value="{{ form.get('datacenter','') }}" placeholder="DC1">
+          </div>
+        </div>
+      </div>
+
+      <!-- DB-specific fields -->
+      <div class="rs-section" id="dbSection" style="{% if form.get('server_type') == 'oracle_weblogic' %}display:none{% endif %}">
+        <div class="rs-section-title">Oracle Database Details</div>
+        <div class="rs-grid-3">
+          <div>
+            <label class="rs-label" for="oracle_sid">{{ t('register_server.label_sid') }}</label>
+            <input type="text" id="oracle_sid" name="oracle_sid" class="form-control form-control-sm"
+                   value="{{ form.get('oracle_sid','') }}" placeholder="ORCL">
+            <div class="rs-hint">{{ t('register_server.hint_sid') }}</div>
+          </div>
+          <div>
+            <label class="rs-label" for="db_version">{{ t('register_server.label_db_version') }}</label>
+            <input type="text" id="db_version" name="db_version" class="form-control form-control-sm"
+                   value="{{ form.get('db_version','') }}" placeholder="19.3.0.0">
+          </div>
+          <div>
+            <label class="rs-label" for="edition">{{ t('register_server.label_edition') }}</label>
+            <select id="edition" name="edition" class="form-select form-select-sm">
+              <option value="">—</option>
+              <option value="Enterprise Edition" {% if form.get('edition') == 'Enterprise Edition' %}selected{% endif %}>Enterprise Edition</option>
+              <option value="Standard Edition 2" {% if form.get('edition') == 'Standard Edition 2' %}selected{% endif %}>Standard Edition 2</option>
+              <option value="Standard Edition" {% if form.get('edition') == 'Standard Edition' %}selected{% endif %}>Standard Edition</option>
+              <option value="Personal Edition" {% if form.get('edition') == 'Personal Edition' %}selected{% endif %}>Personal Edition</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- WLS-specific fields -->
+      <div class="rs-section" id="wlsSection" style="{% if form.get('server_type','oracle_database') != 'oracle_weblogic' %}display:none{% endif %}">
+        <div class="rs-section-title">WebLogic Domain Details</div>
+        <div class="rs-grid-3">
+          <div>
+            <label class="rs-label" for="domain_name">{{ t('register_server.label_domain') }}</label>
+            <input type="text" id="domain_name" name="domain_name" class="form-control form-control-sm"
+                   value="{{ form.get('domain_name','') }}" placeholder="base_domain">
+            <div class="rs-hint">{{ t('register_server.hint_domain') }}</div>
+          </div>
+          <div>
+            <label class="rs-label" for="wls_version">{{ t('register_server.label_wls_version') }}</label>
+            <input type="text" id="wls_version" name="wls_version" class="form-control form-control-sm"
+                   value="{{ form.get('wls_version','') }}" placeholder="14.1.1.0">
+          </div>
+          <div>
+            <label class="rs-label" for="wls_edition">{{ t('register_server.label_wls_edition') }}</label>
+            <select id="wls_edition" name="wls_edition" class="form-select form-select-sm">
+              <option value="">—</option>
+              <option value="WebLogic Server" {% if form.get('wls_edition') == 'WebLogic Server' %}selected{% endif %}>WebLogic Server</option>
+              <option value="WebLogic Suite" {% if form.get('wls_edition') == 'WebLogic Suite' %}selected{% endif %}>WebLogic Suite</option>
+              <option value="Coherence" {% if form.get('wls_edition') == 'Coherence' %}selected{% endif %}>Coherence</option>
+            </select>
           </div>
         </div>
       </div>
@@ -167,7 +278,7 @@
       </div>
 
       <!-- Notes -->
-      <div>
+      <div class="mb-3">
         <label class="rs-label" for="notes">{{ t('register_server.label_notes') }}</label>
         <textarea id="notes" name="notes" class="form-control form-control-sm" rows="2">{{ form.get('notes','') }}</textarea>
       </div>
@@ -181,4 +292,14 @@
     </div>
   </form>
 </div>
+
+<script>
+function selectType(type) {
+  document.getElementById('serverTypeInput').value = type;
+  document.getElementById('typeCardDB').className  = 'type-card' + (type === 'oracle_database'  ? ' selected-db'  : '');
+  document.getElementById('typeCardWLS').className = 'type-card' + (type === 'oracle_weblogic' ? ' selected-wls' : '');
+  document.getElementById('dbSection').style.display  = type === 'oracle_database'  ? '' : 'none';
+  document.getElementById('wlsSection').style.display = type === 'oracle_weblogic' ? '' : 'none';
+}
+</script>
 {% endblock %}

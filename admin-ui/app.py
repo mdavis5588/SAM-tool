@@ -1078,32 +1078,53 @@ def resolve_conflict(schema, server_id):
 @login_required
 def register_server():
     schema = get_schema()
-    if schema == "__all__":
-        flash("Select a specific client before registering a server.", "warning")
-        return redirect(url_for("servers"))
-
     environments = ["production", "non_production", "development", "test", "dr", "unknown"]
+    all_clients  = query(
+        "SELECT schema_name, client_name FROM sam_admin.clients WHERE is_active ORDER BY client_name"
+    )
 
     if request.method == "POST":
-        hostname   = request.form.get("hostname", "").strip()
-        fqdn       = request.form.get("fqdn", "").strip() or None
-        ip_address = request.form.get("ip_address", "").strip() or None
-        os_family  = request.form.get("os_family", "").strip() or None
-        os_dist    = request.form.get("os_distribution", "").strip() or None
-        os_ver     = request.form.get("os_version", "").strip() or None
+        # Allow client selection from the form (overrides session schema)
+        form_schema = request.form.get("client_schema", "").strip()
+        if form_schema:
+            schema = form_schema
+
+        if not schema or schema == "__all__":
+            flash("Please select a client.", "danger")
+            return render_template("register_server.html",
+                                   environments=environments, schema=schema,
+                                   all_clients=all_clients, form=request.form)
+
+        hostname    = request.form.get("hostname", "").strip()
+        fqdn        = request.form.get("fqdn", "").strip() or None
+        ip_address  = request.form.get("ip_address", "").strip() or None
+        os_family   = request.form.get("os_family", "").strip() or None
+        os_dist     = request.form.get("os_distribution", "").strip() or None
+        os_ver      = request.form.get("os_version", "").strip() or None
         environment = request.form.get("environment", "unknown") or "unknown"
-        ram_mb     = request.form.get("total_ram_mb", "").strip() or None
-        datacenter = request.form.get("datacenter", "").strip() or None
-        cores      = request.form.get("physical_cores", "").strip() or None
-        sockets    = request.form.get("cpu_sockets", "").strip() or None
-        cps        = request.form.get("cores_per_socket", "").strip() or None
-        notes      = request.form.get("notes", "").strip() or None
+        ram_mb      = request.form.get("total_ram_mb", "").strip() or None
+        datacenter  = request.form.get("datacenter", "").strip() or None
+        cores       = request.form.get("physical_cores", "").strip() or None
+        sockets     = request.form.get("cpu_sockets", "").strip() or None
+        cps         = request.form.get("cores_per_socket", "").strip() or None
+        notes       = request.form.get("notes", "").strip() or None
+        server_type = request.form.get("server_type", "oracle_database")  # 'oracle_database' | 'oracle_weblogic'
+
+        # DB-specific
+        oracle_sid  = request.form.get("oracle_sid", "").strip() or None
+        db_version  = request.form.get("db_version", "").strip() or None
+        edition     = request.form.get("edition", "").strip() or None
+
+        # WLS-specific
+        domain_name = request.form.get("domain_name", "").strip() or None
+        wls_version = request.form.get("wls_version", "").strip() or None
+        wls_edition = request.form.get("wls_edition", "").strip() or None
 
         if not hostname:
             flash("Hostname is required.", "danger")
             return render_template("register_server.html",
                                    environments=environments, schema=schema,
-                                   form=request.form)
+                                   all_clients=all_clients, form=request.form)
 
         try:
             result = query(
@@ -1126,12 +1147,47 @@ def register_server():
                  notes),
                 fetchall=False
             )
-            outcome = (result or {}).get("result", "")
+            outcome    = (result or {}).get("result", "")
+            is_new     = outcome.startswith("inserted")
+            server_id  = int(outcome.split(":")[1]) if ":" in outcome and not outcome.startswith("conflict") else None
+
+            if outcome.startswith("conflict"):
+                flash(f"Conflict detected — {outcome[9:]}. Review in Discovery Conflicts.", "warning")
+                return render_template("register_server.html",
+                                       environments=environments, schema=schema,
+                                       all_clients=all_clients, form=request.form)
+
+            # Create the instance/domain row so the server appears on the correct tab
+            if server_id:
+                if server_type == "oracle_database":
+                    sid = oracle_sid or hostname.upper()
+                    execute(
+                        f"INSERT INTO {schema}.oracle_instances"
+                        f"  (server_id, oracle_sid, db_name, db_version, edition, is_active)"
+                        f"  VALUES (%s, %s, %s, %s, %s, TRUE)"
+                        f"  ON CONFLICT (server_id, oracle_sid) DO UPDATE"
+                        f"  SET db_version = EXCLUDED.db_version,"
+                        f"      edition    = EXCLUDED.edition,"
+                        f"      is_active  = TRUE,"
+                        f"      last_seen  = NOW()",
+                        (server_id, sid, sid, db_version, edition)
+                    )
+                elif server_type == "oracle_weblogic":
+                    dname = domain_name or f"{hostname}_domain"
+                    execute(
+                        f"INSERT INTO {schema}.wls_domains"
+                        f"  (server_id, domain_name, wls_version, wls_edition, is_active)"
+                        f"  VALUES (%s, %s, %s, %s, TRUE)"
+                        f"  ON CONFLICT (server_id, domain_name) DO UPDATE"
+                        f"  SET wls_version = EXCLUDED.wls_version,"
+                        f"      wls_edition = EXCLUDED.wls_edition,"
+                        f"      is_active   = TRUE,"
+                        f"      last_seen   = NOW()",
+                        (server_id, dname, wls_version, wls_edition)
+                    )
 
             u = current_user()
-            # Log as a manual discovery run (1 server)
             try:
-                is_new = outcome.startswith("inserted")
                 query(
                     "SELECT sam_admin.log_discovery_run("
                     "  p_schema=>%s, p_source=>'manual',"
@@ -1146,27 +1202,22 @@ def register_server():
             except Exception:
                 pass
 
-            if outcome.startswith("conflict"):
-                flash(f"Conflict detected — {outcome[9:]}. Review in Discovery Conflicts.", "warning")
-            elif outcome.startswith("inserted"):
-                server_id = outcome.split(":")[1]
-                _audit("server.manual_register", entity_type="server", entity_id=int(server_id),
-                       new_values={"hostname": hostname, "source": "manual"}, client_schema=schema)
-                flash(f"Server '{hostname}' registered successfully (new).", "success")
-                return redirect(url_for("edit_server", server_id=int(server_id)))
+            _audit("server.manual_register", entity_type="server", entity_id=server_id,
+                   new_values={"hostname": hostname, "server_type": server_type, "source": "manual"},
+                   client_schema=schema)
+
+            if is_new:
+                flash(f"Server '{hostname}' registered successfully.", "success")
             else:
-                server_id = outcome.split(":")[1]
-                _audit("server.manual_register", entity_type="server", entity_id=int(server_id),
-                       new_values={"hostname": hostname, "source": "manual"}, client_schema=schema)
-                flash(f"Server '{hostname}' already exists — record updated.", "info")
-                return redirect(url_for("edit_server", server_id=int(server_id)))
+                flash(f"Server '{hostname}' already existed — record updated.", "info")
+            return redirect(url_for("edit_server", server_id=server_id))
 
         except Exception as e:
             flash(f"Registration failed: {e}", "danger")
 
     return render_template("register_server.html",
                            environments=environments, schema=schema,
-                           form=request.form)
+                           all_clients=all_clients, form=request.form)
 
 
 # ---------------------------------------------------------------------------
