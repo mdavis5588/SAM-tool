@@ -8,25 +8,25 @@
 -- scripts call once per discovery sweep (not per server).
 
 CREATE TABLE IF NOT EXISTS sam_admin.discovery_runs (
-    run_id          SERIAL PRIMARY KEY,
-    client_id       INTEGER NOT NULL REFERENCES sam_admin.clients(client_id) ON DELETE CASCADE,
-    client_schema   TEXT    NOT NULL,
-    source          TEXT    NOT NULL,           -- 'ansible' | 'psql_cron' | 'manual' | …
-    started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    finished_at     TIMESTAMPTZ,
-    servers_seen    INTEGER NOT NULL DEFAULT 0, -- total servers processed this run
-    servers_new     INTEGER NOT NULL DEFAULT 0, -- inserted
-    servers_updated INTEGER NOT NULL DEFAULT 0, -- updated
-    servers_conflict INTEGER NOT NULL DEFAULT 0,-- flagged as conflict
-    run_host        TEXT,                       -- hostname that ran the discovery job
-    notes           TEXT,
-    status          TEXT NOT NULL DEFAULT 'running'
-                    CHECK (status IN ('running','completed','failed'))
+    run_id           SERIAL PRIMARY KEY,
+    client_id        INTEGER NOT NULL REFERENCES sam_admin.clients(client_id) ON DELETE CASCADE,
+    client_schema    TEXT    NOT NULL,
+    discovery_source TEXT    NOT NULL,          -- 'ansible' | 'psql_cron' | 'manual' | ...
+    started_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at      TIMESTAMPTZ,
+    servers_seen     INTEGER NOT NULL DEFAULT 0,
+    servers_new      INTEGER NOT NULL DEFAULT 0,
+    servers_updated  INTEGER NOT NULL DEFAULT 0,
+    servers_conflict INTEGER NOT NULL DEFAULT 0,
+    run_host         TEXT,
+    notes            TEXT,
+    run_status       TEXT NOT NULL DEFAULT 'running'
+                     CHECK (run_status IN ('running','completed','failed'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_disc_runs_client  ON sam_admin.discovery_runs (client_id, started_at DESC);
-CREATE INDEX IF NOT EXISTS idx_disc_runs_source  ON sam_admin.discovery_runs (source, started_at DESC);
-CREATE INDEX IF NOT EXISTS idx_disc_runs_status  ON sam_admin.discovery_runs (status);
+CREATE INDEX IF NOT EXISTS idx_disc_runs_source  ON sam_admin.discovery_runs (discovery_source, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_disc_runs_status  ON sam_admin.discovery_runs (run_status);
 
 
 -- ── log_discovery_run() ──────────────────────────────────────────────────────
@@ -43,7 +43,7 @@ CREATE OR REPLACE FUNCTION sam_admin.log_discovery_run(
     p_run_host        TEXT    DEFAULT NULL,
     p_notes           TEXT    DEFAULT NULL,
     p_status          TEXT    DEFAULT 'completed',
-    p_started_at      TIMESTAMPTZ DEFAULT NULL   -- pass sweep start time; defaults to NOW()
+    p_started_at      TIMESTAMPTZ DEFAULT NULL
 )
 RETURNS INTEGER
 LANGUAGE plpgsql AS $$
@@ -59,10 +59,10 @@ BEGIN
     END IF;
 
     INSERT INTO sam_admin.discovery_runs
-        (client_id, client_schema, source,
+        (client_id, client_schema, discovery_source,
          started_at, finished_at,
          servers_seen, servers_new, servers_updated, servers_conflict,
-         run_host, notes, status)
+         run_host, notes, run_status)
     VALUES
         (v_client_id, p_schema, p_source,
          COALESCE(p_started_at, NOW()), NOW(),

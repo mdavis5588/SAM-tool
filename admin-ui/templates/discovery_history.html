@@ -155,7 +155,7 @@
             <td style="color:var(--dh-muted);font-size:.78rem">{{ run.run_id }}</td>
             {% if schema == "__all__" %}<td>{{ run.client_name }}</td>{% endif %}
             <td>
-              {% set src = run.source | lower %}
+              {% set src = run.discovery_source | lower %}
               {% if 'ansible' in src %}
                 <span class="badge-source badge-ansible">ansible</span>
               {% elif 'psql' in src or 'cron' in src %}
@@ -163,7 +163,7 @@
               {% elif 'manual' in src %}
                 <span class="badge-source badge-manual">manual</span>
               {% else %}
-                <span class="badge-source badge-other">{{ run.source }}</span>
+                <span class="badge-source badge-other">{{ run.discovery_source }}</span>
               {% endif %}
             </td>
             <td style="white-space:nowrap">{{ run.started_at.strftime('%Y-%m-%d %H:%M') if run.started_at else '—' }}</td>
@@ -180,9 +180,9 @@
             </td>
             <td style="color:var(--dh-muted);font-size:.8rem">{{ run.run_host or '—' }}</td>
             <td>
-              {% if run.status == 'completed' %}
+              {% if run.run_status == 'completed' %}
                 <span class="badge-status-completed">{{ t('discovery_history.status_completed') }}</span>
-              {% elif run.status == 'running' %}
+              {% elif run.run_status == 'running' %}
                 <span class="badge-status-running">{{ t('discovery_history.status_running') }}</span>
               {% else %}
                 <span class="badge-status-failed">{{ t('discovery_history.status_failed') }}</span>
