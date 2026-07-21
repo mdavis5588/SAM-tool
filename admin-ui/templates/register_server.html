@@ -252,20 +252,59 @@
         <div class="rs-section-title">CPU Model &amp; Core Factor</div>
         <div class="rs-grid-2">
           <div>
-            <label class="rs-label" for="cpu_model">CPU Model</label>
+            <label class="rs-label" for="cpu_model_select">CPU Model</label>
+            <select id="cpu_model_select" class="form-select form-select-sm mb-1"
+                    onchange="applyCpuPreset(this.value)">
+              <option value="">— Select a common model or enter below —</option>
+              <optgroup label="Intel (factor 0.50)">
+                <option value="Intel Xeon|0.5">Intel Xeon (all generations)</option>
+                <option value="Intel Xeon E5|0.5">Intel Xeon E5</option>
+                <option value="Intel Xeon E7|0.5">Intel Xeon E7</option>
+                <option value="Intel Xeon Gold|0.5">Intel Xeon Gold</option>
+                <option value="Intel Xeon Platinum|0.5">Intel Xeon Platinum</option>
+                <option value="Intel Xeon Silver|0.5">Intel Xeon Silver</option>
+                <option value="Intel Core|0.5">Intel Core (i-series)</option>
+              </optgroup>
+              <optgroup label="AMD (factor 0.50)">
+                <option value="AMD EPYC|0.5">AMD EPYC</option>
+                <option value="AMD Opteron|0.5">AMD Opteron</option>
+              </optgroup>
+              <optgroup label="IBM POWER (factor 1.00)">
+                <option value="IBM POWER7|1.0">IBM POWER7</option>
+                <option value="IBM POWER8|1.0">IBM POWER8</option>
+                <option value="IBM POWER9|1.0">IBM POWER9</option>
+                <option value="IBM POWER10|1.0">IBM POWER10</option>
+              </optgroup>
+              <optgroup label="HP-UX / Itanium (factor 1.00)">
+                <option value="Intel Itanium|1.0">Intel Itanium (HP-UX / HP Integrity)</option>
+                <option value="HP Integrity|1.0">HP Integrity (generic)</option>
+              </optgroup>
+              <optgroup label="Oracle SPARC (factor varies)">
+                <option value="SPARC T4|0.25">SPARC T4 (factor 0.25)</option>
+                <option value="SPARC T5|0.25">SPARC T5 (factor 0.25)</option>
+                <option value="SPARC T7|0.25">SPARC T7 (factor 0.25)</option>
+                <option value="SPARC M7|0.5">SPARC M7 (factor 0.50)</option>
+                <option value="SPARC M8|0.5">SPARC M8 (factor 0.50)</option>
+              </optgroup>
+              <optgroup label="ARM (factor 0.50)">
+                <option value="ARM|0.5">ARM (generic)</option>
+                <option value="AWS Graviton|0.5">AWS Graviton</option>
+                <option value="Apple M|0.5">Apple Silicon M-series</option>
+              </optgroup>
+            </select>
             <input type="text" id="cpu_model" name="cpu_model" class="form-control form-control-sm"
-                   value="{{ form.get('cpu_model','') }}" placeholder="Intel Xeon E5-2680 v4">
-            <div class="rs-hint">Used to look up the Oracle core factor for licence calculations. Leave blank to default to "Unknown" (factor 1.0).</div>
+                   value="{{ form.get('cpu_model','') }}" placeholder="Or type a specific model name…">
+            <div class="rs-hint">Selecting from the list fills the model name and sets the core factor automatically.</div>
           </div>
           <div>
             <label class="rs-label" for="core_factor_override">Core Factor Override</label>
             <select id="core_factor_override" name="core_factor_override" class="form-select form-select-sm">
               <option value="">— Auto-detect from CPU model —</option>
-              <option value="0.25" {% if form.get('core_factor_override') == '0.25' %}selected{% endif %}>0.25 — SPARC T-series</option>
+              <option value="0.25" {% if form.get('core_factor_override') == '0.25' %}selected{% endif %}>0.25 — Oracle SPARC T-series</option>
               <option value="0.5"  {% if form.get('core_factor_override') == '0.5'  %}selected{% endif %}>0.50 — Intel / AMD / ARM</option>
-              <option value="1.0"  {% if form.get('core_factor_override') == '1.0'  %}selected{% endif %}>1.00 — IBM POWER / SPARC M</option>
+              <option value="1.0"  {% if form.get('core_factor_override') == '1.0'  %}selected{% endif %}>1.00 — IBM POWER / SPARC M / HP-UX Itanium</option>
             </select>
-            <div class="rs-hint">Only set if auto-detect gives the wrong result. Applies to both Database and WebLogic licence calculations.</div>
+            <div class="rs-hint">Set automatically when you pick from the list above, or override manually if needed.</div>
           </div>
         </div>
       </div>
@@ -338,6 +377,18 @@
 </div>
 
 <script>
+function applyCpuPreset(val) {
+  if (!val) return;
+  const parts = val.split('|');
+  document.getElementById('cpu_model').value = parts[0] || '';
+  if (parts[1]) {
+    const sel = document.getElementById('core_factor_override');
+    for (let i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === parts[1]) { sel.selectedIndex = i; break; }
+    }
+  }
+}
+
 function selectType(type) {
   document.getElementById('serverTypeInput').value = type;
   document.getElementById('typeCardDB').className  = 'type-card' + (type === 'oracle_database'  ? ' selected-db'  : '');

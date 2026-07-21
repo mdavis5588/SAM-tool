@@ -1235,22 +1235,39 @@ def register_server():
                         (server_id, cpu_model, v_sockets, v_cps)
                     )
 
-                # If a core factor override was given and the CPU model won't
-                # auto-resolve to the right factor, insert an exact-match entry.
+                # If a core factor override is given, check whether the current
+                # cpu_model already resolves to the correct factor; if not, add
+                # an exact-match entry so calculations use the override value.
                 if core_factor:
                     existing_factor = query(
-                        "SELECT core_factor_id FROM shared.core_factor_table"
-                        " WHERE %s ILIKE processor_pattern ORDER BY length(processor_pattern) DESC LIMIT 1",
+                        "SELECT core_factor FROM shared.core_factor_table"
+                        " WHERE %s ILIKE processor_pattern"
+                        " ORDER BY length(processor_pattern) DESC LIMIT 1",
                         (cpu_model,), fetchall=False
                     )
-                    if not existing_factor or abs(float(existing_factor["core_factor"]) - float(core_factor)) > 0.001:
-                        execute(
-                            "INSERT INTO shared.core_factor_table"
-                            "  (processor_pattern, core_factor, notes)"
-                            "  VALUES (%s, %s, 'Manually set during server registration')"
-                            "  ON CONFLICT DO NOTHING",
-                            (cpu_model, float(core_factor))
+                    needs_insert = (
+                        not existing_factor or
+                        abs(float(existing_factor["core_factor"]) - float(core_factor)) > 0.001
+                    )
+                    if needs_insert:
+                        already_exact = query(
+                            "SELECT core_factor_id FROM shared.core_factor_table"
+                            " WHERE processor_pattern = %s",
+                            (cpu_model,), fetchall=False
                         )
+                        if already_exact:
+                            execute(
+                                "UPDATE shared.core_factor_table SET core_factor = %s"
+                                " WHERE processor_pattern = %s",
+                                (float(core_factor), cpu_model)
+                            )
+                        else:
+                            execute(
+                                "INSERT INTO shared.core_factor_table"
+                                "  (processor_pattern, core_factor, notes)"
+                                "  VALUES (%s, %s, 'Manually set during server registration')",
+                                (cpu_model, float(core_factor))
+                            )
 
             u = current_user()
             try:
