@@ -1166,11 +1166,11 @@ def register_server():
                         f"  (server_id, oracle_sid, db_name, db_version, edition, is_active)"
                         f"  VALUES (%s, %s, %s, %s, %s, TRUE)"
                         f"  ON CONFLICT (server_id, oracle_sid) DO UPDATE"
-                        f"  SET db_version = EXCLUDED.db_version,"
-                        f"      edition    = EXCLUDED.edition,"
+                        f"  SET db_version = COALESCE(EXCLUDED.db_version, oracle_instances.db_version),"
+                        f"      edition    = COALESCE(EXCLUDED.edition, oracle_instances.edition),"
                         f"      is_active  = TRUE,"
                         f"      last_seen  = NOW()",
-                        (server_id, sid, sid, db_version, edition)
+                        (server_id, sid, sid, db_version or None, edition or None)
                     )
                 elif server_type == "oracle_weblogic":
                     dname = domain_name or f"{hostname}_domain"
@@ -1179,12 +1179,28 @@ def register_server():
                         f"  (server_id, domain_name, wls_version, wls_edition, is_active)"
                         f"  VALUES (%s, %s, %s, %s, TRUE)"
                         f"  ON CONFLICT (server_id, domain_name) DO UPDATE"
-                        f"  SET wls_version = EXCLUDED.wls_version,"
-                        f"      wls_edition = EXCLUDED.wls_edition,"
+                        f"  SET wls_version = COALESCE(EXCLUDED.wls_version, wls_domains.wls_version),"
+                        f"      wls_edition = COALESCE(EXCLUDED.wls_edition, wls_domains.wls_edition),"
                         f"      is_active   = TRUE,"
                         f"      last_seen   = NOW()",
-                        (server_id, dname, wls_version, wls_edition)
+                        (server_id, dname, wls_version or None, wls_edition or None)
                     )
+
+                # Always ensure a processor row exists so cpu_validation_report
+                # can find this server. Use provided values or sensible defaults.
+                v_sockets = int(sockets) if sockets else 1
+                v_cps     = int(cps) if cps else (
+                    (int(cores) // v_sockets) if cores else 1
+                )
+                execute(
+                    f"INSERT INTO {schema}.oracle_processors"
+                    f"  (server_id, cpu_model, cpu_sockets, cores_per_socket)"
+                    f"  VALUES (%s, 'Unknown', %s, %s)"
+                    f"  ON CONFLICT (server_id, cpu_model) DO UPDATE"
+                    f"  SET cpu_sockets      = EXCLUDED.cpu_sockets,"
+                    f"      cores_per_socket = EXCLUDED.cores_per_socket",
+                    (server_id, v_sockets, v_cps)
+                )
 
             u = current_user()
             try:
