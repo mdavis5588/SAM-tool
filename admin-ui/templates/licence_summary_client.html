@@ -202,25 +202,47 @@
   </div>
 </div>
 
+{% set db_lines = lines | selectattr('product_family', 'equalto', 'oracle_database') | list %}
+{% set mw_lines = lines | rejectattr('product_family', 'equalto', 'oracle_database') | list %}
+{% set show_tabs = db_lines and mw_lines %}
+
+{# ── Tab nav (only when both families present) ── #}
+{% if show_tabs %}
+<ul class="nav nav-tabs mb-4" id="familyTabs">
+  <li class="nav-item">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-db" type="button">
+      <i class="bi bi-database me-1"></i>Database
+      <span class="badge ms-1" style="background:rgba(37,99,235,.12);color:#2563eb;font-weight:600;font-size:.7rem">{{ db_lines | length }}</span>
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-mw" type="button">
+      <i class="bi bi-boxes me-1"></i>Middleware
+      <span class="badge ms-1" style="background:rgba(124,58,237,.12);color:#7c3aed;font-weight:600;font-size:.7rem">{{ mw_lines | length }}</span>
+    </button>
+  </li>
+</ul>
+{% endif %}
+
+{# ── Reusable card macro ── #}
+{%- macro product_cards(group, id_prefix) %}
 <div class="col-header">
   <span>Product</span>
   <span style="text-align:right">Utilisation</span>
   <span style="text-align:right">Assigned / Total</span>
   <span></span>
 </div>
-
-{% for line in lines %}
+{% for line in group %}
 {% set total    = line.total_qty | int %}
 {% set assigned = [line.assigned_qty | int, total] | min %}
 {% set free     = line.unassigned_qty | int %}
 {% set pct      = ((assigned / total * 100) | round(1)) if total > 0 else 0 %}
-{% set card_id  = "prod-" ~ loop.index %}
+{% set card_id  = id_prefix ~ loop.index %}
 <div class="product-card">
   <button class="product-header" type="button"
           data-bs-toggle="collapse" data-bs-target="#{{ card_id }}"
           aria-expanded="{{ 'true' if line.servers else 'false' }}"
           aria-controls="{{ card_id }}">
-
     <div>
       <div class="product-name">
         {% set n = line.product_name | lower %}
@@ -237,13 +259,9 @@
         {{ line.product_name }}
       </div>
       <div class="product-family-label">
-        {% if line.product_family == 'oracle_database' %}Database
-        {% elif line.product_family == 'oracle_weblogic' %}WebLogic / Middleware
-        {% else %}{{ line.product_family | replace('_',' ') | title }}{% endif %}
-        {% if line.servers %}· {{ line.servers | length }} server{{ 's' if line.servers | length != 1 }}{% endif %}
+        {% if line.servers %}{{ line.servers | length }} server{{ 's' if line.servers | length != 1 }}{% else %}No servers assigned{% endif %}
       </div>
     </div>
-
     <div class="util-col">
       <div class="util-bar-track" style="width:120px">
         <div class="util-bar-fill {% if pct > 100 %}over{% endif %}"
@@ -251,7 +269,6 @@
       </div>
       <div style="font-size:.7rem;color:var(--text-muted);text-align:right;margin-top:.2rem">{{ pct }}%</div>
     </div>
-
     <div class="util-col">
       <div class="util-value">
         {{ assigned }}
@@ -259,7 +276,6 @@
       </div>
       <div class="util-label">{{ free }} unassigned</div>
     </div>
-
     <i class="bi bi-chevron-down chevron"></i>
   </button>
 
@@ -271,10 +287,7 @@
           <tr>
             <th>Server</th>
             <th class="num">Licences Assigned</th>
-            {% if line.any_nup %}
-            <th class="num">Required</th>
-            <th class="num">Min NUP</th>
-            {% endif %}
+            {% if line.any_nup %}<th class="num">Required</th><th class="num">Min NUP</th>{% endif %}
             <th class="num">% of Total</th>
           </tr>
         </thead>
@@ -289,12 +302,8 @@
             </td>
             <td class="num" style="font-weight:700;color:var(--s1)">{{ sv.consumed }}</td>
             {% if line.any_nup %}
-            <td class="num">
-              {% if sv.required is not none %}<span style="font-weight:600">{{ sv.required | int }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
-            </td>
-            <td class="num">
-              {% if sv.nup_minimum is not none %}<span style="color:var(--s1);font-weight:600">{{ sv.nup_minimum | int }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
-            </td>
+            <td class="num">{% if sv.required is not none %}<span style="font-weight:600">{{ sv.required | int }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            <td class="num">{% if sv.nup_minimum is not none %}<span style="color:var(--s1);font-weight:600">{{ sv.nup_minimum | int }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
             {% endif %}
             <td class="num text-muted">{{ sv_pct }}%</td>
           </tr>
@@ -318,6 +327,23 @@
   </div>
 </div>
 {% endfor %}
+{%- endmacro %}
+
+{# ── Render in tabs or flat depending on what's present ── #}
+{% if show_tabs %}
+<div class="tab-content">
+  <div class="tab-pane fade show active" id="tab-db">
+    {{ product_cards(db_lines, 'db-') }}
+  </div>
+  <div class="tab-pane fade" id="tab-mw">
+    {{ product_cards(mw_lines, 'mw-') }}
+  </div>
+</div>
+{% elif db_lines %}
+{{ product_cards(db_lines, 'db-') }}
+{% elif mw_lines %}
+{{ product_cards(mw_lines, 'mw-') }}
+{% endif %}
 
 {% else %}
 <p class="text-muted">No client-locked licences found for this client.</p>
