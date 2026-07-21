@@ -1,13 +1,16 @@
 -- Migration 11: Rebuild all client-schema views after product_detail was added
 -- to server_csi_map.
 --
--- Run this AFTER re-sourcing 03_client_template_functions.sql so the stored
--- functions (install_server_coverage_view etc.) are up to date, then run this
--- script to rebuild the views inside every active client schema.
+-- The column product_detail was added to the server_csi_map CREATE TABLE
+-- statement in install_client_tables() (01_admin_schema.sql) and to the
+-- server_csi_coverage view definition in install_server_coverage_view()
+-- (03_client_template_functions.sql). The live database may hold stale
+-- compiled versions of both functions.
 --
 -- Typical apply sequence:
---   psql $DSN -f database/03_client_template_functions.sql
---   psql $DSN -f database/migrations/11_refresh_client_functions.sql
+--   psql $DSN -f database/01_admin_schema.sql              -- updates install_client_tables()
+--   psql $DSN -f database/03_client_template_functions.sql -- updates view installer functions
+--   psql $DSN -f database/migrations/11_refresh_client_functions.sql  -- rebuilds views
 
 DO $$
 DECLARE

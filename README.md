@@ -500,7 +500,8 @@ psql oracle_sam -f database/migrations/07_audit_logging.sql
 psql oracle_sam -f database/migrations/08_assignment_queue.sql
 psql oracle_sam -f database/migrations/09_server_dedup.sql
 psql oracle_sam -f database/migrations/10_discovery_runs.sql
-psql oracle_sam -f database/03_client_template_functions.sql   # refresh function definitions
+psql oracle_sam -f database/01_admin_schema.sql                # refresh install_client_tables()
+psql oracle_sam -f database/03_client_template_functions.sql   # refresh view installer functions
 psql oracle_sam -f database/migrations/11_refresh_client_functions.sql
 ```
 
