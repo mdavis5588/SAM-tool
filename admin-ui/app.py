@@ -3131,6 +3131,7 @@ def shared_pool_monthly():
     # -----------------------------------------------------------------------
     cur_month = today.replace(day=1)
     live_lines = []
+    cur_month_is_live = False
     if cur_month not in snap_by_month and cur_month >= fy_start and cur_month <= fy_end:
         try:
             live_rows = query(f"""
@@ -3154,7 +3155,6 @@ def shared_pool_monthly():
                     })
         except Exception:
             pass
-        cur_month_is_live = False
     if live_lines:
         snap_by_month[cur_month] = live_lines
         cur_month_is_live = True
