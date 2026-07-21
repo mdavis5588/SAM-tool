@@ -317,7 +317,7 @@
       <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['assignment_queue','discovery_conflicts','discovery_history'] %}active{% endif %}"
          href="{{ url_for('assignment_queue') }}" id="operationsFlyoutTrigger"
          data-flyout="operationsFlyoutPanel">
-        <i class="bi bi-gear-wide-connected"></i><span>{{ t('nav.operations') | default('Operations') }}
+        <i class="bi bi-gear-wide-connected"></i><span>Operations
         {% if pending_count > 0 %}<span class="badge bg-warning text-dark ms-1" style="font-size:.6rem">{{ pending_count }}</span>{% endif %}
         </span>
         <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
