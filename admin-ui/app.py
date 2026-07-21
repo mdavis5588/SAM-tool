@@ -2713,11 +2713,9 @@ def licence_summary_client(client_code):
     """, (client["client_id"],))
 
     lines = _build_licence_detail(entitlement_rows)
-    return render_template("licence_summary_detail.html",
-                           title=f"{client['client_name'] or client_code} — Locked Licences",
-                           subtitle="Client-locked CSIs only",
-                           lines=lines,
-                           back_url=url_for("licence_summary"))
+    return render_template("licence_summary_client.html",
+                           client=client,
+                           lines=lines)
 
 
 @app.route("/licence-summary/shared")

@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+{% block title %}{{ client.client_name or client.client_code }} — Locked Licences — Helios{% endblock %}
+{% block content %}
+
+<style>
+  .viz-root {
+    --s1:          #6d28d9;
+    --text-pri:    #0b0b0b;
+    --text-sec:    #52514e;
+    --text-muted:  #898781;
+    --surface:     #fcfcfb;
+    --border:      rgba(11,11,11,0.10);
+    --track:       #e1e0d9;
+    --gridline:    #e1e0d9;
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      --s1:         #7c3aed;
+      --text-pri:   #ffffff;
+      --text-sec:   #c3c2b7;
+      --text-muted: #898781;
+      --surface:    #1a1a19;
+      --border:     rgba(255,255,255,0.10);
+      --track:      #2c2c2a;
+      --gridline:   #2c2c2a;
+    }
+  }
+
+  /* ── Product cards ── */
+  .product-card {
+    border: 1px solid var(--gridline);
+    border-left: 4px solid var(--s1);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: .6rem;
+  }
+
+  .product-header {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    align-items: center;
+    gap: 1rem;
+    padding: .9rem 1.1rem;
+    cursor: pointer;
+    background: var(--surface);
+    border: none; width: 100%; text-align: left;
+    transition: background .12s;
+  }
+  .product-header:hover { background: rgba(109,40,217,.04); }
+  .product-header[aria-expanded="true"] { border-bottom: 1px solid var(--gridline); }
+
+  .product-name {
+    font-weight: 700; font-size: .95rem; color: var(--text-pri);
+  }
+  .product-family-label {
+    font-size: .72rem; color: var(--text-muted); margin-top: .15rem;
+  }
+
+  .util-col { text-align: right; }
+  .util-value {
+    font-size: 1rem; font-weight: 700; color: var(--s1);
+    font-variant-numeric: tabular-nums;
+  }
+  .util-label { font-size: .68rem; color: var(--text-muted); margin-top: .1rem; }
+
+  .util-bar-track {
+    height: 7px; border-radius: 4px;
+    background: var(--track); overflow: hidden;
+    min-width: 90px;
+  }
+  .util-bar-fill {
+    height: 100%; border-radius: 4px;
+    background: var(--s1);
+    transition: width .3s;
+  }
+  .util-bar-fill.over { background: #dc2626; }
+
+  .chevron { color: var(--text-muted); transition: transform .2s; font-size: .85rem; }
+  .product-header[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+
+  /* ── Server detail table ── */
+  .product-detail { padding: .75rem 1.1rem 1rem; background: rgba(109,40,217,.02); }
+
+  .server-table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+  .server-table th {
+    font-size: .67rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--text-muted);
+    padding: .4rem .6rem; border-bottom: 2px solid var(--gridline);
+    text-align: left; white-space: nowrap;
+    background: rgba(109,40,217,.04);
+  }
+  .server-table th.num { text-align: right; }
+  .server-table td {
+    padding: .5rem .6rem; border-bottom: 1px solid var(--gridline);
+    vertical-align: middle; color: var(--text-sec);
+  }
+  .server-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .server-table tbody tr:hover td { background: rgba(109,40,217,.03); }
+  .server-table tbody tr:last-child td { border-bottom: none; }
+  .server-table tfoot td {
+    font-weight: 700; color: var(--text-pri);
+    border-top: 2px solid var(--gridline); padding-top: .5rem;
+    border-bottom: none;
+    background: rgba(109,40,217,.04);
+  }
+
+  .nup-badge {
+    font-size: .62rem; font-weight: 600;
+    background: rgba(124,58,237,.1); color: var(--s1);
+    border: 1px solid rgba(124,58,237,.2);
+    border-radius: 10px; padding: .05rem .35rem;
+    margin-left: .3rem; vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  .no-servers {
+    padding: .75rem 1.1rem;
+    font-size: .82rem; color: var(--text-muted);
+    font-style: italic;
+  }
+
+  /* ── Column header ── */
+  .col-header {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    gap: 1rem;
+    padding: .2rem 1.1rem .5rem;
+    font-size: .67rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .07em; color: var(--text-muted);
+  }
+
+  /* ── KPI strip ── */
+  .kpi-row {
+    display: flex; gap: 1.25rem; flex-wrap: wrap;
+    margin-bottom: 2rem; padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--gridline);
+  }
+  .kpi { display: flex; flex-direction: column; }
+  .kpi-label {
+    font-size: .68rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .07em; color: var(--text-muted); margin-bottom: .15rem;
+  }
+  .kpi-value {
+    font-size: 1.6rem; font-weight: 700; color: var(--text-pri);
+    line-height: 1; font-variant-numeric: tabular-nums;
+  }
+  .kpi-value.purple { color: var(--s1); }
+  .kpi-divider {
+    width: 1px; background: var(--gridline);
+    align-self: stretch; margin: .1rem 0;
+  }
+</style>
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('licence_summary') }}">Licence Summary</a></li>
+    <li class="breadcrumb-item active">{{ client.client_name or client.client_code }}</li>
+  </ol>
+</nav>
+
+<div class="viz-root">
+
+<div class="d-flex align-items-baseline gap-2 mb-1">
+  <h4 class="mb-0">
+    <i class="bi bi-lock-fill me-1" style="color:var(--s1)"></i>
+    {{ client.client_name or client.client_code }} — Locked Licences
+  </h4>
+</div>
+<p class="text-muted small mb-4">Client-locked CSIs only</p>
+
+{% if lines %}
+
+{% set total_entitlement = lines | sum(attribute='total_qty') %}
+{% set total_assigned    = lines | sum(attribute='assigned_qty') %}
+{% set total_free        = lines | sum(attribute='unassigned_qty') %}
+{% set overall_pct       = ((total_assigned / total_entitlement * 100) | round(0) | int) if total_entitlement > 0 else 0 %}
+
+<div class="kpi-row">
+  <div class="kpi">
+    <span class="kpi-label">Total Licences</span>
+    <span class="kpi-value purple">{{ total_entitlement }}</span>
+  </div>
+  <div class="kpi-divider"></div>
+  <div class="kpi">
+    <span class="kpi-label">Assigned</span>
+    <span class="kpi-value">{{ total_assigned }}</span>
+  </div>
+  <div class="kpi-divider"></div>
+  <div class="kpi">
+    <span class="kpi-label">Unassigned</span>
+    <span class="kpi-value">{{ total_free }}</span>
+  </div>
+  <div class="kpi-divider"></div>
+  <div class="kpi">
+    <span class="kpi-label">Products</span>
+    <span class="kpi-value">{{ lines | length }}</span>
+  </div>
+  <div class="kpi-divider"></div>
+  <div class="kpi">
+    <span class="kpi-label">Overall Utilisation</span>
+    <span class="kpi-value">{{ overall_pct }}%</span>
+  </div>
+</div>
+
+<div class="col-header">
+  <span>Product</span>
+  <span style="text-align:right">Utilisation</span>
+  <span style="text-align:right">Assigned / Total</span>
+  <span></span>
+</div>
+
+{% for line in lines %}
+{% set total    = line.total_qty | int %}
+{% set assigned = [line.assigned_qty | int, total] | min %}
+{% set free     = line.unassigned_qty | int %}
+{% set pct      = ((assigned / total * 100) | round(1)) if total > 0 else 0 %}
+{% set card_id  = "prod-" ~ loop.index %}
+<div class="product-card">
+  <button class="product-header" type="button"
+          data-bs-toggle="collapse" data-bs-target="#{{ card_id }}"
+          aria-expanded="{{ 'true' if line.servers else 'false' }}"
+          aria-controls="{{ card_id }}">
+
+    <div>
+      <div class="product-name">
+        {% set n = line.product_name | lower %}
+        {% set fam = line.product_family | default('') %}
+        {% if 'enterprise' in n and fam == 'oracle_database' %}<i class="bi bi-database-fill me-1" style="color:#2563eb;font-size:.85rem"></i>
+        {% elif 'standard' in n and fam == 'oracle_database' %}<i class="bi bi-database me-1" style="color:#64748b;font-size:.85rem"></i>
+        {% elif fam == 'oracle_database' or 'database' in n %}<i class="bi bi-database me-1" style="color:#2563eb;font-size:.85rem"></i>
+        {% elif 'weblogic suite' in n %}<i class="bi bi-boxes me-1" style="color:#7c3aed;font-size:.85rem"></i>
+        {% elif 'weblogic' in n %}<i class="bi bi-boxes me-1" style="color:#6366f1;font-size:.85rem"></i>
+        {% elif 'coherence' in n %}<i class="bi bi-cpu me-1" style="color:#059669;font-size:.85rem"></i>
+        {% elif 'soa' in n or 'service bus' in n %}<i class="bi bi-diagram-3 me-1" style="color:#0891b2;font-size:.85rem"></i>
+        {% else %}<i class="bi bi-puzzle me-1" style="color:var(--text-muted);font-size:.85rem"></i>
+        {% endif %}
+        {{ line.product_name }}
+      </div>
+      <div class="product-family-label">
+        {% if line.product_family == 'oracle_database' %}Database
+        {% elif line.product_family == 'oracle_weblogic' %}WebLogic / Middleware
+        {% else %}{{ line.product_family | replace('_',' ') | title }}{% endif %}
+        {% if line.servers %}· {{ line.servers | length }} server{{ 's' if line.servers | length != 1 }}{% endif %}
+      </div>
+    </div>
+
+    <div class="util-col">
+      <div class="util-bar-track" style="width:120px">
+        <div class="util-bar-fill {% if pct > 100 %}over{% endif %}"
+             style="width:{{ [pct, 100] | min }}%"></div>
+      </div>
+      <div style="font-size:.7rem;color:var(--text-muted);text-align:right;margin-top:.2rem">{{ pct }}%</div>
+    </div>
+
+    <div class="util-col">
+      <div class="util-value">
+        {{ assigned }}
+        <span style="font-weight:400;font-size:.8rem;color:var(--text-muted)">/ {{ total }}</span>
+      </div>
+      <div class="util-label">{{ free }} unassigned</div>
+    </div>
+
+    <i class="bi bi-chevron-down chevron"></i>
+  </button>
+
+  <div class="collapse {% if line.servers %}show{% endif %}" id="{{ card_id }}">
+    {% if line.servers %}
+    <div class="product-detail">
+      <table class="server-table">
+        <thead>
+          <tr>
+            <th>Server</th>
+            <th class="num">Licences Assigned</th>
+            {% if line.any_nup %}
+            <th class="num">Required</th>
+            <th class="num">Min NUP</th>
+            {% endif %}
+            <th class="num">% of Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for sv in line.servers %}
+          {% set sv_pct = ((sv.consumed / total * 100) | round(1)) if total > 0 else 0 %}
+          <tr>
+            <td>
+              <i class="bi bi-server text-muted me-1" style="font-size:.8rem"></i>
+              <strong>{{ sv.hostname }}</strong>
+              {% if sv.is_nup %}<span class="nup-badge">NUP</span>{% endif %}
+            </td>
+            <td class="num" style="font-weight:700;color:var(--s1)">{{ sv.consumed }}</td>
+            {% if line.any_nup %}
+            <td class="num">
+              {% if sv.required is not none %}<span style="font-weight:600">{{ sv.required | int }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td class="num">
+              {% if sv.nup_minimum is not none %}<span style="color:var(--s1);font-weight:600">{{ sv.nup_minimum | int }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            {% endif %}
+            <td class="num text-muted">{{ sv_pct }}%</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        {% if line.servers | length > 1 %}
+        <tfoot>
+          <tr>
+            <td>Total assigned</td>
+            <td class="num">{{ assigned }}</td>
+            {% if line.any_nup %}<td class="num"></td><td class="num"></td>{% endif %}
+            <td class="num">{{ pct }}%</td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
+    {% else %}
+    <div class="no-servers">No servers assigned to this product yet.</div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+{% else %}
+<p class="text-muted">No client-locked licences found for this client.</p>
+{% endif %}
+
+</div>
+
+<script>
+  document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(btn => {
+    const target = document.querySelector(btn.dataset.bsTarget);
+    if (target) {
+      target.addEventListener('show.bs.collapse',  () => btn.setAttribute('aria-expanded','true'));
+      target.addEventListener('hide.bs.collapse',  () => btn.setAttribute('aria-expanded','false'));
+    }
+  });
+</script>
+{% endblock %}
