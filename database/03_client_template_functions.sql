@@ -17,8 +17,9 @@ SET search_path = sam_admin, shared, public;
 CREATE OR REPLACE FUNCTION sam_admin.install_license_position_view(p_schema TEXT)
 RETURNS VOID LANGUAGE plpgsql AS $$
 BEGIN
+  EXECUTE format('DROP VIEW IF EXISTS %I.license_position CASCADE', p_schema);
   EXECUTE format($view$
-    CREATE OR REPLACE VIEW %I.license_position AS
+    CREATE VIEW %I.license_position AS
 
     WITH latest_proc AS (
       SELECT DISTINCT ON (server_id)
@@ -251,8 +252,9 @@ $$;
 CREATE OR REPLACE FUNCTION sam_admin.install_license_options_view(p_schema TEXT)
 RETURNS VOID LANGUAGE plpgsql AS $$
 BEGIN
+  EXECUTE format('DROP VIEW IF EXISTS %I.license_metric_comparison CASCADE', p_schema);
   EXECUTE format($view$
-    CREATE OR REPLACE VIEW %I.license_metric_comparison AS
+    CREATE VIEW %I.license_metric_comparison AS
 
     -- Oracle rules for Named User Plus minimums:
     --   Enterprise Edition : 25 NUP per processor licence (i.e. per core × core_factor)
@@ -681,8 +683,9 @@ RETURNS VOID LANGUAGE plpgsql AS $$
 DECLARE
   v_sql TEXT;
 BEGIN
+  EXECUTE 'DROP VIEW IF EXISTS ' || quote_ident(p_schema) || '.server_csi_coverage CASCADE';
   v_sql :=
-    'CREATE OR REPLACE VIEW ' || quote_ident(p_schema) || '.server_csi_coverage AS
+    'CREATE VIEW ' || quote_ident(p_schema) || '.server_csi_coverage AS
 
     WITH latest_proc AS (
       SELECT DISTINCT ON (server_id)
@@ -1269,8 +1272,9 @@ BEGIN
   -- CHANGELOG SUMMARY VIEW
   -- Unacknowledged changes grouped for the Power BI dashboard banner.
   -- -------------------------------------------------------------------------
+  EXECUTE format('DROP VIEW IF EXISTS %I.changelog_summary CASCADE', p_schema);
   EXECUTE format($view$
-    CREATE OR REPLACE VIEW %I.changelog_summary AS
+    CREATE VIEW %I.changelog_summary AS
     SELECT
       change_id,
       detected_at,
@@ -1345,8 +1349,9 @@ BEGIN
   -- Exempt installations are included but flagged; use WHERE licence_exempt = FALSE
   -- to restrict to installs that require a licence.
   -- -------------------------------------------------------------------------
+  EXECUTE format('DROP VIEW IF EXISTS %I.java_licence_position CASCADE', p_schema);
   EXECUTE format($view$
-    CREATE OR REPLACE VIEW %I.java_licence_position AS
+    CREATE VIEW %I.java_licence_position AS
     SELECT
       s.server_id,
       s.hostname,
@@ -1386,8 +1391,9 @@ BEGIN
   -- MYSQL LICENCE POSITION VIEW
   -- Shows every discovered MySQL installation with its licence requirement.
   -- -------------------------------------------------------------------------
+  EXECUTE format('DROP VIEW IF EXISTS %I.mysql_licence_position CASCADE', p_schema);
   EXECUTE format($view$
-    CREATE OR REPLACE VIEW %I.mysql_licence_position AS
+    CREATE VIEW %I.mysql_licence_position AS
     SELECT
       s.server_id,
       s.hostname,
@@ -1416,8 +1422,9 @@ BEGIN
   -- Compares the most recent actual user count per instance against the
   -- NUP minimum floor (25 NUP per EE processor licence, 10 NUP per SE2).
   -- -------------------------------------------------------------------------
+  EXECUTE format('DROP VIEW IF EXISTS %I.nup_coverage CASCADE', p_schema);
   EXECUTE format($view$
-    CREATE OR REPLACE VIEW %I.nup_coverage AS
+    CREATE VIEW %I.nup_coverage AS
     WITH latest_proc AS (
       SELECT DISTINCT ON (server_id)
         server_id, cpu_model, cpu_sockets, total_physical_cores
@@ -1512,8 +1519,9 @@ BEGIN
   -- BYOL = customer provides their own licences (counted in license_position).
   -- Licence-included = Oracle charges for the licence within OCI pricing.
   -- -------------------------------------------------------------------------
+  EXECUTE format('DROP VIEW IF EXISTS %I.oci_licence_position CASCADE', p_schema);
   EXECUTE format($view$
-    CREATE OR REPLACE VIEW %I.oci_licence_position AS
+    CREATE VIEW %I.oci_licence_position AS
     SELECT
       o.oci_id,
       o.oci_instance_id,
@@ -1557,8 +1565,9 @@ BEGIN
   -- Oracle requires the Multitenant option when a CDB has more than 1 PDB
   -- (the CDB itself counts as 1; a second user PDB triggers the option).
   -- -------------------------------------------------------------------------
+  EXECUTE format('DROP VIEW IF EXISTS %I.pdb_multitenant_position CASCADE', p_schema);
   EXECUTE format($view$
-    CREATE OR REPLACE VIEW %I.pdb_multitenant_position AS
+    CREATE VIEW %I.pdb_multitenant_position AS
     SELECT
       s.server_id,
       s.hostname,
@@ -1911,10 +1920,11 @@ BEGIN
   -- -------------------------------------------------------------------------
   -- SE2 VIOLATIONS VIEW
   -- Flags servers/instances that violate Oracle SE2 licensing rules.
+  EXECUTE format('DROP VIEW IF EXISTS %I.se2_violations CASCADE', p_schema);
   -- SE2 rules: max 2 CPU sockets per server; max 2 nodes in a RAC cluster.
   -- -------------------------------------------------------------------------
   EXECUTE format($view$
-    CREATE OR REPLACE VIEW %I.se2_violations AS
+    CREATE VIEW %I.se2_violations AS
     WITH socket_check AS (
       SELECT
         s.server_id,
@@ -1975,9 +1985,10 @@ BEGIN
   -- Surfaces servers whose CPU model is not found in the Oracle Processor
   -- Core Factor Table (shared.core_factor_table).  An unrecognised model
   -- means the licence calculation may be using the wrong factor.
+  EXECUTE format('DROP VIEW IF EXISTS %I.cpu_validation_report CASCADE', p_schema);
   -- -------------------------------------------------------------------------
   EXECUTE format($view$
-    CREATE OR REPLACE VIEW %I.cpu_validation_report AS
+    CREATE VIEW %I.cpu_validation_report AS
     SELECT
       s.server_id,
       s.hostname,
