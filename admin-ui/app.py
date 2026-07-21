@@ -1111,7 +1111,8 @@ def register_server():
         cores       = request.form.get("physical_cores", "").strip() or None
         sockets     = request.form.get("cpu_sockets", "").strip() or None
         cps         = request.form.get("cores_per_socket", "").strip() or None
-        cpu_model   = request.form.get("cpu_model", "").strip() or "Unknown"
+        cpu_model_raw = request.form.get("cpu_model", "").strip()
+        cpu_model     = cpu_model_raw.split("|")[0].strip() or "Unknown"
         core_factor = request.form.get("core_factor_override", "").strip() or None
         notes       = request.form.get("notes", "").strip() or None
         server_type = request.form.get("server_type", "oracle_database")  # 'oracle_database' | 'oracle_weblogic'

@@ -253,9 +253,9 @@
         <div class="rs-grid-2">
           <div>
             <label class="rs-label" for="cpu_model_select">CPU Model</label>
-            <select id="cpu_model_select" class="form-select form-select-sm mb-1"
+            <select id="cpu_model_select" name="cpu_model" class="form-select form-select-sm mb-1"
                     onchange="applyCpuPreset(this.value)">
-              <option value="">— Select a common model or enter below —</option>
+              <option value="">— Select a CPU model —</option>
               <optgroup label="Intel (factor 0.50)">
                 <option value="Intel Xeon|0.5">Intel Xeon (all generations)</option>
                 <option value="Intel Xeon E5|0.5">Intel Xeon E5</option>
@@ -292,9 +292,7 @@
                 <option value="Apple M|0.5">Apple Silicon M-series</option>
               </optgroup>
             </select>
-            <input type="text" id="cpu_model" name="cpu_model" class="form-control form-control-sm"
-                   value="{{ form.get('cpu_model','') }}" placeholder="Or type a specific model name…">
-            <div class="rs-hint">Selecting from the list fills the model name and sets the core factor automatically.</div>
+            <div class="rs-hint">Sets the core factor automatically based on Oracle's processor core factor table.</div>
           </div>
           <div>
             <label class="rs-label" for="core_factor_override">Core Factor Override</label>
@@ -379,12 +377,11 @@
 <script>
 function applyCpuPreset(val) {
   if (!val) return;
-  const parts = val.split('|');
-  document.getElementById('cpu_model').value = parts[0] || '';
-  if (parts[1]) {
+  const factor = val.split('|')[1];
+  if (factor) {
     const sel = document.getElementById('core_factor_override');
     for (let i = 0; i < sel.options.length; i++) {
-      if (sel.options[i].value === parts[1]) { sel.selectedIndex = i; break; }
+      if (sel.options[i].value === factor) { sel.selectedIndex = i; break; }
     }
   }
 }
