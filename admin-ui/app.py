@@ -1193,7 +1193,7 @@ def register_server():
                             execute(
                                 f"INSERT INTO {schema}.oracle_options"
                                 f"  (instance_id, option_name, status, recorded_at)"
-                                f"  VALUES (%s, %s, 'VALID', NOW())",
+                                f"  VALUES (%s, %s, 'TRUE', NOW())",
                                 (instance_id, opt)
                             )
                 elif server_type == "oracle_weblogic":
