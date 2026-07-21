@@ -2768,17 +2768,10 @@ def licence_summary_shared():
         s = c["schema_name"]
         try:
             rows = query(f"""
-                SELECT m.csi_id,
-                       lp.product_family::TEXT AS product_family,
-                       lp.product_detail,
-                       lp.product_name,
-                       COALESCE(SUM(lp.licences_required), 0)::int AS licences_used
-                FROM {s}.server_csi_map m
-                JOIN {s}.oracle_servers sv ON sv.server_id = m.server_id AND sv.is_active
-                JOIN {s}.license_position lp ON lp.server_id = sv.server_id
-                                             AND lp.product_family::TEXT = m.product_family::TEXT
-                WHERE m.csi_id = ANY(%s)
-                GROUP BY m.csi_id, lp.product_family, lp.product_detail, lp.product_name
+                SELECT csi_id, COALESCE(SUM(licences_consumed), 0)::int AS licences_used
+                FROM {s}.server_csi_map
+                WHERE csi_id = ANY(%s)
+                GROUP BY csi_id
             """, (list(shareable_csi_ids),))
         except Exception:
             rows = []
@@ -2788,13 +2781,8 @@ def licence_summary_shared():
             if licences <= 0:
                 continue
             csi_id = r["csi_id"]
-            prod   = r["product_name"] or r["product_detail"] or r["product_family"] or "Unknown"
-            key    = (csi_id, prod)
-            if key not in entitlement_map:
-                key = next(
-                    (k for k in entitlement_map if k[0] == csi_id and k[1].lower() in prod.lower()),
-                    next((k for k in entitlement_map if k[0] == csi_id), None)
-                )
+            # Match to the entitlement key for this CSI (take first matching key)
+            key = next((k for k in entitlement_map if k[0] == csi_id), None)
             if key is None:
                 continue
             entitlement_map[key]["clients"].append({
