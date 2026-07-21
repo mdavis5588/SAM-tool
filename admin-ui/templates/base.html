@@ -314,7 +314,7 @@
 <a class="sidebar-link {% if request.endpoint == 'settings' %}active{% endif %}"
          href="{{ url_for('settings') }}"><i class="bi bi-gear"></i><span>{{ t('nav.alert_settings') }}</span></a>
       {%- set pending_count = pending_assignments_count | default(0) -%}
-      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['assignment_queue','discovery_conflicts','discovery_history'] %}active{% endif %}"
+      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['assignment_queue','discovery_conflicts','discovery_history','admin_audit','admin_snapshot_view'] %}active{% endif %}"
          href="{{ url_for('assignment_queue') }}" id="operationsFlyoutTrigger"
          data-flyout="operationsFlyoutPanel">
         <i class="bi bi-gear-wide-connected"></i><span>Operations
@@ -325,9 +325,7 @@
       {% if is_superadmin %}
       <a class="sidebar-link {% if request.endpoint == 'admin_users' %}active{% endif %}"
          href="{{ url_for('admin_users') }}"><i class="bi bi-person-lock"></i><span>{{ t('nav.users_access') }}</span></a>
-      <a class="sidebar-link {% if request.endpoint in ['admin_audit','admin_snapshot_view'] %}active{% endif %}"
-         href="{{ url_for('admin_audit') }}"><i class="bi bi-journal-text"></i><span>{{ t('nav.audit_snapshots') }}</span></a>
-      {% endif %}
+{% endif %}
     </nav>
 
     <div class="sidebar-bottom">
@@ -397,6 +395,10 @@
     <a class="sidebar-flyout-item {% if request.endpoint == 'discovery_conflicts' %}active{% endif %}"
        href="{{ url_for('discovery_conflicts') }}">
       <i class="bi bi-exclamation-triangle"></i>{{ t('nav.discovery_conflicts') }}
+    </a>
+    <a class="sidebar-flyout-item {% if request.endpoint in ['admin_audit','admin_snapshot_view'] %}active{% endif %}"
+       href="{{ url_for('admin_audit') }}">
+      <i class="bi bi-journal-text"></i>{{ t('nav.audit_snapshots') }}
     </a>
   </div>
 
