@@ -1,0 +1,377 @@
+{% extends "base.html" %}
+{% block title %}Shared Pool Monthly Costs — {{ client.client_name }} — Helios{% endblock %}
+
+{% block content %}
+<style>
+  :root {
+    --card-bg:     #ffffff;
+    --card-border: #e3e6ea;
+    --muted:       #6c757d;
+    --text:        #212529;
+    --blue:        #2a78d6;
+    --green:       #1baf7a;
+    --amber:       #eda100;
+    --surface:     #f8f9fa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --card-bg:     #1e1e1d;
+      --card-border: #2c2c2a;
+      --muted:       #898781;
+      --text:        #f0eeeb;
+      --surface:     #18181a;
+    }
+  }
+  :root[data-theme="dark"]  { --card-bg:#1e1e1d;--card-border:#2c2c2a;--muted:#898781;--text:#f0eeeb;--surface:#18181a; }
+  :root[data-theme="light"] { --card-bg:#ffffff;--card-border:#e3e6ea;--muted:#6c757d;--text:#212529;--surface:#f8f9fa; }
+
+  .finops-header { margin-bottom: 1.5rem; }
+  .finops-header h4 { margin: 0; font-weight: 700; }
+  .finops-header .fy-badge {
+    display: inline-block;
+    background: rgba(124,58,237,.12);
+    color: #7c3aed;
+    font-size: .78rem;
+    font-weight: 600;
+    padding: .2rem .6rem;
+    border-radius: 20px;
+    margin-left: .5rem;
+  }
+
+  /* Tab bar */
+  .nav-tabs .nav-link { color: var(--muted); }
+  .nav-tabs .nav-link.active { color: var(--text); font-weight: 600; }
+
+  /* Bar chart */
+  .bar-chart-wrap {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.75rem;
+  }
+  .bar-chart-title {
+    font-size: .72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--muted);
+    margin-bottom: 1rem;
+  }
+  .bar-chart-svg { width: 100%; overflow: visible; }
+
+  /* Month accordion */
+  .month-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    margin-bottom: .6rem;
+    overflow: hidden;
+  }
+  .month-header {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .7rem 1rem;
+    cursor: pointer;
+    user-select: none;
+  }
+  .month-header:hover { background: rgba(124,58,237,.04); }
+  .month-label { font-weight: 600; font-size: .95rem; min-width: 7rem; }
+  .month-badge {
+    font-size: .68rem; font-weight: 600;
+    padding: .15rem .5rem; border-radius: 12px;
+  }
+  .badge-live    { background: rgba(26,175,122,.15); color: #1baf7a; }
+  .badge-snap    { background: rgba(42,120,214,.12); color: #2a78d6; }
+  .badge-future  { background: rgba(108,117,125,.1); color: var(--muted); }
+  .badge-nodata  { background: rgba(108,117,125,.1); color: var(--muted); }
+  .month-total   { margin-left: auto; font-weight: 700; font-size: .95rem; font-variant-numeric: tabular-nums; }
+  .month-chevron { color: var(--muted); font-size: .75rem; transition: transform .18s; }
+  .month-card.open .month-chevron { transform: rotate(90deg); }
+
+  .month-body { display: none; padding: 0 1rem .9rem; }
+  .month-card.open .month-body { display: block; }
+
+  .detail-table { width: 100%; font-size: .87rem; border-collapse: collapse; }
+  .detail-table th {
+    font-size: .68rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); padding: .35rem .5rem;
+    border-bottom: 1px solid var(--card-border);
+    white-space: nowrap;
+  }
+  .detail-table td { padding: .45rem .5rem; border-bottom: 1px solid rgba(0,0,0,.04); font-variant-numeric: tabular-nums; }
+  .detail-table tr:last-child td { border-bottom: none; }
+  .detail-table .total-row td { font-weight: 700; border-top: 1px solid var(--card-border); padding-top: .55rem; }
+  .no-data-msg { color: var(--muted); font-size: .88rem; font-style: italic; padding: .4rem .25rem; }
+
+  /* FY summary card */
+  .fy-summary {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.75rem;
+    display: flex; align-items: center; gap: 2rem; flex-wrap: wrap;
+  }
+  .fy-kpi-label { font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: .2rem; }
+  .fy-kpi-value { font-size: 1.45rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  /* Entitlements panel */
+  .ent-panel {
+    background: var(--surface);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    padding: .9rem 1.1rem;
+    margin-bottom: 1.75rem;
+    font-size: .85rem;
+  }
+  .ent-panel summary { font-weight: 600; cursor: pointer; color: var(--muted); font-size: .82rem; }
+  .ent-panel table { width: 100%; margin-top: .6rem; }
+  .ent-panel th { color: var(--muted); font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; padding: .25rem .4rem; }
+  .ent-panel td { padding: .3rem .4rem; font-variant-numeric: tabular-nums; }
+</style>
+
+{% set fmt_ns = namespace(currency=currency) %}
+
+{# ── Tab bar ── #}
+<ul class="nav nav-tabs mb-4">
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('finops_client', client_code=client.client_code) }}">
+      <i class="bi bi-bar-chart-steps me-1"></i>Cost Summary
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('licence_summary_server_costs') }}">
+      <i class="bi bi-server me-1"></i>Server Costs
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('finops_ulas') }}">
+      <i class="bi bi-infinity me-1"></i>ULA Coverage
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="#">
+      <i class="bi bi-calendar3 me-1"></i>Shared Pool Monthly
+    </a>
+  </li>
+</ul>
+
+{# ── Page header ── #}
+<div class="finops-header">
+  <h4>
+    {{ client.client_name }}
+    <span class="fy-badge">{{ fy_label }} &nbsp;{{ fy_start.strftime('%d %b %Y') }} – {{ fy_end.strftime('%d %b %Y') }}</span>
+  </h4>
+  <div class="text-muted" style="font-size:.85rem;margin-top:.2rem">
+    Monthly cost for licences drawn from the <strong>shared pool</strong> only.
+    Calculated as: <em>licences used × unit price ÷ 12</em>.
+  </div>
+</div>
+
+{% if not ent_rows %}
+<div class="alert alert-info">
+  <i class="bi bi-info-circle me-1"></i>
+  No active shareable CSIs are linked to <strong>{{ client.client_name }}</strong>.
+  Assign shared-pool CSIs via the Contracts page first.
+</div>
+{% else %}
+
+{# ── FY KPI strip ── #}
+{% set months_with_data = monthly_data | selectattr('has_data') | list %}
+<div class="fy-summary">
+  <div>
+    <div class="fy-kpi-label">{{ fy_label }} Total Shared Pool Cost</div>
+    <div class="fy-kpi-value text-primary">${{ '{:,.2f}'.format(fy_total) }}</div>
+  </div>
+  <div>
+    <div class="fy-kpi-label">Months with data</div>
+    <div class="fy-kpi-value">{{ months_with_data | length }} / 12</div>
+  </div>
+  {% if months_with_data %}
+  <div>
+    <div class="fy-kpi-label">Monthly avg (actual months)</div>
+    <div class="fy-kpi-value">${{ '{:,.2f}'.format((fy_total / (months_with_data | length))) }}</div>
+  </div>
+  {% endif %}
+  <div>
+    <div class="fy-kpi-label">Currency</div>
+    <div class="fy-kpi-value">{{ currency }}</div>
+  </div>
+</div>
+
+{# ── Bar chart ── #}
+{% if bar_months %}
+<div class="bar-chart-wrap">
+  <div class="bar-chart-title">Monthly shared pool cost — {{ fy_label }}</div>
+  <canvas id="barChart" height="90"></canvas>
+</div>
+{% endif %}
+
+{# ── Shared CSI entitlements reference ── #}
+<details class="ent-panel mb-3">
+  <summary>Shared Pool CSI Entitlements ({{ ent_rows | length }} line{{ 's' if ent_rows | length != 1 }})</summary>
+  <table class="detail-table" style="margin-top:.6rem">
+    <thead>
+      <tr>
+        <th>CSI Number</th>
+        <th>Contract</th>
+        <th>Product</th>
+        <th>Entitled Qty</th>
+        <th class="text-end">Unit Price</th>
+        <th class="text-end">Annual Value</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in ent_rows %}
+      <tr>
+        <td><code>{{ r.csi_number or '—' }}</code></td>
+        <td>{{ r.contract_name }}</td>
+        <td>{{ r.product_name }}</td>
+        <td>{{ r.entitled_qty | int }}</td>
+        <td class="text-end">${{ '{:,.2f}'.format(r.unit_price) }}</td>
+        <td class="text-end">${{ '{:,.2f}'.format(r.unit_price * r.entitled_qty) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</details>
+
+{# ── Month-by-month accordion ── #}
+{% for mo in monthly_data %}
+<div class="month-card {% if mo.has_data %}open{% endif %}" id="mc-{{ loop.index }}">
+  <div class="month-header" onclick="toggleMonth('mc-{{ loop.index }}')">
+    <span class="month-label">{{ mo.label }}</span>
+
+    {% if mo.is_future %}
+      <span class="month-badge badge-future">Future</span>
+    {% elif mo.is_live %}
+      <span class="month-badge badge-live">Live</span>
+    {% elif mo.has_data %}
+      <span class="month-badge badge-snap">Snapshot</span>
+    {% else %}
+      <span class="month-badge badge-nodata">No data</span>
+    {% endif %}
+
+    <span class="month-total">
+      {% if mo.has_data %}${{ '{:,.2f}'.format(mo.month_total) }}{% else %}—{% endif %}
+    </span>
+    <i class="bi bi-chevron-right month-chevron"></i>
+  </div>
+
+  <div class="month-body">
+    {% if mo.has_data and mo.lines %}
+    <table class="detail-table">
+      <thead>
+        <tr>
+          <th>CSI Number</th>
+          <th>Contract</th>
+          <th>Product / Edition</th>
+          <th class="text-end">Licences Used</th>
+          <th class="text-end">Unit Price</th>
+          <th class="text-end">Monthly Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ln in mo.lines %}
+        <tr>
+          <td><code>{{ ln.csi_number }}</code></td>
+          <td>{{ ln.contract_name }}</td>
+          <td>{{ ln.product }}</td>
+          <td class="text-end">{{ '{:,.1f}'.format(ln.licences) }}</td>
+          <td class="text-end">${{ '{:,.2f}'.format(ln.unit_price) }}</td>
+          <td class="text-end fw-semibold">${{ '{:,.2f}'.format(ln.monthly_cost) }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="total-row">
+          <td colspan="5">Month Total</td>
+          <td class="text-end">${{ '{:,.2f}'.format(mo.month_total) }}</td>
+        </tr>
+      </tbody>
+    </table>
+    {% elif mo.is_future %}
+      <p class="no-data-msg"><i class="bi bi-clock me-1"></i>Future month — no data yet.</p>
+    {% else %}
+      <p class="no-data-msg">
+        <i class="bi bi-info-circle me-1"></i>No snapshot for this month.
+        Take a snapshot from the <a href="{{ url_for('admin_audit') }}">Audit &amp; Snapshots</a> page to capture usage.
+      </p>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+{# ── FY total footer ── #}
+{% if months_with_data %}
+<div class="month-card" style="border-color:#7c3aed33">
+  <div class="month-header" style="background:rgba(124,58,237,.05);cursor:default">
+    <span class="month-label" style="color:#7c3aed">{{ fy_label }} Total</span>
+    <span class="month-total" style="color:#7c3aed;font-size:1.1rem">${{ '{:,.2f}'.format(fy_total) }}</span>
+  </div>
+</div>
+{% endif %}
+
+{% endif %}{# end if ent_rows #}
+{% endblock %}
+
+{% block scripts %}
+{% if bar_months %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  const months = {{ bar_months | tojson }};
+  const totals = {{ bar_totals | tojson }};
+  const isDark = document.documentElement.dataset.theme === 'dark'
+              || (!document.documentElement.dataset.theme
+                  && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+  const gridColor  = isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.06)';
+  const labelColor = isDark ? '#898781' : '#6c757d';
+
+  new Chart(document.getElementById('barChart'), {
+    type: 'bar',
+    data: {
+      labels: months,
+      datasets: [{
+        label: 'Monthly Shared Pool Cost',
+        data: totals,
+        backgroundColor: 'rgba(124,58,237,.75)',
+        borderColor: '#7c3aed',
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ' $' + ctx.parsed.y.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})
+          }
+        }
+      },
+      scales: {
+        x: { grid: { color: gridColor }, ticks: { color: labelColor } },
+        y: {
+          grid: { color: gridColor },
+          ticks: {
+            color: labelColor,
+            callback: v => '$' + (v >= 1000 ? (v/1000).toFixed(0)+'k' : v)
+          },
+          beginAtZero: true
+        }
+      }
+    }
+  });
+})();
+</script>
+{% endif %}
+
+<script>
+function toggleMonth(id) {
+  const el = document.getElementById(id);
+  el.classList.toggle('open');
+}
+</script>
+{% endblock %}

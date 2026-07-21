@@ -3009,6 +3009,224 @@ def finops_ulas():
     )
 
 
+@app.route("/finops/shared-pool-monthly")
+@login_required
+def shared_pool_monthly():
+    from calendar import month_abbr
+
+    schema = get_schema()
+    if schema == "__all__":
+        flash("Please select a specific client to view shared pool monthly costs.", "warning")
+        return redirect(url_for("finops"))
+
+    client = query(
+        "SELECT client_id, client_name, client_code FROM sam_admin.clients "
+        "WHERE schema_name = %s AND is_active",
+        (schema,), fetchall=False
+    )
+    if not client:
+        return redirect(url_for("finops"))
+
+    client_id = client["client_id"]
+
+    # Fiscal year: April 1 – March 31
+    today = date.today()
+    fy_year = today.year if today.month >= 4 else today.year - 1
+    fy_start = date(fy_year, 4, 1)
+    fy_end   = date(fy_year + 1, 3, 31)
+    fy_label = f"FY {fy_year}/{str(fy_year + 1)[2:]}"
+
+    # Build ordered list of FY months (Apr … Mar)
+    fy_months = []
+    y, m = fy_year, 4
+    for _ in range(12):
+        fy_months.append(date(y, m, 1))
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+
+    # Shareable CSIs accessible to this client + their entitlement lines
+    ent_rows = query("""
+        SELECT cs.csi_id, cs.csi_number, cs.contract_name, cs.currency,
+               l.product_name, l.product_family::TEXT AS product_family,
+               COALESCE(l.unit_price, 0)              AS unit_price,
+               l.quantity                              AS entitled_qty
+        FROM shared.csi_contracts cs
+        JOIN shared.license_entitlement_lines l
+             ON l.csi_id = cs.csi_id AND l.is_active
+        WHERE cs.sharing_policy = 'shareable'
+          AND cs.status = 'active'
+          AND (
+            cs.owning_client_id = %(cid)s
+            OR cs.csi_id IN (
+                SELECT csi_id FROM shared.csi_client_map WHERE client_id = %(cid)s
+            )
+          )
+        ORDER BY cs.csi_number, l.product_name
+    """, {"cid": client_id})
+
+    # Index: csi_number → list of entitlement lines
+    csi_num_to_lines = {}
+    for r in ent_rows:
+        csi_num_to_lines.setdefault(r["csi_number"], []).append(r)
+
+    # Set of shareable CSI numbers for quick lookup
+    shareable_csi_numbers = set(csi_num_to_lines.keys())
+    currency = ent_rows[0]["currency"] if ent_rows else "USD"
+
+    # Helper: given a product_family + product_detail, find best unit_price from an
+    # entitlement line by partial-name match, falling back to first line in that CSI
+    def _unit_price(csi_number, product_family, product_detail):
+        lines = csi_num_to_lines.get(csi_number, [])
+        if not lines:
+            return 0.0
+        pf_lines = [l for l in lines if l["product_family"] == product_family]
+        if not pf_lines:
+            pf_lines = lines
+        if product_detail:
+            det = product_detail.lower()
+            for l in pf_lines:
+                if l["product_name"].lower() in det or det in l["product_name"].lower():
+                    return float(l["unit_price"])
+        return float(pf_lines[0]["unit_price"])
+
+    # -----------------------------------------------------------------------
+    # Snapshots for this client in the fiscal year
+    # -----------------------------------------------------------------------
+    snap_rows = query("""
+        SELECT s.snapshot_month,
+               sl.product_family,
+               sl.product_detail,
+               sl.csi_number          AS raw_csi_numbers,
+               SUM(sl.licences_required) AS licences
+        FROM sam_admin.licence_snapshots s
+        JOIN sam_admin.licence_snapshot_lines sl ON sl.snapshot_id = s.snapshot_id
+        WHERE s.client_id = %s
+          AND s.snapshot_month >= %s
+          AND s.snapshot_month <= %s
+          AND sl.csi_number IS NOT NULL
+        GROUP BY s.snapshot_month, sl.product_family, sl.product_detail, sl.csi_number
+        ORDER BY s.snapshot_month, sl.product_family, sl.product_detail
+    """, (client_id, fy_start, fy_end))
+
+    # Group snapshot lines by month, filtering to shared-pool CSIs only
+    snap_by_month = {}
+    for r in snap_rows:
+        # raw_csi_numbers is e.g. "12345; 67890"
+        csi_nums = [c.strip() for c in (r["raw_csi_numbers"] or "").split(";") if c.strip()]
+        shared_nums = [n for n in csi_nums if n in shareable_csi_numbers]
+        if not shared_nums:
+            continue
+        m = r["snapshot_month"].replace(day=1)
+        snap_by_month.setdefault(m, []).append({
+            "csi_number":    shared_nums[0],   # attribute to first matching shared CSI
+            "product_family": r["product_family"],
+            "product_detail": r["product_detail"],
+            "licences":       float(r["licences"] or 0),
+        })
+
+    # -----------------------------------------------------------------------
+    # Live current-month data from server_csi_map (used when no snapshot yet)
+    # -----------------------------------------------------------------------
+    cur_month = today.replace(day=1)
+    live_lines = []
+    if cur_month not in snap_by_month and cur_month >= fy_start and cur_month <= fy_end:
+        try:
+            live_rows = query(f"""
+                SELECT cs.csi_number,
+                       scm.product_family::TEXT AS product_family,
+                       COALESCE(scm.product_detail, '') AS product_detail,
+                       SUM(scm.licences_consumed) AS licences
+                FROM {schema}.server_csi_map scm
+                JOIN shared.csi_contracts cs ON cs.csi_id = scm.csi_id
+                WHERE cs.sharing_policy = 'shareable'
+                  AND cs.status = 'active'
+                GROUP BY cs.csi_number, scm.product_family, scm.product_detail
+            """)
+            for r in live_rows:
+                if r["csi_number"] in shareable_csi_numbers:
+                    live_lines.append({
+                        "csi_number":    r["csi_number"],
+                        "product_family": r["product_family"],
+                        "product_detail": r["product_detail"],
+                        "licences":       float(r["licences"] or 0),
+                    })
+        except Exception:
+            pass
+        if live_lines:
+            snap_by_month[cur_month] = live_lines
+
+    # -----------------------------------------------------------------------
+    # Build per-month summary
+    # -----------------------------------------------------------------------
+    monthly_data = []
+    fy_total = 0.0
+
+    for mo in fy_months:
+        is_future = mo > cur_month
+        is_live   = (mo == cur_month and mo not in snap_by_month) or (mo == cur_month and live_lines and mo in snap_by_month and snap_by_month[mo] is live_lines)
+        has_data  = mo in snap_by_month and not is_future
+
+        lines_out = []
+        month_total = 0.0
+
+        if has_data:
+            # Group by (csi_number, product_detail) to avoid duplicate rows
+            grouped = {}
+            for ln in snap_by_month[mo]:
+                key = (ln["csi_number"], ln["product_detail"] or ln["product_family"])
+                if key not in grouped:
+                    grouped[key] = {
+                        "csi_number":     ln["csi_number"],
+                        "contract_name":  (csi_num_to_lines.get(ln["csi_number"]) or [{}])[0].get("contract_name", "—"),
+                        "product":        ln["product_detail"] or ln["product_family"],
+                        "licences":       0.0,
+                        "unit_price":     _unit_price(ln["csi_number"], ln["product_family"], ln["product_detail"]),
+                    }
+                grouped[key]["licences"] += ln["licences"]
+
+            for item in sorted(grouped.values(), key=lambda x: (x["csi_number"], x["product"])):
+                monthly_cost = round(item["licences"] * item["unit_price"] / 12, 2)
+                item["monthly_cost"] = monthly_cost
+                month_total += monthly_cost
+                lines_out.append(item)
+
+        fy_total += month_total
+        monthly_data.append({
+            "month":       mo,
+            "label":       f"{month_abbr[mo.month]} {mo.year}",
+            "is_future":   is_future,
+            "is_live":     mo == cur_month and not any(
+                s.snapshot_month.replace(day=1) == mo
+                for s in (query("SELECT snapshot_month FROM sam_admin.licence_snapshots "
+                                "WHERE client_id=%s AND snapshot_month=%s",
+                                (client_id, mo), ) or [])
+            ),
+            "has_data":    has_data,
+            "lines":       lines_out,
+            "month_total": round(month_total, 2),
+        })
+
+    # Bar chart data (only months with data)
+    bar_months  = [d["label"]       for d in monthly_data if not d["is_future"]]
+    bar_totals  = [d["month_total"] for d in monthly_data if not d["is_future"]]
+
+    return render_template(
+        "finops_shared_pool_monthly.html",
+        client=client,
+        fy_label=fy_label,
+        fy_start=fy_start,
+        fy_end=fy_end,
+        monthly_data=monthly_data,
+        fy_total=round(fy_total, 2),
+        currency=currency,
+        bar_months=bar_months,
+        bar_totals=bar_totals,
+        ent_rows=ent_rows,
+    )
+
+
 @app.route("/renewal-calendar")
 @login_required
 def renewal_calendar():
