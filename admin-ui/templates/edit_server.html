@@ -9,11 +9,32 @@
   </ol>
 </nav>
 
-<div class="d-flex gap-2 mb-3">
+<div class="d-flex gap-2 mb-3 flex-wrap">
   <a href="{{ url_for('server_history', server_id=server.server_id) }}"
      class="btn btn-sm btn-outline-secondary">
     <i class="bi bi-clock-history"></i> Change History
   </a>
+  {% if can_write_licences %}
+  {% if server.is_active %}
+  <form method="post" style="display:inline"
+        onsubmit="return confirm('{{ t('servers.confirm_remove') }}')">
+    <input type="hidden" name="action" value="deactivate_server">
+    <button type="submit" class="btn btn-sm btn-outline-danger">
+      <i class="bi bi-trash me-1"></i>{{ t('servers.btn_remove') }}
+    </button>
+  </form>
+  {% else %}
+  <div class="alert alert-warning d-inline-flex align-items-center gap-2 py-1 px-3 mb-0" style="font-size:.85rem">
+    <i class="bi bi-exclamation-triangle"></i> This server has been removed from inventory.
+    <form method="post" style="display:inline">
+      <input type="hidden" name="action" value="reactivate_server">
+      <button type="submit" class="btn btn-sm btn-warning ms-2">
+        <i class="bi bi-arrow-counterclockwise me-1"></i>{{ t('servers.btn_reactivate') }}
+      </button>
+    </form>
+  </div>
+  {% endif %}
+  {% endif %}
 </div>
 
 <!-- SE2 violations banner -->

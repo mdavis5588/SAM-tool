@@ -1965,12 +1965,36 @@ def edit_server(server_id):
                 )
                 flash("Java licence exemption cleared.", "success")
 
+        elif action == "deactivate_server":
+            if not can_write_licences():
+                abort(403)
+            execute(
+                f"UPDATE {schema}.oracle_servers SET is_active = FALSE WHERE server_id = %s",
+                (server_id,)
+            )
+            _audit("server.deactivate", entity_type="server", entity_id=server_id,
+                   new_values={"is_active": False}, client_schema=schema)
+            flash("Server removed from inventory.", "warning")
+            return redirect(url_for("servers"))
+
+        elif action == "reactivate_server":
+            if not can_write_licences():
+                abort(403)
+            execute(
+                f"UPDATE {schema}.oracle_servers SET is_active = TRUE WHERE server_id = %s",
+                (server_id,)
+            )
+            _audit("server.reactivate", entity_type="server", entity_id=server_id,
+                   new_values={"is_active": True}, client_schema=schema)
+            flash("Server reactivated.", "success")
+
         return redirect(url_for("edit_server", server_id=server_id))
 
     # GET
     server = query(
         f"""SELECT s.server_id, s.hostname, s.environment::TEXT, s.datacenter,
                    s.ip_address::TEXT, s.last_seen::DATE,
+                   s.is_active,
                    COALESCE(s.licence_metric_override, 'processor_perpetual') AS licence_metric,
                    s.licence_metric_override IS NOT NULL AS metric_overridden
             FROM {schema}.oracle_servers s WHERE s.server_id = %s""",

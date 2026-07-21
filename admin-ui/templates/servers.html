@@ -145,11 +145,21 @@
 
             <td><small>{{ s.last_seen or '—' }}</small></td>
 
-            <td>
+            <td style="white-space:nowrap">
               <a href="{{ url_for('edit_server', server_id=s.server_id) }}"
                  class="btn btn-sm btn-outline-primary">
                 <i class="bi bi-pencil"></i> {{ t('action.edit') }}
               </a>
+              {% if can_write_licences %}
+              <form method="post" action="{{ url_for('edit_server', server_id=s.server_id) }}"
+                    style="display:inline"
+                    onsubmit="return confirm('{{ t('servers.confirm_remove') }}')">
+                <input type="hidden" name="action" value="deactivate_server">
+                <button type="submit" class="btn btn-sm btn-outline-danger ms-1">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+              {% endif %}
             </td>
           </tr>
           {% else %}
