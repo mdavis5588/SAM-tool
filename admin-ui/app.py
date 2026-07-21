@@ -1192,15 +1192,23 @@ def register_server():
                 v_cps     = int(cps) if cps else (
                     (int(cores) // v_sockets) if cores else 1
                 )
-                execute(
-                    f"INSERT INTO {schema}.oracle_processors"
-                    f"  (server_id, cpu_model, cpu_sockets, cores_per_socket)"
-                    f"  VALUES (%s, 'Unknown', %s, %s)"
-                    f"  ON CONFLICT (server_id, cpu_model) DO UPDATE"
-                    f"  SET cpu_sockets      = EXCLUDED.cpu_sockets,"
-                    f"      cores_per_socket = EXCLUDED.cores_per_socket",
-                    (server_id, v_sockets, v_cps)
+                existing_proc = query(
+                    f"SELECT proc_id FROM {schema}.oracle_processors WHERE server_id = %s LIMIT 1",
+                    (server_id,), fetchall=False
                 )
+                if existing_proc:
+                    execute(
+                        f"UPDATE {schema}.oracle_processors"
+                        f"  SET cpu_sockets = %s, cores_per_socket = %s WHERE server_id = %s",
+                        (v_sockets, v_cps, server_id)
+                    )
+                else:
+                    execute(
+                        f"INSERT INTO {schema}.oracle_processors"
+                        f"  (server_id, cpu_model, cpu_sockets, cores_per_socket)"
+                        f"  VALUES (%s, 'Unknown', %s, %s)",
+                        (server_id, v_sockets, v_cps)
+                    )
 
             u = current_user()
             try:
