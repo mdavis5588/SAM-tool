@@ -3103,6 +3103,111 @@ def finops_ulas():
     )
 
 
+@app.route("/finops/shared-pool-usage")
+@login_required
+def shared_pool_usage():
+    """Per-client breakdown of who is using shared pool licences and how many."""
+
+    # 1. All shareable CSIs with entitlement detail
+    shareable_csis = query("""
+        SELECT cs.csi_id, cs.csi_number, cs.contract_name,
+               lel.product_name, lel.product_family::TEXT AS product_family,
+               lel.quantity AS total_qty, lel.unit_price,
+               lel.annual_support_cost
+        FROM shared.csi_contracts cs
+        JOIN shared.license_entitlement_lines lel ON lel.csi_id = cs.csi_id
+        WHERE cs.sharing_policy = 'shareable'
+        ORDER BY cs.contract_name, lel.product_name
+    """)
+
+    if not shareable_csis:
+        return render_template("finops_shared_pool_usage.html", pool_products=[], grand_total_licences=0)
+
+    shareable_csi_ids = set(r["csi_id"] for r in shareable_csis)
+
+    # Build product key → entitlement info
+    # Key: (csi_id, product_name)
+    entitlement_map = {}
+    for r in shareable_csis:
+        key = (r["csi_id"], r["product_name"])
+        entitlement_map[key] = {
+            "csi_id":         r["csi_id"],
+            "csi_number":     r["csi_number"],
+            "contract_name":  r["contract_name"],
+            "product_name":   r["product_name"],
+            "product_family": r["product_family"],
+            "total_qty":      int(r["total_qty"] or 0),
+            "unit_price":     float(r["unit_price"] or 0),
+            "annual_support": float(r["annual_support_cost"] or 0),
+            "clients":        [],
+            "used_qty":       0,
+        }
+
+    # 2. For every active client, pull their server_csi_map rows for shareable CSIs
+    clients_list = query(
+        "SELECT client_id, client_code, client_name, schema_name FROM sam_admin.clients WHERE is_active ORDER BY client_name"
+    )
+
+    for c in clients_list:
+        s = c["schema_name"]
+        try:
+            rows = query(f"""
+                SELECT m.csi_id,
+                       lp.product_family::TEXT AS product_family,
+                       lp.product_detail,
+                       lp.product_name,
+                       COALESCE(SUM(lp.licences_required), 0)::int AS licences_used
+                FROM {s}.server_csi_map m
+                JOIN {s}.oracle_servers sv ON sv.server_id = m.server_id AND sv.is_active
+                JOIN {s}.license_position lp ON lp.server_id = sv.server_id
+                                             AND lp.product_family::TEXT = m.product_family::TEXT
+                WHERE m.csi_id = ANY(%s)
+                GROUP BY m.csi_id, lp.product_family, lp.product_detail, lp.product_name
+            """, (list(shareable_csi_ids),))
+        except Exception:
+            rows = []
+
+        for r in rows:
+            licences = int(r["licences_used"] or 0)
+            if licences <= 0:
+                continue
+            csi_id = r["csi_id"]
+            prod   = r["product_name"] or r["product_detail"] or r["product_family"] or "Unknown"
+
+            # Find the best matching entitlement key
+            key = (csi_id, prod)
+            if key not in entitlement_map:
+                # Try partial match on product name
+                key = next(
+                    (k for k in entitlement_map if k[0] == csi_id and k[1].lower() in prod.lower()),
+                    next((k for k in entitlement_map if k[0] == csi_id), None)
+                )
+            if key is None:
+                continue
+
+            entitlement_map[key]["clients"].append({
+                "client_name": c["client_name"] or c["client_code"],
+                "client_code": c["client_code"],
+                "licences":    licences,
+            })
+            entitlement_map[key]["used_qty"] += licences
+
+    # 3. Group into pool_products list sorted by product name
+    pool_products = sorted(entitlement_map.values(), key=lambda x: (x["product_name"], x["contract_name"]))
+    for p in pool_products:
+        p["clients"] = sorted(p["clients"], key=lambda x: -x["licences"])
+        p["available_qty"] = max(p["total_qty"] - p["used_qty"], 0)
+        p["utilisation_pct"] = round(p["used_qty"] / p["total_qty"] * 100, 1) if p["total_qty"] > 0 else 0
+
+    grand_total_licences = sum(p["used_qty"] for p in pool_products)
+
+    return render_template(
+        "finops_shared_pool_usage.html",
+        pool_products=pool_products,
+        grand_total_licences=grand_total_licences,
+    )
+
+
 @app.route("/finops/shared-pool-monthly")
 @login_required
 def shared_pool_monthly():
