@@ -497,55 +497,78 @@ BEGIN
 END;
 $$;
 
--- Placeholder stubs (defined in 02_shared_schema.sql after shared schema exists)
--- These are called by install_client_tables above; they are replaced properly
--- once the shared schema is created. Order of execution:
---   01_admin_schema.sql → 02_shared_schema.sql → 03_client_template_functions.sql
-CREATE OR REPLACE FUNCTION sam_admin.install_license_position_view(p_schema TEXT)
-RETURNS VOID LANGUAGE plpgsql AS $$
+-- Placeholder stubs — only created on a FRESH install where 03_client_template_functions.sql
+-- has not yet run. They allow install_client_tables() to compile without errors.
+-- On an EXISTING database these functions already exist as full implementations
+-- (from 03_client_template_functions.sql) and must NOT be overwritten with empty stubs.
+-- Use DO $$ ... $$ to create them conditionally.
+DO $$
 BEGIN
-  -- Implemented in 03_client_template_functions.sql
-  NULL;
-END;
-$$;
+  -- install_license_position_view
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_license_position_view'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_license_position_view(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
 
-CREATE OR REPLACE FUNCTION sam_admin.install_license_options_view(p_schema TEXT)
-RETURNS VOID LANGUAGE plpgsql AS $$
-BEGIN
-  -- Implemented in 03_client_template_functions.sql
-  NULL;
-END;
-$$;
+  -- install_license_options_view
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_license_options_view'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_license_options_view(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
 
-CREATE OR REPLACE FUNCTION sam_admin.install_server_coverage_view(p_schema TEXT)
-RETURNS VOID LANGUAGE plpgsql AS $$
-BEGIN
-  -- Implemented in 03_client_template_functions.sql
-  NULL;
-END;
-$$;
+  -- install_server_coverage_view
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_server_coverage_view'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_server_coverage_view(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
 
-CREATE OR REPLACE FUNCTION sam_admin.install_changelog_objects(p_schema TEXT)
-RETURNS VOID LANGUAGE plpgsql AS $$
-BEGIN
-  -- Implemented in 03_client_template_functions.sql
-  NULL;
-END;
-$$;
+  -- install_changelog_objects
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_changelog_objects'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_changelog_objects(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
 
-CREATE OR REPLACE FUNCTION sam_admin.install_upsert_functions(p_schema TEXT)
-RETURNS VOID LANGUAGE plpgsql AS $$
-BEGIN
-  -- Implemented in 03_client_template_functions.sql
-  NULL;
-END;
-$$;
+  -- install_upsert_functions
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_upsert_functions'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_upsert_functions(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
 
-CREATE OR REPLACE FUNCTION sam_admin.install_extended_views(p_schema TEXT)
-RETURNS VOID LANGUAGE plpgsql AS $$
-BEGIN
-  -- Implemented in 03_client_template_functions.sql
-  NULL;
+  -- install_extended_views
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_extended_views'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_extended_views(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
 END;
 $$;
 

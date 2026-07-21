@@ -12,6 +12,9 @@
 --   psql $DSN -f database/03_client_template_functions.sql -- updates view installer functions
 --   psql $DSN -f database/migrations/11_refresh_client_functions.sql  -- rebuilds views
 
+-- Rebuild all views in every active client schema (including any that were
+-- provisioned after 01_admin_schema.sql clobbered the real view-installer
+-- functions with empty stubs).
 DO $$
 DECLARE
   v_client RECORD;
