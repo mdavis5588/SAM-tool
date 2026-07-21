@@ -2982,12 +2982,14 @@ def finops():
         data = _build_client_finops(c["client_id"])
         if data:
             summary.append({
-                "client_code":       c["client_code"],
-                "client_name":       c["client_name"] or c["client_code"],
-                "total_support":     data["total_support"],
+                "client_code":        c["client_code"],
+                "client_name":        c["client_name"] or c["client_code"],
+                "total_support":      data["total_support"],
                 "total_shared_inuse": data["total_shared_inuse"],
-                "total_client_cost": data["total_client_cost"],
-                "product_count":     len(data["lines"]),
+                "shared_pool_fy_cost": data["shared_pool_fy_cost"],
+                "shared_pool_months": data["shared_pool_months"],
+                "total_client_cost":  data["total_client_cost"],
+                "product_count":      len(data["lines"]),
             })
     return render_template("finops_summary.html", summary=summary)
 
