@@ -1,34 +1,59 @@
-# Helios v2 — Multi-Client Oracle SAM with WebLogic
+# Helios — Multi-Client Oracle SAM with WebLogic
 
 Software Asset Management for Oracle Database and Oracle WebLogic Server.
 Supports multiple clients in a single PostgreSQL database using per-client schemas,
 with a shared entitlement and core factor table accessible across all clients.
 
-## What's new in v2
+---
 
-- WebLogic Server discovery via WLST (offline mode — no running server required)
-- Per-client PostgreSQL schemas — full data isolation between clients
-- Shared CSI entitlement register — one CSI can be split across multiple clients
-- `sam_admin.provision_client()` — adds a new client in one SQL call
-- `sam_admin.migrate_all_clients()` — rolls schema updates out to every client at once
-- WebLogic licence calculation in `license_position` view (alongside Oracle DB)
+## Table of contents
+
+1. [Schema layout](#schema-layout)
+2. [Quick start — fresh install](#quick-start--fresh-install)
+3. [Adding a new client](#adding-a-new-client)
+4. [Oracle Database discovery](#oracle-database-discovery)
+5. [WebLogic discovery](#weblogic-discovery)
+6. [Manual server registration](#manual-server-registration)
+7. [Logging discovery runs](#logging-discovery-runs)
+8. [Licence calculation rules](#licence-calculation-rules)
+9. [Admin UI](#admin-ui)
+10. [User roles & access control](#user-roles--access-control)
+11. [Database migrations](#database-migrations)
+12. [File layout](#file-layout)
+
+---
 
 ## Schema layout
 
 ```
 oracle_sam database
-├── sam_admin schema        Client registry, discovery audit log
-├── shared schema           CSI entitlements, core factor table, cross-client views
+├── sam_admin schema        Client registry, user accounts, audit log, discovery runs
+├── shared schema           CSI entitlements, core factor table, licensed options
 ├── client_acme schema      Acme Corp — Oracle DB + WebLogic data
 ├── client_globex schema    Globex Corp — Oracle DB + WebLogic data
 └── client_<code> schema    One per client, created by provision_client()
 ```
 
-Each client schema contains identical tables:
-`oracle_servers`, `oracle_processors`, `oracle_instances`, `oracle_options`,
-`wls_domains`, `wls_managed_servers`, `wls_installed_products`, `license_position` (view)
+Each client schema contains identical tables and views:
 
-## Quick start
+| Object | Description |
+|---|---|
+| `oracle_servers` | Server inventory (hostname, IP, environment, etc.) |
+| `oracle_processors` | CPU details — model, sockets, cores per socket |
+| `oracle_instances` | Oracle DB instances (SID, edition, version) |
+| `oracle_options` | Active `v$option` flags (Partitioning, RAC, Diagnostics Pack, etc.) |
+| `wls_domains` | WebLogic domains (name, edition, version) |
+| `wls_managed_servers` | Managed server nodes within each domain |
+| `wls_installed_products` | Products installed in each domain |
+| `server_csi_map` | Licence assignments: server ↔ CSI contract line |
+| `license_position` (view) | Calculated licence requirement vs. entitlement per server |
+| `server_csi_coverage` (view) | Detailed CSI coverage breakdown per server |
+| `cpu_validation_report` (view) | Servers with unrecognised CPU models |
+| `se2_violations` (view) | Servers breaching SE2 2-socket / 2-node RAC limits |
+
+---
+
+## Quick start — fresh install
 
 ### 1. Initialise the database
 
@@ -45,12 +70,27 @@ Edit it before running to use your real client names and CSI data.
 
 > **Upgrading an existing database?** See [Database migrations](#database-migrations) below.
 
-### 2. Add a new client
+### 2. Verify
 
 ```sql
+-- Check clients exist
+SELECT client_code, client_name, schema_name FROM sam_admin.clients;
+
+-- Check sample licence position
+SELECT hostname, product_family, licences_required, compliance_status
+FROM   client_acme.license_position
+ORDER  BY hostname;
+```
+
+---
+
+## Adding a new client
+
+```sql
+-- Creates the schema, all tables, views, and triggers in one call
 SELECT sam_admin.provision_client('newclient', 'New Client Ltd', 'admin@newclient.com');
 
--- Then grant database roles
+-- Grant database roles
 GRANT USAGE ON SCHEMA client_newclient TO sam_loader, sam_reader;
 GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA client_newclient TO sam_loader;
 GRANT SELECT ON ALL TABLES IN SCHEMA client_newclient TO sam_reader;
@@ -60,23 +100,74 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA client_newclient TO sam_loader;
 INSERT INTO shared.csi_client_map (csi_id, client_id, allocated_quantity)
 SELECT <csi_id>, c.client_id, <quantity>
 FROM   sam_admin.clients c WHERE c.client_code = 'newclient';
-
--- Rebuild cross-client view
-SELECT shared.refresh_cross_client_summary();
 ```
 
-### 3. Run Oracle DB discovery
+After provisioning, the new client will appear in the Admin UI client switcher immediately.
+
+---
+
+## Oracle Database discovery
+
+### Ansible (recommended)
 
 ```bash
 export SAM_DB_HOST=localhost SAM_DB_PASSWORD=yourpassword
 
-# Discover a specific client's Oracle servers
+# Discover all Oracle servers for a specific client
 ansible-playbook ansible/playbooks/discover_oracle.yml \
   -i ansible/inventory/hosts.yml \
   --limit client_acme_oracle
 ```
 
-### 4. Run WebLogic discovery
+### Manual (no Ansible — air-gapped or firewalled servers)
+
+**Step 1 — Run the discovery script on the Oracle server**
+
+```bash
+scp scripts/oracle_discovery.sql oracle-server:/tmp/
+
+# OS authentication
+sqlplus / as sysdba @/tmp/oracle_discovery.sql
+
+# Or explicit credentials
+sqlplus sys/yourpassword@ORCL as sysdba @/tmp/oracle_discovery.sql
+```
+
+The script queries `v$instance`, `v$database`, `v$osstat`, `gv$instance`, `v$pdbs`,
+`v$option`, and `dba_users`. It writes:
+
+```
+oracle_discovery_<hostname>_<YYYYMMDD_HH24MISS>.json
+```
+
+**Step 2 — Transfer and load**
+
+```bash
+scp oracle-server:/tmp/oracle_discovery_myserver_20250101_120000.json .
+
+export DB_HOST=localhost DB_NAME=samdb DB_USER=sam_admin DB_PASSWORD=yourpassword
+export SAM_CLIENT_SCHEMA=client_acme
+
+python3 scripts/load_discovery.py oracle_discovery_myserver_20250101_120000.json
+```
+
+| Flag | Description |
+|---|---|
+| `--client SCHEMA` | Override `SAM_CLIENT_SCHEMA` env var |
+| `--dry-run` | Validate JSON without writing to the database |
+| `--verbose` | Print each SQL call as it executes |
+
+### Schedule nightly discovery (cron)
+
+```cron
+# Oracle DB — nightly at 02:00
+0 2 * * * ansible-playbook /opt/oracle-sam/ansible/playbooks/discover_oracle.yml \
+  -i /opt/oracle-sam/ansible/inventory/hosts.yml >> /var/log/sam/oracle.log 2>&1
+```
+
+---
+
+## WebLogic discovery
 
 ```bash
 ansible-playbook ansible/playbooks/discover_weblogic.yml \
@@ -84,522 +175,391 @@ ansible-playbook ansible/playbooks/discover_weblogic.yml \
   --limit client_acme_weblogic
 ```
 
-### 5. View licence position for a client
-
-```sql
--- Oracle DB and WebLogic combined
-SELECT product_family, product_detail, hostname, licences_required,
-       total_licensed, licence_surplus_deficit, compliance_status
-FROM   client_acme.license_position
-ORDER  BY product_family, hostname;
-
--- Cross-client admin summary
-SELECT client_code, hostname, oracle_instance_count, wls_domain_count
-FROM   shared.cross_client_summary
-ORDER  BY client_code, hostname;
-```
-
-### 6. Schedule discovery (cron)
+WLST offline mode is used — no running AdminServer required.
 
 ```cron
-# Oracle DB — all clients, nightly at 02:00
-0 2 * * * ansible-playbook /opt/oracle-sam/ansible/playbooks/discover_oracle.yml \
-  -i /opt/oracle-sam/ansible/inventory/hosts.yml >> /var/log/sam/oracle.log 2>&1
-
-# WebLogic — all clients, nightly at 03:00
+# WebLogic — nightly at 03:00
 0 3 * * * ansible-playbook /opt/oracle-sam/ansible/playbooks/discover_weblogic.yml \
   -i /opt/oracle-sam/ansible/inventory/hosts.yml >> /var/log/sam/weblogic.log 2>&1
 ```
 
-## Manual discovery (no Ansible)
+---
 
-When Ansible cannot reach a server — firewall restrictions, isolated networks, or ad-hoc
-one-off collection — you can run discovery directly on the Oracle DB server using SQL*Plus
-and then load the output file from any machine that can reach the SAM PostgreSQL database.
+## Manual server registration
 
-### 1. Run the discovery script on the Oracle server
+When a server cannot be discovered automatically (firewall restrictions, new build not
+yet in inventory, etc.), it can be registered through the Admin UI:
 
-```bash
-# Copy the script to the Oracle server (any method — scp, USB, shared drive)
-scp scripts/oracle_discovery.sql oracle-server:/tmp/
+**Sidebar → Register Server**
 
-# Run with OS authentication (common for DBAs already logged in as oracle)
-sqlplus / as sysdba @/tmp/oracle_discovery.sql
+Fields available at registration time:
 
-# Or with explicit credentials / TNS alias
-sqlplus sys/yourpassword@ORCL as sysdba @/tmp/oracle_discovery.sql
-```
-
-The script queries `v$instance`, `v$database`, `v$osstat`, `gv$instance`, `v$pdbs`,
-`v$option`, and `dba_users`.  It writes a single JSON file:
-
-```
-oracle_discovery_<hostname>_<YYYYMMDD_HH24MISS>.json
-```
-
-### 2. Transfer the JSON file to the SAM host
-
-```bash
-scp oracle-server:/tmp/oracle_discovery_myserver_20250101_120000.json .
-```
-
-### 3. Load into PostgreSQL
-
-```bash
-# Install dependency if needed
-pip install psycopg2-binary
-
-# Set connection variables
-export DB_HOST=localhost DB_NAME=samdb DB_USER=sam_admin DB_PASSWORD=yourpassword
-export SAM_CLIENT_SCHEMA=client_acme
-
-# Load
-python3 scripts/load_discovery.py oracle_discovery_myserver_20250101_120000.json
-```
-
-**Optional flags:**
-
-| Flag | Description |
+| Section | Fields |
 |---|---|
-| `--client SCHEMA` | Override `SAM_CLIENT_SCHEMA` env var |
-| `--host / --port / --dbname / --user / --password` | Override any DB connection env var |
-| `--dry-run` | Parse and validate JSON without writing to the database |
-| `--verbose` | Print each SQL call as it executes |
+| **Client** | Which client this server belongs to |
+| **Server type** | Oracle Database or WebLogic |
+| **Identity** | Hostname *(required)*, FQDN, IP address, environment, datacenter |
+| **Database details** *(DB only)* | Oracle SID, DB version, edition |
+| **Licensed options** *(DB only)* | Checkboxes for all Oracle licensed options (Diagnostics Pack, Tuning Pack, Partitioning, RAC, Active Data Guard, etc.) — only Enterprise Edition options generate a licence requirement |
+| **WebLogic details** *(WLS only)* | Domain name, WLS version, edition |
+| **CPU model & core factor** | Common CPU presets (Intel Xeon, AMD EPYC, IBM POWER, HP-UX/Itanium, SPARC T/M, ARM) with automatic core factor; override available if needed |
+| **Hardware** | Total RAM (MB), physical cores, CPU sockets, cores per socket |
+| **OS** | OS family, distribution, version |
+| **Notes** | Free text |
 
-### 4. Combined one-liner (if Python is available on the Oracle server)
+After registration the server appears immediately on the Servers tab and all licence
+calculations include it.
 
-If the Oracle server can also reach the SAM PostgreSQL database directly, the wrapper
-script runs both steps in sequence:
+### Server deduplication
 
-```bash
-# Copy both scripts to the Oracle server
-scp scripts/oracle_discovery.sql scripts/load_discovery.py scripts/run_and_load.sh oracle-server:/tmp/
+The `sam_admin.register_server()` function resolves identity using four-priority matching
+to avoid creating duplicate records when the same server is discovered by multiple sources
+(Ansible, PSQL cron, manual registration):
 
-ssh oracle-server
-cd /tmp
-export DB_HOST=sam-db.internal DB_NAME=samdb DB_USER=sam_admin DB_PASSWORD=yourpassword
-export SAM_CLIENT_SCHEMA=client_acme
-./run_and_load.sh "/ as sysdba"
+1. Exact hostname match
+2. Short-name match (hostname without domain)
+3. FQDN match
+4. IP address match
+
+If a conflict is detected (same server discovered with different attributes), it is
+flagged in **Administration → Discovery Conflicts** for manual resolution.
+
+---
+
+## Logging discovery runs
+
+Every discovery sweep — whether Ansible, PSQL cron, or manual registration — should
+call `sam_admin.log_discovery_run()` at the end to record the sweep in the discovery
+run history. This populates the **Discovery History** page in the Admin UI.
+
+### Function signature
+
+```sql
+SELECT sam_admin.log_discovery_run(
+    p_schema          => 'client_acme',   -- client schema name (required)
+    p_source          => 'ansible',       -- 'ansible' | 'psql' | 'manual'
+    p_servers_seen    => 12,              -- total servers visited in this sweep
+    p_servers_new     => 2,              -- new server records created
+    p_servers_updated => 9,              -- existing records updated
+    p_servers_conflict=> 1,              -- records flagged as conflicts
+    p_run_host        => 'ansible-ctl',  -- hostname that ran the sweep (optional)
+    p_notes           => NULL,           -- free text (optional)
+    p_status          => 'completed'     -- 'running' | 'completed' | 'failed'
+);
 ```
 
-### What gets loaded
+All parameters except `p_schema` and `p_source` are optional and default to 0 / NULL.
 
-The loader calls three operations in a single transaction:
+### Ansible playbook integration
 
-| Step | Function | Data |
-|---|---|---|
-| 1 | `upsert_oracle_discovery` | Server, CPU/processor, Oracle instances |
-| 2 | `upsert_oracle_extended_discovery` | RAC nodes, PDBs, NUP user counts |
-| 3 | Direct upsert | `v$option` flags (partitioning, RAC, etc.) |
+Add a task at the end of each playbook that calls this function with the sweep totals:
 
-Afterwards the `license_position` view recalculates automatically on next query.
+```yaml
+- name: Log discovery run to SAM
+  community.postgresql.postgresql_query:
+    db: "{{ sam_db_name }}"
+    login_host: "{{ sam_db_host }}"
+    login_user: "{{ sam_db_user }}"
+    login_password: "{{ sam_db_password }}"
+    query: >
+      SELECT sam_admin.log_discovery_run(
+        p_schema           => %s,
+        p_source           => 'ansible',
+        p_servers_seen     => %s,
+        p_servers_new      => %s,
+        p_servers_updated  => %s,
+        p_servers_conflict => %s,
+        p_run_host         => %s,
+        p_status           => 'completed'
+      )
+    positional_args:
+      - "{{ sam_client_schema }}"
+      - "{{ servers_seen | default(0) }}"
+      - "{{ servers_new | default(0) }}"
+      - "{{ servers_updated | default(0) }}"
+      - "{{ servers_conflict | default(0) }}"
+      - "{{ inventory_hostname }}"
+```
+
+### PSQL cron integration
+
+```bash
+#!/bin/bash
+# oracle_discovery_cron.sh — run at end of your discovery script
+
+psql "$SAM_DSN" <<SQL
+SELECT sam_admin.log_discovery_run(
+    p_schema          => '$SAM_CLIENT_SCHEMA',
+    p_source          => 'psql',
+    p_servers_seen    => $SERVERS_SEEN,
+    p_servers_new     => $SERVERS_NEW,
+    p_servers_updated => $SERVERS_UPDATED,
+    p_run_host        => '$(hostname)',
+    p_status          => 'completed'
+);
+SQL
+```
+
+---
 
 ## Licence calculation rules
 
 ### Oracle Database — Processor Perpetual (default)
 
 | Edition | Calculation |
-|---------|-------------|
+|---|---|
 | Enterprise Edition | `physical_cores × core_factor` |
-| Standard Edition 2 | `MIN(cpu_sockets, 2)` |
+| Standard Edition 2 | `MIN(cpu_sockets, 2)` — max 2 sockets per server |
 | Standard Edition | `cpu_sockets` |
 
-Core factors are maintained centrally in `shared.core_factor_table`.
-Intel Xeon / AMD EPYC = 0.5. IBM POWER = 1.0. SPARC T-series = 0.25.
+**SE2 limits:** SE2 is limited to 2 populated sockets per server and 2 nodes per RAC
+cluster. Violations are surfaced on the **Compliance → SE2 Violations** page and
+in the LMS export.
 
 ### Oracle Database — Named User Plus (NUP)
 
 Set `licence_metric_override = 'named_user_plus'` on a server to switch it to NUP metric.
 
 | Edition | Minimum floor | Licences required |
-|---------|--------------|-------------------|
+|---|---|---|
 | Enterprise Edition | `physical_cores × core_factor × 25` | `GREATEST(nup_minimum, active_users)` |
 | Standard Edition 2 | `cpu_sockets × 10` | `GREATEST(nup_minimum, active_users)` |
-
-Active user counts are populated by the Ansible discovery playbook via `upsert_oracle_extended_discovery`.
-NUP CSI contracts must be assigned separately from processor contracts — the UI filters the Add CSI
-dropdown to only show NUP lines when a server is in NUP mode.
 
 ### Oracle WebLogic
 
 | Edition | Calculation |
-|---------|-------------|
+|---|---|
 | WebLogic Server / Suite | `physical_cores × core_factor` |
-| Oracle SOA Suite | `physical_cores × core_factor` (separate licence) |
-| Oracle Coherence | `physical_cores × core_factor` (separate licence) |
-| Oracle Service Bus | `physical_cores × core_factor` (separate licence) |
+| Oracle Coherence | `physical_cores × core_factor` |
 
-## CSI allocation examples
+### Core factor table
+
+Core factors are maintained in `shared.core_factor_table`. Standard values:
+
+| Processor family | Factor |
+|---|---|
+| Intel Xeon / Core / AMD EPYC / AMD Opteron / ARM | 0.50 |
+| Oracle SPARC T-series | 0.25 |
+| Oracle SPARC M-series / IBM POWER / HP-UX Itanium | 1.00 |
+| Unknown (unrecognised model) | 1.00 |
+
+To add a custom CPU model:
 
 ```sql
--- Scenario A: Group ULA shared across two clients
--- Total: 100 EE processor licences — Acme gets 60, Globex gets 40
-INSERT INTO shared.csi_client_map (csi_id, client_id, allocated_quantity)
-VALUES (1, 1, 60), (1, 2, 40);
-
--- Scenario B: Client-exclusive CSI (full quantity available to one client)
--- No allocated_quantity means the full entitlement quantity is available
-INSERT INTO shared.csi_client_map (csi_id, client_id)
-VALUES (2, 1);
-
--- Scenario C: ULA covers all current clients
-INSERT INTO shared.csi_client_map (csi_id, client_id)
-SELECT 3, client_id FROM sam_admin.clients WHERE is_active = TRUE;
+INSERT INTO shared.core_factor_table (processor_pattern, core_factor, notes)
+VALUES ('My Custom CPU%', 0.5, 'From Oracle processor core factor table PDF');
 ```
 
-## Admin UI (Flask)
+The pattern column uses `ILIKE` matching — `%` wildcards are supported.
 
-A web interface for non-technical users to manage licence metric overrides and
-CSI contract assignments per server. Runs as a Docker container.
+### Oracle licensed options
 
-### Prerequisites
+Options (Diagnostics Pack, Tuning Pack, Partitioning, RAC, Active Data Guard, etc.) are
+stored in `oracle_options` per instance and only generate a licence requirement when the
+instance edition is **Enterprise Edition**. Each active option adds a separate line to
+`license_position` with its own processor-perpetual licence requirement.
 
-- Docker and Docker Compose installed on the host
-- PostgreSQL reachable from the Docker host
+---
 
-### 1. Configure environment variables
+## Admin UI
+
+A web interface for managing licence assignments, reviewing compliance, and exporting
+audit data. Runs as a Docker container.
+
+### Setup
 
 ```bash
 cd admin-ui
 cp .env.example .env
 ```
 
-Edit `.env` and set the following:
-
 | Variable | Description |
 |---|---|
 | `DB_HOST` | PostgreSQL hostname or IP |
 | `DB_PORT` | PostgreSQL port (default `5432`) |
-| `DB_NAME` | Database name (e.g. `samdb`) |
-| `DB_USER` | Database user (e.g. `sam_admin`) |
+| `DB_NAME` | Database name |
+| `DB_USER` | Database user |
 | `DB_PASSWORD` | Database password |
-| `SAM_CLIENT_SCHEMA` | Client schema to manage (e.g. `client_acme`) |
-| `ADMIN_USER` | Login username for the web UI |
-| `ADMIN_PASSWORD` | Login password for the web UI |
-| `FLASK_SECRET` | Random string used to sign session cookies — change this |
-
-### 2. Build and start
+| `SAM_CLIENT_SCHEMA` | Default client schema (e.g. `client_acme`) |
+| `ADMIN_USER` | Bootstrap admin username |
+| `ADMIN_PASSWORD` | Bootstrap admin password (stored as bcrypt hash) |
+| `FLASK_SECRET` | Random string for session cookie signing — change this |
+| `DISPATCH_KEY` | Secret key for the `/api/dispatch-alerts` cron endpoint |
 
 ```bash
-cd admin-ui
 docker compose up -d
+# UI available at http://your-server:5000
 ```
 
-The UI will be available at **http://your-server:5000**.
-
-To stop it:
-
-```bash
-docker compose down
-```
-
-### 3. What you can do in the UI
-
-- **Executive Summary** — top-level KPI dashboard: compliance score, licence gaps, contract portfolio value, and per-client RAG status
-- **Servers** — see every discovered server with its calculated licence requirement
-  (processor count and type), CSI assignment status, and compliance badge
-- **Edit a server** — switch between Processor Perpetual (default) and Named User Plus (NUP);
-  assign or remove CSI contracts with optional licence quantity override;
-  view change history and acknowledge entries. NUP servers show minimum floor and active user counts in the licence summary
-- **Contracts** — browse all CSI contracts, view entitlement lines and which servers are consuming them
-  - **Renewal Calendar** — timeline view of upcoming support and ULA expiry dates, bucketed by urgency
-- **FinOps** — cost summary by product across all clients
-  - **Server Costs** — per-server support cost breakdown
-  - **Cost Optimisation** — highlights completely unused licence lines, low-utilisation (<50%) CSIs, empty contracts, and ULAs expiring within 12 months with estimated wasted spend
-- **Licence Summary** — aggregate licence position across all active contracts
-- **Compliance** — detailed audit-ready compliance findings
-  - **Audit Readiness** — five-section audit report: licence gaps, unassigned servers, contract risks, empty contracts, ULA scope violations
-  - **VMware** — vSphere cluster inventory showing Oracle VM workloads and the full physical core count that Oracle requires to be licensed across each cluster
-- **Visibility**
-  - **Lifecycle Management** — Oracle DB and WebLogic version distribution per client, with lifecycle status (Supported / Extended Support / Approaching EOL / Out of Support) shown as donut charts on the overview and per-server tables on the client detail page
-  - **Licence History** — trend charts from monthly licence snapshots: licences required vs. assigned over time, monthly compliance breakdown (stacked bar), and per-product-family requirements; up to 24 months of history
-- **Alerts** — live compliance alerts: expiring contracts, ULA deadlines, unacknowledged HIGH severity changes, SE2 violations, unrecognised CPUs, and VMware exposure
-- **LMS Export** — download a 10-sheet Excel workbook covering the full audit pack (see below)
-- **Settings** — configure email, Slack, or Teams alert channels
-- **Administration** (sidebar, superadmin only)
-  - **Users & Access** — create and manage application users; assign roles and client scope; enable/disable accounts; reset passwords
-  - **Audit & Snapshots** — take monthly licence position snapshots per client; view/delete snapshots; browse the full user activity audit trail with inline change diffs; run the retention purge
-
-The UI supports **English and French** — use the language toggle in the top navigation bar.
-
-### 4. LMS Audit Export
-
-The **LMS Export** button in the top navigation bar generates an Excel workbook
-(`.xlsx`) covering everything an Oracle audit typically requires.
-
-#### Download from a browser
-
-1. Log in to the Admin UI.
-2. Click **LMS Export** in the navbar (top-right).
-3. The file downloads immediately as
-   `oracle_lms_export_<client_schema>_<date>.xlsx`.
-
-#### Download from the command line
-
-```bash
-# Basic — saves the file in the current directory
-curl -c cookies.txt -b cookies.txt \
-     -X POST http://your-server:5000/login \
-     -d "username=admin&password=yourpassword" \
-     -L -o /dev/null
-
-curl -c cookies.txt -b cookies.txt \
-     http://your-server:5000/export/lms \
-     -o oracle_lms_export.xlsx
-```
-
-#### What the workbook contains
-
-| Sheet | Contents |
-|---|---|
-| **Server Inventory** | All active Oracle servers — hostname, environment, OS, RAM |
-| **Processor Details** | CPU model, socket count, core count, Oracle core factor |
-| **Oracle Instances** | SID, edition, version, platform per instance |
-| **Options** | Active `v$option` flags (Partitioning, RAC, Diagnostics Pack, etc.) |
-| **Licence Position** | Calculated licence requirements vs. entitlements, surplus/deficit |
-| **CSI Contracts** | Contract headers, quantities, costs, and expiry dates |
-| **SE2 Violations** | Servers breaching the SE2 2-socket or 2-node RAC limits |
-| **CPU Validation** | Servers with CPU models not matched in the Oracle core factor table |
-| **VMware Exposure** | vSphere clusters with Oracle workloads and full physical core counts |
-
-Rows highlighted **red** indicate compliance failures (under-licensed, SE2 violations,
-Oracle VM clusters). Rows highlighted **amber** indicate items requiring manual review
-(unrecognised CPU models, VMware clusters with Oracle workloads).
-
-### 5. Configuring alert channels (email, Slack, Teams)
-
-The **Settings** page lets you add one or more alert channels. When the
-`/api/dispatch-alerts` endpoint is called (manually or by cron), the tool
-evaluates all active compliance alerts and sends them to every enabled channel.
-
-#### 5a. Microsoft Teams (Incoming Webhook)
-
-1. In Teams, open the channel you want to post alerts to.
-2. Click **···** → **Connectors** → search for **Incoming Webhook** → **Add**.
-3. Give it a name (e.g. *Helios Alerts*), optionally upload an icon, then
-   click **Create**.
-4. Copy the webhook URL (it looks like
-   `https://your-org.webhook.office.com/webhookb2/…`).
-5. In the Admin UI, go to **Settings** → **Add Channel**:
-   - **Channel type**: Teams
-   - **Name**: anything descriptive (e.g. *#oracle-alerts*)
-   - **Webhook URL**: paste the URL from step 4
-   - **Minimum severity**: LOW / MEDIUM / HIGH — alerts below this level are
-     suppressed for this channel
-6. Click **Add Channel**, then optionally click **Test** to send a sample message.
-
-#### 5b. Slack (Incoming Webhook)
-
-1. Go to **api.slack.com/apps** → **Create New App** → **From scratch**.
-2. Under **Features**, choose **Incoming Webhooks** and activate them.
-3. Click **Add New Webhook to Workspace**, select the target channel, and
-   copy the webhook URL (`https://hooks.slack.com/services/…`).
-4. In the Admin UI go to **Settings** → **Add Channel**:
-   - **Channel type**: Slack
-   - **Webhook URL**: paste the Slack webhook URL
-5. Click **Add Channel** and optionally **Test**.
-
-#### 5c. Email (SMTP)
-
-| Field | Description |
-|---|---|
-| **SMTP host** | Your mail relay, e.g. `smtp.office365.com` or `smtp.gmail.com` |
-| **SMTP port** | `587` for STARTTLS (recommended), `465` for implicit TLS, `25` for plain |
-| **From address** | Sender address the relay permits, e.g. `oracle-sam@yourcompany.com` |
-| **SMTP username** | Usually the same as the from address |
-| **SMTP password** | Account password or app-specific password |
-| **To addresses** | Comma-separated list of recipients |
-
-The tool uses STARTTLS on port 587 / 465 and plain SMTP on port 25. If your
-relay requires no authentication (e.g. an internal smarthost), leave username
-and password blank.
-
-#### 5d. Scheduled dispatch (cron)
-
-The endpoint `/api/dispatch-alerts` triggers alert evaluation and delivery.
-Set `DISPATCH_KEY` in `.env` to a random string, then call it from cron:
-
-```cron
-# Check and send compliance alerts every morning at 07:00
-0 7 * * * curl -s "http://your-server:5000/api/dispatch-alerts?key=YOUR_DISPATCH_KEY" \
-  >> /var/log/sam/alerts.log 2>&1
-```
-
-Leave `DISPATCH_KEY` blank in `.env` to disable authentication (not
-recommended in production).
-
-### 6. Running without Docker (development)
+Without Docker:
 
 ```bash
 cd admin-ui
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-
-export DB_HOST=localhost DB_NAME=samdb DB_USER=sam_admin DB_PASSWORD=yourpassword
-export SAM_CLIENT_SCHEMA=client_acme ADMIN_USER=admin ADMIN_PASSWORD=changeme
-export FLASK_SECRET=dev-only-secret
-
 python app.py
 ```
 
-### 7. Running on a different port
+### Pages
 
-Edit `docker-compose.yml` and change the left side of the port mapping:
+| Page | Description |
+|---|---|
+| **Dashboard** | KPI summary — compliance score, licence gaps, contract value, per-client RAG status |
+| **Servers** | All active servers — licence requirements, CSI assignment status, compliance badge; remove servers from inventory |
+| **Edit Server** | Switch metric (Processor / NUP); assign/remove CSI contracts; view change history; reactivate removed servers |
+| **Register Server** | Manually add a server with CPU model, core factor, OS, hardware, DB/WLS details, and licensed options |
+| **WebLogic Servers** | WebLogic domain inventory with licence position |
+| **Contracts** | CSI contracts, entitlement lines, server consumption |
+| **Renewal Calendar** | Timeline of upcoming support and ULA expiry dates |
+| **FinOps** | Cost summary and per-server support cost breakdown; cost optimisation recommendations |
+| **Licence Summary** | Aggregate licence position across all contracts |
+| **Compliance** | Audit-ready compliance findings |
+| **Audit Readiness** | Five-section audit report: licence gaps, unassigned servers, contract risks, empty contracts, ULA scope violations |
+| **VMware** | vSphere clusters with Oracle workloads and required physical core counts |
+| **Visibility → Lifecycle** | Oracle DB and WebLogic version distribution with lifecycle status |
+| **Visibility → Licence History** | Trend charts from monthly snapshots — required vs. assigned over time |
+| **Discovery History** | Log of all discovery sweeps — source, timing, server counts, conflicts |
+| **Discovery Conflicts** | Servers flagged during deduplication for manual resolution |
+| **Alerts** | Live compliance alerts — expiring contracts, SE2 violations, unrecognised CPUs |
+| **LMS Export** | Download a 10-sheet Excel audit workbook |
+| **Settings** | Configure email, Slack, and Teams alert channels |
+| **Administration → Users & Access** | Create/manage users, assign roles and client scope *(superadmin only)* |
+| **Administration → Audit & Snapshots** | Take/view licence snapshots; browse user activity audit trail *(superadmin only)* |
 
-```yaml
-ports:
-  - "8080:5000"   # now accessible on port 8080
+The UI supports **English and French** — toggle in the top navigation bar.
+
+### LMS audit export
+
+**LMS Export** in the navbar generates an `.xlsx` workbook:
+
+| Sheet | Contents |
+|---|---|
+| Server Inventory | All active Oracle servers — hostname, environment, OS, RAM |
+| Processor Details | CPU model, socket count, core count, core factor |
+| Oracle Instances | SID, edition, version per instance |
+| Options | Active `v$option` flags |
+| Licence Position | Requirements vs. entitlements, surplus/deficit |
+| CSI Contracts | Contract headers, quantities, costs, expiry dates |
+| SE2 Violations | Servers breaching SE2 limits |
+| CPU Validation | Servers with unrecognised CPU models |
+| VMware Exposure | vSphere clusters with Oracle workloads |
+
+Rows highlighted red = compliance failures. Rows highlighted amber = manual review required.
+
+### Alert channels
+
+The **Settings** page lets you add Slack, Microsoft Teams, or email channels for
+compliance alert notifications.
+
+Trigger alert dispatch from cron:
+
+```cron
+0 7 * * * curl -s "http://your-server:5000/api/dispatch-alerts?key=YOUR_DISPATCH_KEY" \
+  >> /var/log/sam/alerts.log 2>&1
 ```
 
-Then restart: `docker compose up -d`
+---
 
-## User Roles & Access Control
+## User roles & access control
 
-Helios uses role-based access control (RBAC) backed by the `sam_admin.app_users` table.
-User accounts are managed through the web UI and are ready for Active Directory integration.
-
-### Roles
-
-| Role | Who | What they can do |
+| Role | Who | Permissions |
 |---|---|---|
 | **superadmin** | Platform administrators | Full access: all clients, all data, user management, settings |
-| **contracting** | Procurement / contract managers | Add and edit CSI contracts and entitlements; read-only access to all other data |
-| **dba** | Database administrators | Add and remove licence assignments to servers; read-only access to all other data |
-| **client** | Client-specific users | Read-only access to their assigned client only — no cross-client data visible |
+| **contracting** | Procurement / contract managers | Add/edit CSI contracts; read-only everything else |
+| **dba** | DBAs | Add/remove licence assignments; read-only everything else |
+| **client** | Client-specific users | Read-only access to their assigned client only |
 
-### Applying the RBAC migration
+### Bootstrap admin
 
-```bash
-psql oracle_sam -f database/migrations/06_rbac_users.sql
-```
+The application creates or updates a superadmin account on first start, seeded from
+`ADMIN_USER` / `ADMIN_PASSWORD` in `.env`. The password is stored as a bcrypt hash.
+This account cannot be deleted through the UI.
 
-This creates the `sam_admin.app_users` table, the `app_role` and `auth_method` enum types,
-and seeds the bootstrap admin row. Safe to re-run on an existing database.
+### Active Directory
 
-Install the bcrypt dependency if you are running outside Docker:
+Set `auth_method = 'active_directory'` and `ad_username` on a user record. Replace the
+`_check_password()` call in `login()` in `admin-ui/app.py` with your LDAP bind logic
+when `user["auth_method"] == "active_directory"`.
 
-```bash
-pip install bcrypt==4.1.3
-# or: pip install -r admin-ui/requirements.txt  (already included)
-```
-
-### Bootstrap admin account
-
-On first start, the application automatically creates (or updates) a superadmin account
-seeded from the environment variables you already set:
-
-```
-ADMIN_USER=admin
-ADMIN_PASSWORD=changeme
-```
-
-The password is stored as a bcrypt hash — the plain-text value is never written to the
-database. If you change `ADMIN_PASSWORD` in `.env` and restart, the hash is updated
-automatically on the next request.
-
-The bootstrap admin account cannot be deleted or have its role changed through the UI,
-preventing accidental lockout.
-
-### Managing users
-
-Users are managed at **http://your-server:5000/admin/users** — accessible only to superadmin accounts. The link appears as **Users & Access** under the *Administration* section of the sidebar.
-
-From this page a superadmin can:
-
-- Create users with any role
-- Assign **client** users to a specific client so they only see that client's data
-- Enable or disable accounts
-- Force a password reset on next login
-- Delete accounts (except the bootstrap admin)
-
-### Active Directory integration
-
-Each user record has an `auth_method` field (`local` or `active_directory`) and an
-`ad_username` field for the user's UPN (e.g. `jsmith@corp.example.com`).
-
-The current implementation authenticates all users against the local bcrypt-hashed
-password. To wire up LDAP/AD authentication, replace the `_check_password()` call in
-`login()` inside `admin-ui/app.py` with your LDAP bind logic when `user["auth_method"] == "active_directory"`. The `ad_groups` JSONB column is available to store group memberships
-returned by the directory for future group-to-role mapping.
+---
 
 ## Database migrations
 
-When upgrading an existing database (rather than doing a clean install), run the migration
-scripts in order. All scripts are idempotent — safe to re-run if you are unsure which have
-already been applied.
+Run migration scripts in order when upgrading an existing database. All scripts are
+safe to re-run.
 
 ```bash
-# Run all migrations in sequence
 psql oracle_sam -f database/migrations/01_java_licence_exemptions.sql
 psql oracle_sam -f database/migrations/02_vmware_se2_cpu_alerts.sql
 psql oracle_sam -f database/migrations/03_merge_tuning_pack_names.sql
 psql oracle_sam -f database/migrations/04_ula_covered_products.sql
-
-# Per-line CSI assignment (lives at the top level of database/, not in migrations/)
 psql oracle_sam -f database/05_migration_per_line_csi.sql
-
-# NUP licence metric support
 psql oracle_sam -f database/migrations/05_nup_license_position.sql
-
-# Role-based access control (requires bcrypt in requirements.txt)
 psql oracle_sam -f database/migrations/06_rbac_users.sql
-
-# Audit logging and monthly licence snapshots
 psql oracle_sam -f database/migrations/07_audit_logging.sql
+psql oracle_sam -f database/migrations/08_assignment_queue.sql
+psql oracle_sam -f database/migrations/09_server_dedup.sql
+psql oracle_sam -f database/migrations/10_discovery_runs.sql
+psql oracle_sam -f database/03_client_template_functions.sql   # refresh function definitions
+psql oracle_sam -f database/migrations/11_refresh_client_functions.sql
 ```
 
 | Script | What it adds |
 |---|---|
-| `migrations/01_java_licence_exemptions.sql` | `licence_exempt`, `exempt_reason`, `exempt_notes`, `exempt_set_by`, `exempt_set_at` columns on `java_installations` in every client schema |
-| `migrations/02_vmware_se2_cpu_alerts.sql` | VMware cluster tables (`sam_admin.vmware_clusters`), SE2 violation tracking, CPU validation table, alert channels table |
-| `migrations/03_merge_tuning_pack_names.sql` | Data fix: merges duplicate "Tuning Pack" / "Oracle Tuning Pack" product lines and re-points any server assignments |
-| `migrations/04_ula_covered_products.sql` | `shared.ula_covered_products` — stores which specific products a ULA contract covers; required for ULA scope violation detection in Audit Readiness |
-| `05_migration_per_line_csi.sql` | `shared.oracle_licensed_options` table; adds `product_detail` and `line_id` columns to `server_csi_map` in every client schema; enables per-line CSI assignment and Oracle option licence lines |
-| `migrations/05_nup_license_position.sql` | Reinstalls the `license_position` view in every client schema to add NUP columns: `licence_metric`, `nup_minimum`, `nup_active_users`, and NUP-aware `licences_required`. NUP minimum floors: EE = cores × core_factor × 25; SE2 = sockets × 10. `licences_required` = GREATEST(active_users, nup_minimum) |
-| `migrations/06_rbac_users.sql` | `sam_admin.app_role` enum (`superadmin`, `contracting`, `dba`, `client`); `sam_admin.auth_method` enum (`local`, `active_directory`); `sam_admin.app_users` table with bcrypt password hash, AD UPN, client scope, and force-password-change flag; seeds bootstrap admin row |
-| `migrations/07_audit_logging.sql` | `sam_admin.licence_snapshots` + `sam_admin.licence_snapshot_lines` (monthly licence position snapshots, 24-month retention); `sam_admin.audit_log` (user activity trail — server edits, CSI assignments, user management, 6-month retention); `sam_admin.purge_old_audit_data()` function |
+| `01_java_licence_exemptions.sql` | Exemption columns on `java_installations` |
+| `02_vmware_se2_cpu_alerts.sql` | VMware cluster tables, SE2 violation tracking, alert channels |
+| `03_merge_tuning_pack_names.sql` | Data fix: merges duplicate Tuning Pack product lines |
+| `04_ula_covered_products.sql` | `shared.ula_covered_products` — ULA scope tracking |
+| `05_migration_per_line_csi.sql` | `product_detail` and `line_id` on `server_csi_map`; per-line CSI assignment |
+| `05_nup_license_position.sql` | NUP columns in `license_position` view |
+| `06_rbac_users.sql` | `sam_admin.app_users` table, role and auth method enums |
+| `07_audit_logging.sql` | `sam_admin.audit_log`, `sam_admin.licence_snapshots` |
+| `08_assignment_queue.sql` | `sam_admin.assignment_requests` — approval workflow for licence assignments |
+| `09_server_dedup.sql` | `sam_admin.register_server()` — 4-priority deduplication; `sam_admin.list_conflicts()` |
+| `10_discovery_runs.sql` | `sam_admin.discovery_runs` table; `sam_admin.log_discovery_run()` function |
+| `11_refresh_client_functions.sql` | Rebuilds all views in every client schema after `03_client_template_functions.sql` is updated (run this after re-sourcing that file) |
 
-> **New installs:** `01_admin_schema.sql` and `02_shared_schema.sql` already include all of
-> the above. The migration scripts are only needed when upgrading an existing database.
+> **New installs:** `01_admin_schema.sql` and `02_shared_schema.sql` already include
+> everything above. Migrations are only needed when upgrading an existing database.
 
-## Files
+---
+
+## File layout
 
 ```
 SAM-tool/
 ├── ansible/
-│   ├── inventory/hosts.yml             Multi-client inventory
+│   ├── inventory/hosts.yml
 │   └── playbooks/
-│       ├── discover_oracle.yml         Oracle DB discovery
-│       └── discover_weblogic.yml       WebLogic discovery (WLST)
+│       ├── discover_oracle.yml
+│       └── discover_weblogic.yml
 ├── database/
-│   ├── 00_init.sql                     Roles, sample clients, seed data (edit before running)
-│   ├── 01_admin_schema.sql             Client registry + provisioning functions
-│   ├── 02_shared_schema.sql            CSI entitlements, core factor table, shared views
-│   ├── 03_client_template_functions.sql  Per-client views + discovery upsert functions (includes NUP support)
-│   ├── 05_migration_per_line_csi.sql   Migration: per-line CSI assignment + oracle option lines
-│   ├── sample_data.sql                 Sample data for client_acme (processor metric)
-│   ├── sample_data_globex.sql          Sample data for client_globex
-│   ├── sample_data_nup.sql             Sample NUP licence data for client_acme
-│   ├── sample_data_weblogic.sql        Sample WebLogic discovery data
+│   ├── 00_init.sql                          Roles, sample clients, seed data
+│   ├── 01_admin_schema.sql                  Client registry, provision_client()
+│   ├── 02_shared_schema.sql                 CSI entitlements, core factor table
+│   ├── 03_client_template_functions.sql     Per-client views, upsert functions, triggers
+│   ├── 05_migration_per_line_csi.sql        Per-line CSI migration
+│   ├── sample_data.sql                      Sample data — client_acme (processor)
+│   ├── sample_data_globex.sql               Sample data — client_globex
+│   ├── sample_data_nup.sql                  Sample NUP data — client_acme
+│   ├── sample_data_weblogic.sql             Sample WebLogic data
 │   └── migrations/
-│       ├── 01_java_licence_exemptions.sql   Java exemption columns
-│       ├── 02_vmware_se2_cpu_alerts.sql     VMware, SE2, CPU alert tables
-│       ├── 03_merge_tuning_pack_names.sql   Data fix: Tuning Pack deduplication
-│       ├── 04_ula_covered_products.sql      ULA covered products table
-│       ├── 05_nup_license_position.sql      NUP columns in license_position view
-│       ├── 06_rbac_users.sql               RBAC: app_users table and role enums
-│       └── 07_audit_logging.sql            Licence snapshots + user activity audit log
+│       ├── 01_java_licence_exemptions.sql
+│       ├── 02_vmware_se2_cpu_alerts.sql
+│       ├── 03_merge_tuning_pack_names.sql
+│       ├── 04_ula_covered_products.sql
+│       ├── 05_nup_license_position.sql
+│       ├── 06_rbac_users.sql
+│       ├── 07_audit_logging.sql
+│       ├── 08_assignment_queue.sql
+│       ├── 09_server_dedup.sql
+│       ├── 10_discovery_runs.sql
+│       └── 11_refresh_client_functions.sql
 ├── admin-ui/
-│   ├── app.py                          Flask application
-│   ├── requirements.txt                Python dependencies (includes bcrypt)
+│   ├── app.py
+│   ├── requirements.txt
 │   ├── templates/
-│   │   ├── admin_users.html            User management page (superadmin only)
-│   │   ├── admin_audit.html            Audit & Snapshots page (superadmin only)
-│   │   ├── admin_snapshot_view.html    Licence snapshot detail view
-│   │   ├── visibility_licence_history.html  Licence history trend charts
-│   │   ├── 403.html                    Access denied page
-│   │   └── ...                         All other Jinja2 templates
-│   └── translations/                   en.json / fr.json — bilingual strings
-├── PowerBI/POWERBI_SETUP.md           Power BI connection + DAX guide
+│   └── translations/                        en.json / fr.json
+├── PowerBI/POWERBI_SETUP.md
 └── README.md
 ```
