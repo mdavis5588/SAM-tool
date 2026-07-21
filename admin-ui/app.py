@@ -2723,17 +2723,6 @@ def licence_summary_client(client_code):
 @app.route("/licence-summary/shared")
 @login_required
 def licence_summary_shared():
-    entitlement_rows = query("""
-        SELECT l.csi_id, l.product_name, l.product_family::TEXT AS product_family,
-               COALESCE(l.quantity, 0) AS quantity
-        FROM shared.csi_contracts cs
-        JOIN shared.license_entitlement_lines l ON l.csi_id = cs.csi_id AND l.is_active
-        WHERE cs.status = 'active'
-          AND cs.sharing_policy != 'client_locked'
-    """)
-
-    lines = _build_licence_detail(entitlement_rows)
-
     # Per-client usage breakdown
     shareable_csis = query("""
         SELECT cs.csi_id, cs.csi_number, cs.contract_name,
@@ -2799,7 +2788,6 @@ def licence_summary_shared():
         p["utilisation_pct"] = round(p["used_qty"] / p["total_qty"] * 100, 1) if p["total_qty"] > 0 else 0
 
     return render_template("licence_summary_shared.html",
-                           lines=lines,
                            pool_products=pool_products)
 
 
