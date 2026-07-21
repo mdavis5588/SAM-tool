@@ -3154,8 +3154,10 @@ def shared_pool_monthly():
                     })
         except Exception:
             pass
-        if live_lines:
-            snap_by_month[cur_month] = live_lines
+        cur_month_is_live = False
+    if live_lines:
+        snap_by_month[cur_month] = live_lines
+        cur_month_is_live = True
 
     # -----------------------------------------------------------------------
     # Build per-month summary
@@ -3165,7 +3167,7 @@ def shared_pool_monthly():
 
     for mo in fy_months:
         is_future = mo > cur_month
-        is_live   = (mo == cur_month and mo not in snap_by_month) or (mo == cur_month and live_lines and mo in snap_by_month and snap_by_month[mo] is live_lines)
+        is_live   = (mo == cur_month) and cur_month_is_live
         has_data  = mo in snap_by_month and not is_future
 
         lines_out = []
@@ -3197,12 +3199,7 @@ def shared_pool_monthly():
             "month":       mo,
             "label":       f"{month_abbr[mo.month]} {mo.year}",
             "is_future":   is_future,
-            "is_live":     mo == cur_month and not any(
-                s.snapshot_month.replace(day=1) == mo
-                for s in (query("SELECT snapshot_month FROM sam_admin.licence_snapshots "
-                                "WHERE client_id=%s AND snapshot_month=%s",
-                                (client_id, mo), ) or [])
-            ),
+            "is_live":     is_live,
             "has_data":    has_data,
             "lines":       lines_out,
             "month_total": round(month_total, 2),
