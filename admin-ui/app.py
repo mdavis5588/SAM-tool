@@ -1111,6 +1111,8 @@ def register_server():
         cores       = request.form.get("physical_cores", "").strip() or None
         sockets     = request.form.get("cpu_sockets", "").strip() or None
         cps         = request.form.get("cores_per_socket", "").strip() or None
+        cpu_model   = request.form.get("cpu_model", "").strip() or "Unknown"
+        core_factor = request.form.get("core_factor_override", "").strip() or None
         notes       = request.form.get("notes", "").strip() or None
         server_type = request.form.get("server_type", "oracle_database")  # 'oracle_database' | 'oracle_weblogic'
 
@@ -1221,16 +1223,34 @@ def register_server():
                 if existing_proc:
                     execute(
                         f"UPDATE {schema}.oracle_processors"
-                        f"  SET cpu_sockets = %s, cores_per_socket = %s WHERE server_id = %s",
-                        (v_sockets, v_cps, server_id)
+                        f"  SET cpu_model = %s, cpu_sockets = %s, cores_per_socket = %s"
+                        f"  WHERE server_id = %s",
+                        (cpu_model, v_sockets, v_cps, server_id)
                     )
                 else:
                     execute(
                         f"INSERT INTO {schema}.oracle_processors"
                         f"  (server_id, cpu_model, cpu_sockets, cores_per_socket)"
-                        f"  VALUES (%s, 'Unknown', %s, %s)",
-                        (server_id, v_sockets, v_cps)
+                        f"  VALUES (%s, %s, %s, %s)",
+                        (server_id, cpu_model, v_sockets, v_cps)
                     )
+
+                # If a core factor override was given and the CPU model won't
+                # auto-resolve to the right factor, insert an exact-match entry.
+                if core_factor:
+                    existing_factor = query(
+                        "SELECT core_factor_id FROM shared.core_factor_table"
+                        " WHERE %s ILIKE processor_pattern ORDER BY length(processor_pattern) DESC LIMIT 1",
+                        (cpu_model,), fetchall=False
+                    )
+                    if not existing_factor or abs(float(existing_factor["core_factor"]) - float(core_factor)) > 0.001:
+                        execute(
+                            "INSERT INTO shared.core_factor_table"
+                            "  (processor_pattern, core_factor, notes)"
+                            "  VALUES (%s, %s, 'Manually set during server registration')"
+                            "  ON CONFLICT DO NOTHING",
+                            (cpu_model, float(core_factor))
+                        )
 
             u = current_user()
             try:

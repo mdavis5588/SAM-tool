@@ -247,6 +247,29 @@
         </div>
       </div>
 
+      <!-- CPU model & core factor -->
+      <div class="rs-section">
+        <div class="rs-section-title">CPU Model &amp; Core Factor</div>
+        <div class="rs-grid-2">
+          <div>
+            <label class="rs-label" for="cpu_model">CPU Model</label>
+            <input type="text" id="cpu_model" name="cpu_model" class="form-control form-control-sm"
+                   value="{{ form.get('cpu_model','') }}" placeholder="Intel Xeon E5-2680 v4">
+            <div class="rs-hint">Used to look up the Oracle core factor. Leave blank to default to "Unknown".</div>
+          </div>
+          <div>
+            <label class="rs-label" for="core_factor_override">Core Factor Override</label>
+            <select id="core_factor_override" name="core_factor_override" class="form-select form-select-sm">
+              <option value="">— Auto-detect from CPU model —</option>
+              <option value="0.25" {% if form.get('core_factor_override') == '0.25' %}selected{% endif %}>0.25 — SPARC T-series</option>
+              <option value="0.5"  {% if form.get('core_factor_override') == '0.5'  %}selected{% endif %}>0.50 — Intel / AMD / ARM</option>
+              <option value="1.0"  {% if form.get('core_factor_override') == '1.0'  %}selected{% endif %}>1.00 — IBM POWER / SPARC M</option>
+            </select>
+            <div class="rs-hint">Only set if auto-detect gives the wrong result or CPU model is unknown.</div>
+          </div>
+        </div>
+      </div>
+
       <!-- OS -->
       <div class="rs-section">
         <div class="rs-section-title">{{ t('register_server.section_os') }}</div>
