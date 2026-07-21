@@ -185,9 +185,9 @@
 
 <div class="kpi-strip">
   <div class="kpi-card blue">
-    <div class="kpi-label">{{ t('finops.total_client_cost') }}</div>
+    <div class="kpi-label">{{ t('finops.total_client_cost') }} ({{ client.fy_label }})</div>
     <div class="kpi-value">${{ "{:,.0f}".format(client.total_client_cost) }}</div>
-    <div class="kpi-sub">Annual support + shared pool in use</div>
+    <div class="kpi-sub">Locked support + shared pool ({{ client.shared_pool_months }} month{{ 's' if client.shared_pool_months != 1 }})</div>
   </div>
   <div class="kpi-card">
     <div class="kpi-label">{{ t('finops.annual_support') }}</div>
@@ -195,9 +195,9 @@
     <div class="kpi-sub">{{ t('finops_detail.client_locked_section') }}</div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-label">{{ t('finops.shared_pool_in_use') }}</div>
-    <div class="kpi-value">${{ "{:,.0f}".format(client.total_shared_inuse) }}</div>
-    <div class="kpi-sub">Cost drawn from shared pool</div>
+    <div class="kpi-label">Shared Pool ({{ client.fy_label }})</div>
+    <div class="kpi-value">${{ "{:,.0f}".format(client.shared_pool_fy_cost) }}</div>
+    <div class="kpi-sub">{{ client.shared_pool_months }} month{{ 's' if client.shared_pool_months != 1 }} of usage from snapshots{% if client.shared_pool_months == 0 %} — <a href="{{ url_for('shared_pool_monthly') }}">take snapshots</a>{% endif %}</div>
   </div>
   <div class="kpi-card green">
     <div class="kpi-label">{{ t('finops_detail.all_licences_in_use') }}</div>

@@ -215,7 +215,7 @@
   {% else %}
 
   {% set grand_support   = summary | sum(attribute='total_support') %}
-  {% set grand_shared    = summary | sum(attribute='total_shared_inuse') %}
+  {% set grand_shared    = summary | sum(attribute='shared_pool_fy_cost') %}
   {% set grand_total     = summary | sum(attribute='total_client_cost') %}
   {% set grand_max       = summary | max(attribute='total_client_cost') %}
 
@@ -232,7 +232,7 @@
     </div>
     <div class="page-kpi-divider"></div>
     <div class="page-kpi">
-      <span class="page-kpi-label">{{ t('finops.shared_pool_in_use') }}</span>
+      <span class="page-kpi-label">Shared Pool (FY, all clients)</span>
       <span class="page-kpi-value">${{ "{:,.0f}".format(grand_shared) }}</span>
     </div>
     <div class="page-kpi-divider"></div>
@@ -268,8 +268,8 @@
     </div>
 
     {% for c in summary | sort(attribute='total_client_cost', reverse=true) %}
-    {% set support_w  = ((c.total_support    / c.total_client_cost * 100) | round(1)) if c.total_client_cost > 0 else 0 %}
-    {% set shared_w   = ((c.total_shared_inuse / c.total_client_cost * 100) | round(1)) if c.total_client_cost > 0 else 0 %}
+    {% set support_w  = ((c.total_support       / c.total_client_cost * 100) | round(1)) if c.total_client_cost > 0 else 0 %}
+    {% set shared_w   = ((c.shared_pool_fy_cost / c.total_client_cost * 100) | round(1)) if c.total_client_cost > 0 else 0 %}
     <a href="{{ url_for('finops_client', client_code=c.client_code) }}" class="client-row">
 
       <!-- Client name + product count -->
@@ -282,7 +282,7 @@
       <!-- Stacked bar -->
       <div class="bar-wrap">
         <div class="bar-track"
-             title="Annual Support: ${{ '{:,.0f}'.format(c.total_support) }} · Shared Pool: ${{ '{:,.0f}'.format(c.total_shared_inuse) }}">
+             title="Annual Support: ${{ '{:,.0f}'.format(c.total_support) }} · Shared Pool ({{ c.shared_pool_months }}mo): ${{ '{:,.0f}'.format(c.shared_pool_fy_cost) }}">
           {% if support_w > 0 %}
           <div class="bar-seg" style="width:{{ support_w }}%;background:var(--s1)"></div>
           {% endif %}
@@ -297,10 +297,10 @@
             ${{ "{:,.0f}".format(c.total_support) }} support
           </div>
           {% endif %}
-          {% if c.total_shared_inuse > 0 %}
+          {% if c.shared_pool_fy_cost > 0 %}
           <div class="bar-label-item">
             <span class="bar-label-dot" style="background:var(--s2)"></span>
-            ${{ "{:,.0f}".format(c.total_shared_inuse) }} shared
+            ${{ "{:,.0f}".format(c.shared_pool_fy_cost) }} shared ({{ c.shared_pool_months }}mo)
           </div>
           {% endif %}
         </div>

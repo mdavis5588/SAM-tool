@@ -2860,17 +2860,96 @@ def _build_client_finops(client_id):
         ln["assigned_cost"]     = round(assigned   * unit, 2)
         ln["unassigned_cost"]   = round(unassigned * unit, 2)
 
-    # Support cost only applies to client-locked lines; shared pool rows contribute their in-use cost
+    # Support cost only applies to client-locked lines; shared pool contributes its in-use assigned cost
     total_support        = sum(ln["support_cost"]   for ln in lines if ln["source"] == "client_locked")
     total_shared_inuse   = sum(ln["assigned_cost"]  for ln in lines if ln["source"] == "shareable")
     total_assigned       = sum(ln["assigned_cost"]  for ln in lines)
     total_unassigned     = sum(ln["unassigned_cost"] for ln in lines if ln["source"] == "client_locked")
-    total_client_cost    = total_support + total_shared_inuse
 
-    # Pie chart: mirrors Total Client Cost — support cost for locked lines, in-use cost for shared
+    # -----------------------------------------------------------------------
+    # FY shared pool cost: sum actual monthly snapshot costs (Apr 1 – Mar 31)
+    # Only count months that have a snapshot — so 6 months used = 6 × monthly cost
+    # -----------------------------------------------------------------------
+    today    = date.today()
+    fy_year  = today.year if today.month >= 4 else today.year - 1
+    fy_start = date(fy_year, 4, 1)
+    fy_end   = date(fy_year + 1, 3, 31)
+
+    # Build shareable CSI pricing map: csi_number → list of entitlement lines
+    shareable_ent = query("""
+        SELECT cs.csi_number, l.product_family::TEXT AS product_family,
+               l.product_name, COALESCE(l.unit_price, 0) AS unit_price
+        FROM shared.csi_contracts cs
+        JOIN shared.license_entitlement_lines l ON l.csi_id = cs.csi_id AND l.is_active
+        WHERE cs.sharing_policy = 'shareable'
+          AND cs.status = 'active'
+          AND (
+            cs.owning_client_id = %(cid)s
+            OR cs.csi_id IN (SELECT csi_id FROM shared.csi_client_map WHERE client_id = %(cid)s)
+          )
+    """, {"cid": client_id})
+
+    shareable_csi_nums = set(r["csi_number"] for r in shareable_ent if r["csi_number"])
+    _ent_by_csi = {}
+    for r in shareable_ent:
+        _ent_by_csi.setdefault(r["csi_number"], []).append(r)
+
+    def _snap_unit_price(csi_num, product_family, product_detail):
+        lines_e = _ent_by_csi.get(csi_num, [])
+        pf = [l for l in lines_e if l["product_family"] == product_family] or lines_e
+        if product_detail:
+            det = (product_detail or "").lower()
+            for l in pf:
+                if l["product_name"].lower() in det or det in l["product_name"].lower():
+                    return float(l["unit_price"])
+        return float(pf[0]["unit_price"]) if pf else 0.0
+
+    snap_rows = query("""
+        SELECT s.snapshot_month,
+               sl.product_family,
+               sl.product_detail,
+               sl.csi_number          AS raw_csi_numbers,
+               SUM(sl.licences_required) AS licences
+        FROM sam_admin.licence_snapshots s
+        JOIN sam_admin.licence_snapshot_lines sl ON sl.snapshot_id = s.snapshot_id
+        WHERE s.client_id = %s
+          AND s.snapshot_month >= %s
+          AND s.snapshot_month <= %s
+          AND sl.csi_number IS NOT NULL
+        GROUP BY s.snapshot_month, sl.product_family, sl.product_detail, sl.csi_number
+    """, (client_id, fy_start, fy_end))
+
+    shared_pool_fy_cost = 0.0
+    shared_pool_months  = 0
+    _months_seen = set()
+    for r in snap_rows:
+        csi_nums = [c.strip() for c in (r["raw_csi_numbers"] or "").split(";") if c.strip()]
+        shared = [n for n in csi_nums if n in shareable_csi_nums]
+        if not shared:
+            continue
+        csi_num  = shared[0]
+        up       = _snap_unit_price(csi_num, r["product_family"], r["product_detail"])
+        licences = float(r["licences"] or 0)
+        shared_pool_fy_cost += licences * up / 12.0
+        _months_seen.add(r["snapshot_month"])
+
+    shared_pool_months = len(_months_seen)
+    shared_pool_fy_cost = round(shared_pool_fy_cost, 2)
+
+    # Total client cost = annual support on locked licences + actual FY shared pool spend
+    total_client_cost = round(total_support + shared_pool_fy_cost, 2)
+
+    # Pie chart: support cost for locked lines; FY shared pool cost spread across shared lines
+    shared_pie_total = shared_pool_fy_cost
+    shared_lines = [ln for ln in lines if ln["source"] == "shareable"]
     pie_items = []
     for ln in lines:
-        value = ln["support_cost"] if ln["source"] == "client_locked" else ln["assigned_cost"]
+        if ln["source"] == "client_locked":
+            value = ln["support_cost"]
+        else:
+            # Apportion FY shared pool cost proportionally to assigned_cost weights
+            denom = total_shared_inuse if total_shared_inuse else 1
+            value = round(shared_pie_total * (ln["assigned_cost"] / denom), 2) if denom else 0
         if value > 0:
             pie_items.append({"label": ln["product_name"], "value": value, "colour": ln["colour"]})
     pie_slices = _pie_slices(pie_items)
@@ -2878,13 +2957,16 @@ def _build_client_finops(client_id):
         sl["colour"] = item["colour"]
 
     return {
-        "lines":              lines,
-        "total_support":      total_support,
-        "total_shared_inuse": total_shared_inuse,
-        "total_client_cost":  total_client_cost,
-        "total_assigned":     total_assigned,
-        "total_unassigned":   total_unassigned,
-        "pie_slices":         pie_slices,
+        "lines":                lines,
+        "total_support":        total_support,
+        "total_shared_inuse":   total_shared_inuse,   # current point-in-time (kept for detail table)
+        "shared_pool_fy_cost":  shared_pool_fy_cost,  # actual FY spend from snapshots
+        "shared_pool_months":   shared_pool_months,
+        "fy_label":             f"FY {fy_year}/{str(fy_year+1)[2:]}",
+        "total_client_cost":    total_client_cost,
+        "total_assigned":       total_assigned,
+        "total_unassigned":     total_unassigned,
+        "pie_slices":           pie_slices,
     }
 
 
