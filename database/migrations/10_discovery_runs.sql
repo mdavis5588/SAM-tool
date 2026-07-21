@@ -7,7 +7,9 @@
 -- Also adds a sam_admin.log_discovery_run() helper that Ansible and cron
 -- scripts call once per discovery sweep (not per server).
 
-CREATE TABLE IF NOT EXISTS sam_admin.discovery_runs (
+DROP TABLE IF EXISTS sam_admin.discovery_runs CASCADE;
+
+CREATE TABLE sam_admin.discovery_runs (
     run_id           SERIAL PRIMARY KEY,
     client_id        INTEGER NOT NULL REFERENCES sam_admin.clients(client_id) ON DELETE CASCADE,
     client_schema    TEXT    NOT NULL,
