@@ -300,7 +300,7 @@
           {% if c.shared_pool_fy_cost > 0 %}
           <div class="bar-label-item">
             <span class="bar-label-dot" style="background:var(--s2)"></span>
-            ${{ "{:,.0f}".format(c.shared_pool_fy_cost) }} shared ({{ c.shared_pool_months }}mo)
+            ${{ "{:,.0f}".format(c.shared_pool_fy_cost) }} shared{% if c.shared_pool_estimated %} (est.){% else %} ({{ c.shared_pool_months }}mo){% endif %}
           </div>
           {% endif %}
         </div>

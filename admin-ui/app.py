@@ -2936,6 +2936,14 @@ def _build_client_finops(client_id):
     shared_pool_months = len(_months_seen)
     shared_pool_fy_cost = round(shared_pool_fy_cost, 2)
 
+    # If no snapshot data exists yet, fall back to live server_csi_map usage for the current month
+    # (total_shared_inuse is licences x unit_price = annual value; divide by 12 for one month)
+    shared_pool_estimated = False
+    if shared_pool_fy_cost == 0 and total_shared_inuse > 0:
+        shared_pool_fy_cost  = round(total_shared_inuse / 12.0, 2)
+        shared_pool_months   = 1
+        shared_pool_estimated = True
+
     # Total client cost = annual support on locked licences + actual FY shared pool spend
     total_client_cost = round(total_support + shared_pool_fy_cost, 2)
 
@@ -2960,8 +2968,9 @@ def _build_client_finops(client_id):
         "lines":                lines,
         "total_support":        total_support,
         "total_shared_inuse":   total_shared_inuse,   # current point-in-time (kept for detail table)
-        "shared_pool_fy_cost":  shared_pool_fy_cost,  # actual FY spend from snapshots
-        "shared_pool_months":   shared_pool_months,
+        "shared_pool_fy_cost":   shared_pool_fy_cost,
+        "shared_pool_months":    shared_pool_months,
+        "shared_pool_estimated": shared_pool_estimated,
         "fy_label":             f"FY {fy_year}/{str(fy_year+1)[2:]}",
         "total_client_cost":    total_client_cost,
         "total_assigned":       total_assigned,
@@ -2986,8 +2995,9 @@ def finops():
                 "client_name":        c["client_name"] or c["client_code"],
                 "total_support":      data["total_support"],
                 "total_shared_inuse": data["total_shared_inuse"],
-                "shared_pool_fy_cost": data["shared_pool_fy_cost"],
-                "shared_pool_months": data["shared_pool_months"],
+                "shared_pool_fy_cost":   data["shared_pool_fy_cost"],
+                "shared_pool_months":    data["shared_pool_months"],
+                "shared_pool_estimated": data["shared_pool_estimated"],
                 "total_client_cost":  data["total_client_cost"],
                 "product_count":      len(data["lines"]),
             })

@@ -197,7 +197,15 @@
   <div class="kpi-card">
     <div class="kpi-label">Shared Pool ({{ client.fy_label }})</div>
     <div class="kpi-value">${{ "{:,.0f}".format(client.shared_pool_fy_cost) }}</div>
-    <div class="kpi-sub">{{ client.shared_pool_months }} month{{ 's' if client.shared_pool_months != 1 }} of usage from snapshots{% if client.shared_pool_months == 0 %} — <a href="{{ url_for('shared_pool_monthly') }}">take snapshots</a>{% endif %}</div>
+    <div class="kpi-sub">
+      {% if client.shared_pool_estimated %}
+        Current month estimate — <a href="{{ url_for('admin_audit') }}">take a snapshot</a> to track monthly
+      {% elif client.shared_pool_months == 0 %}
+        No usage — <a href="{{ url_for('shared_pool_monthly') }}">view detail</a>
+      {% else %}
+        {{ client.shared_pool_months }} month{{ 's' if client.shared_pool_months != 1 }} from snapshots
+      {% endif %}
+    </div>
   </div>
   <div class="kpi-card green">
     <div class="kpi-label">{{ t('finops_detail.all_licences_in_use') }}</div>
