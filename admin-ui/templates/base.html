@@ -289,10 +289,7 @@
         <i class="bi bi-currency-dollar"></i><span>{{ t('nav.finops') }}</span>
         <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
       </a>
-      <a class="sidebar-link {% if request.endpoint == 'alerts' %}active{% endif %}"
-         href="{{ url_for('alerts') }}"><i class="bi bi-exclamation-triangle"></i><span>{{ t('nav.alerts') }}</span></a>
-
-      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['compliance','compliance_client','audit_readiness','vmware'] %}active{% endif %}"
+      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['compliance','compliance_client','audit_readiness','vmware','alerts'] %}active{% endif %}"
          href="{{ url_for('compliance') }}" id="complianceFlyoutTrigger"
          data-flyout="complianceFlyoutPanel">
         <i class="bi bi-shield-check"></i><span>{{ t('nav.compliance') }}</span>
@@ -378,6 +375,9 @@
     </a>
     <a class="sidebar-flyout-item" href="{{ url_for('vmware') }}">
       <i class="bi bi-diagram-3"></i>{{ t('nav.vmware') }}
+    </a>
+    <a class="sidebar-flyout-item {% if request.endpoint == 'alerts' %}active{% endif %}" href="{{ url_for('alerts') }}">
+      <i class="bi bi-exclamation-triangle"></i>{{ t('nav.alerts') }}
     </a>
   </div>
 
