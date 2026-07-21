@@ -133,7 +133,7 @@
   /* ── Pool usage cards ── */
   .pool-card {
     border: 1px solid var(--gridline);
-    border-left: 4px solid var(--s2);
+    border-left: 4px solid var(--s1);
     border-radius: 8px;
     overflow: hidden;
     margin-bottom: .6rem;
@@ -149,7 +149,7 @@
     border: none; width: 100%; text-align: left;
     transition: background .12s;
   }
-  .pool-header:hover { background: rgba(109,167,236,.06); }
+  .pool-header:hover { background: rgba(109,40,217,.04); }
   .pool-header[aria-expanded="true"] { border-bottom: 1px solid var(--gridline); }
 
   .pool-product-name {
@@ -161,28 +161,25 @@
   .csi-chip {
     font-size: .7rem; font-weight: 600; padding: .1rem .45rem;
     border-radius: 4px;
-    background: rgba(109,167,236,.15); color: #1e5fa0;
+    background: rgba(109,40,217,.1); color: var(--s1);
     white-space: nowrap;
-  }
-  @media (prefers-color-scheme: dark) {
-    .csi-chip { background: rgba(109,167,236,.2); color: var(--s2); }
   }
 
   .util-col { text-align: right; }
   .util-value {
-    font-size: 1rem; font-weight: 700; color: var(--s2);
+    font-size: 1rem; font-weight: 700; color: var(--s1);
     font-variant-numeric: tabular-nums;
   }
   .util-label { font-size: .68rem; color: var(--text-muted); margin-top: .1rem; }
 
   .util-bar-track {
-    height: 6px; border-radius: 3px;
+    height: 7px; border-radius: 4px;
     background: var(--track); overflow: hidden;
-    min-width: 80px;
+    min-width: 90px;
   }
   .util-bar-fill {
-    height: 100%; border-radius: 3px;
-    background: var(--s2);
+    height: 100%; border-radius: 4px;
+    background: var(--s1);
     transition: width .3s;
   }
   .util-bar-fill.over { background: #dc2626; }
@@ -190,30 +187,33 @@
   .chevron { color: var(--text-muted); transition: transform .2s; font-size: .85rem; }
   .pool-header[aria-expanded="true"] .chevron { transform: rotate(180deg); }
 
-  .pool-detail { padding: .75rem 1.1rem 1rem; background: var(--surface); }
+  .pool-detail { padding: .75rem 1.1rem 1rem; background: rgba(109,40,217,.02); }
 
   .client-table { width: 100%; border-collapse: collapse; font-size: .83rem; }
   .client-table th {
     font-size: .67rem; font-weight: 700; text-transform: uppercase;
     letter-spacing: .05em; color: var(--text-muted);
-    padding: .35rem .5rem; border-bottom: 2px solid var(--gridline);
+    padding: .4rem .6rem; border-bottom: 2px solid var(--gridline);
     text-align: left; white-space: nowrap;
+    background: rgba(109,40,217,.04);
   }
   .client-table th.num { text-align: right; }
   .client-table td {
-    padding: .45rem .5rem; border-bottom: 1px solid var(--gridline);
+    padding: .5rem .6rem; border-bottom: 1px solid var(--gridline);
     vertical-align: middle; color: var(--text-sec);
   }
   .client-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .client-table tbody tr:hover td { background: rgba(109,40,217,.03); }
   .client-table tbody tr:last-child td { border-bottom: none; }
   .client-table tfoot td {
     font-weight: 700; color: var(--text-pri);
     border-top: 2px solid var(--gridline); padding-top: .5rem;
     border-bottom: none;
+    background: rgba(109,40,217,.04);
   }
   .client-share-bar {
     height: 4px; border-radius: 2px;
-    background: var(--s2); opacity: .6;
+    background: var(--s1); opacity: .35;
     margin-top: .3rem;
   }
   .no-usage {
@@ -442,7 +442,7 @@
      SECTION 2: Per-client usage breakdown
      ══════════════════════════════════════════ -->
 <div class="section-heading">
-  <i class="bi bi-people" style="color:var(--s2)"></i>
+  <i class="bi bi-people" style="color:var(--s1)"></i>
   Who is using the shared pool
   {% set total_in_use = pool_products | sum(attribute='used_qty') %}
   <span style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">{{ total_in_use }} licence{{ 's' if total_in_use != 1 }} in use</span>
@@ -463,7 +463,7 @@
         {% if 'weblogic' in n %}<i class="bi bi-boxes me-1" style="color:#7c3aed;font-size:.85rem"></i>
         {% elif 'database' in n %}<i class="bi bi-database me-1" style="color:#2563eb;font-size:.85rem"></i>
         {% elif 'coherence' in n %}<i class="bi bi-cpu me-1" style="color:#059669;font-size:.85rem"></i>
-        {% else %}<i class="bi bi-share me-1" style="color:var(--s2);font-size:.85rem"></i>
+        {% else %}<i class="bi bi-share me-1" style="color:var(--s1);font-size:.85rem"></i>
         {% endif %}
         {{ p.product_name }}
       </div>
@@ -514,7 +514,7 @@
               <strong>{{ cl.client_name }}</strong>
               <div class="client-share-bar" style="width:{{ pct_of_pool }}%"></div>
             </td>
-            <td class="num" style="font-weight:600;color:var(--s2)">{{ cl.licences }}</td>
+            <td class="num" style="font-weight:700;color:var(--s1)">{{ cl.licences }}</td>
             <td class="num">{{ pct_of_pool }}%</td>
           </tr>
           {% endfor %}
