@@ -1082,6 +1082,9 @@ def register_server():
     all_clients  = query(
         "SELECT schema_name, client_name FROM sam_admin.clients WHERE is_active ORDER BY client_name"
     )
+    licensed_options = query(
+        "SELECT option_name, display_name, notes FROM shared.oracle_licensed_options WHERE is_active ORDER BY display_name"
+    )
 
     if request.method == "POST":
         # Allow client selection from the form (overrides session schema)
@@ -1093,7 +1096,8 @@ def register_server():
             flash("Please select a client.", "danger")
             return render_template("register_server.html",
                                    environments=environments, schema=schema,
-                                   all_clients=all_clients, form=request.form)
+                                   all_clients=all_clients, licensed_options=licensed_options,
+                                   form=request.form)
 
         hostname    = request.form.get("hostname", "").strip()
         fqdn        = request.form.get("fqdn", "").strip() or None
@@ -1120,11 +1124,15 @@ def register_server():
         wls_version = request.form.get("wls_version", "").strip() or None
         wls_edition = request.form.get("wls_edition", "").strip() or None
 
+        # DB options (checkboxes — only present in POST when checked)
+        selected_options = request.form.getlist("db_options")
+
         if not hostname:
             flash("Hostname is required.", "danger")
             return render_template("register_server.html",
                                    environments=environments, schema=schema,
-                                   all_clients=all_clients, form=request.form)
+                                   all_clients=all_clients, licensed_options=licensed_options,
+                                   form=request.form)
 
         try:
             result = query(
@@ -1155,13 +1163,14 @@ def register_server():
                 flash(f"Conflict detected — {outcome[9:]}. Review in Discovery Conflicts.", "warning")
                 return render_template("register_server.html",
                                        environments=environments, schema=schema,
-                                       all_clients=all_clients, form=request.form)
+                                       all_clients=all_clients, licensed_options=licensed_options,
+                                       form=request.form)
 
             # Create the instance/domain row so the server appears on the correct tab
             if server_id:
                 if server_type == "oracle_database":
                     sid = oracle_sid or hostname.upper()
-                    execute(
+                    inst_row = query(
                         f"INSERT INTO {schema}.oracle_instances"
                         f"  (server_id, oracle_sid, db_name, db_version, edition, is_active)"
                         f"  VALUES (%s, %s, %s, %s, %s, TRUE)"
@@ -1169,9 +1178,22 @@ def register_server():
                         f"  SET db_version = COALESCE(EXCLUDED.db_version, oracle_instances.db_version),"
                         f"      edition    = COALESCE(EXCLUDED.edition, oracle_instances.edition),"
                         f"      is_active  = TRUE,"
-                        f"      last_seen  = NOW()",
-                        (server_id, sid, sid, db_version or None, edition or None)
+                        f"      last_seen  = NOW()"
+                        f"  RETURNING instance_id",
+                        (server_id, sid, sid, db_version or None, edition or None),
+                        fetchall=False
                     )
+                    instance_id = inst_row["instance_id"] if inst_row else None
+
+                    # Insert selected licensed options
+                    if instance_id and selected_options:
+                        for opt in selected_options:
+                            execute(
+                                f"INSERT INTO {schema}.oracle_options"
+                                f"  (instance_id, option_name, status, recorded_at)"
+                                f"  VALUES (%s, %s, 'VALID', NOW())",
+                                (instance_id, opt)
+                            )
                 elif server_type == "oracle_weblogic":
                     dname = domain_name or f"{hostname}_domain"
                     execute(
@@ -1241,7 +1263,8 @@ def register_server():
 
     return render_template("register_server.html",
                            environments=environments, schema=schema,
-                           all_clients=all_clients, form=request.form)
+                           all_clients=all_clients, licensed_options=licensed_options,
+                           form=request.form)
 
 
 # ---------------------------------------------------------------------------

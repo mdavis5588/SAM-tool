@@ -199,6 +199,27 @@
         </div>
       </div>
 
+      <!-- DB Options / Features -->
+      <div class="rs-section" id="dbOptionsSection" style="{% if form.get('server_type') == 'oracle_weblogic' %}display:none{% endif %}">
+        <div class="rs-section-title">Oracle Licensed Options / Features</div>
+        <div class="rs-hint mb-2">Only Enterprise Edition options need to be selected. Leave unchecked if the option is not in use.</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.4rem .75rem">
+          {% for opt in licensed_options %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox"
+                   name="db_options" value="{{ opt.option_name }}"
+                   id="opt_{{ loop.index }}"
+                   {% if opt.option_name in (form.getlist('db_options') if form else []) %}checked{% endif %}>
+            <label class="form-check-label small" for="opt_{{ loop.index }}"
+                   {% if opt.notes %}title="{{ opt.notes }}"{% endif %}>
+              {{ opt.display_name }}
+              {% if opt.notes %}<i class="bi bi-info-circle text-muted" style="font-size:.7rem"></i>{% endif %}
+            </label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
       <!-- WLS-specific fields -->
       <div class="rs-section" id="wlsSection" style="{% if form.get('server_type','oracle_database') != 'oracle_weblogic' %}display:none{% endif %}">
         <div class="rs-section-title">WebLogic Domain Details</div>
@@ -298,8 +319,10 @@ function selectType(type) {
   document.getElementById('serverTypeInput').value = type;
   document.getElementById('typeCardDB').className  = 'type-card' + (type === 'oracle_database'  ? ' selected-db'  : '');
   document.getElementById('typeCardWLS').className = 'type-card' + (type === 'oracle_weblogic' ? ' selected-wls' : '');
-  document.getElementById('dbSection').style.display  = type === 'oracle_database'  ? '' : 'none';
-  document.getElementById('wlsSection').style.display = type === 'oracle_weblogic' ? '' : 'none';
+  const isDB = type === 'oracle_database';
+  document.getElementById('dbSection').style.display        = isDB ? '' : 'none';
+  document.getElementById('dbOptionsSection').style.display = isDB ? '' : 'none';
+  document.getElementById('wlsSection').style.display       = isDB ? 'none' : '';
 }
 </script>
 {% endblock %}
