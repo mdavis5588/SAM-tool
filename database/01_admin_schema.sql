@@ -27,29 +27,29 @@ CREATE TABLE IF NOT EXISTS sam_admin.clients (
 
 -- ---------------------------------------------------------------------------
 -- DISCOVERY RUNS AUDIT
--- Central audit log across all clients and all product types.
+-- One row per discovery sweep across all clients and sources.
+-- (Matches the structure created by migration 10_discovery_runs.sql)
 -- ---------------------------------------------------------------------------
-CREATE TYPE sam_admin.product_type AS ENUM
-  ('oracle_database', 'oracle_weblogic', 'oracle_java', 'mssql', 'vmware');
-
 CREATE TABLE IF NOT EXISTS sam_admin.discovery_runs (
-  run_id          TEXT PRIMARY KEY,
-  client_id       INTEGER NOT NULL REFERENCES sam_admin.clients (client_id),
-  product         sam_admin.product_type NOT NULL DEFAULT 'oracle_database',
-  started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  completed_at    TIMESTAMPTZ,
-  hosts_targeted  INTEGER,
-  hosts_succeeded INTEGER,
-  hosts_failed    INTEGER,
-  triggered_by    TEXT,
-  ansible_version TEXT,
-  playbook        TEXT,
-  notes           TEXT
+    run_id           SERIAL PRIMARY KEY,
+    client_id        INTEGER NOT NULL REFERENCES sam_admin.clients(client_id) ON DELETE CASCADE,
+    client_schema    TEXT    NOT NULL,
+    discovery_source TEXT    NOT NULL,
+    started_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at      TIMESTAMPTZ,
+    servers_seen     INTEGER NOT NULL DEFAULT 0,
+    servers_new      INTEGER NOT NULL DEFAULT 0,
+    servers_updated  INTEGER NOT NULL DEFAULT 0,
+    servers_conflict INTEGER NOT NULL DEFAULT 0,
+    run_host         TEXT,
+    notes            TEXT,
+    run_status       TEXT NOT NULL DEFAULT 'running'
+                     CHECK (run_status IN ('running','completed','failed'))
 );
 
-CREATE INDEX idx_runs_client  ON sam_admin.discovery_runs (client_id);
-CREATE INDEX idx_runs_product ON sam_admin.discovery_runs (product);
-CREATE INDEX idx_runs_started ON sam_admin.discovery_runs (started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_runs_client  ON sam_admin.discovery_runs (client_id);
+CREATE INDEX IF NOT EXISTS idx_runs_source  ON sam_admin.discovery_runs (discovery_source);
+CREATE INDEX IF NOT EXISTS idx_runs_started ON sam_admin.discovery_runs (started_at DESC);
 
 -- ---------------------------------------------------------------------------
 -- PROVISION CLIENT SCHEMA
