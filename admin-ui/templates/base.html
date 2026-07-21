@@ -311,12 +311,10 @@
          href="{{ url_for('clients') }}"><i class="bi bi-people"></i><span>{{ t('nav.clients') }}</span></a>
       <a class="sidebar-link {% if request.endpoint == 'register_server' %}active{% endif %}"
          href="{{ url_for('register_server') }}"><i class="bi bi-hdd-network"></i><span>{{ t('nav.register_server') }}</span></a>
-      <a class="sidebar-link {% if request.endpoint == 'discovery_history' %}active{% endif %}"
-         href="{{ url_for('discovery_history') }}"><i class="bi bi-clock-history"></i><span>{{ t('nav.discovery_history') }}</span></a>
-      <a class="sidebar-link {% if request.endpoint == 'settings' %}active{% endif %}"
+<a class="sidebar-link {% if request.endpoint == 'settings' %}active{% endif %}"
          href="{{ url_for('settings') }}"><i class="bi bi-gear"></i><span>{{ t('nav.alert_settings') }}</span></a>
       {%- set pending_count = pending_assignments_count | default(0) -%}
-      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['assignment_queue','discovery_conflicts'] %}active{% endif %}"
+      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['assignment_queue','discovery_conflicts','discovery_history'] %}active{% endif %}"
          href="{{ url_for('assignment_queue') }}" id="operationsFlyoutTrigger"
          data-flyout="operationsFlyoutPanel">
         <i class="bi bi-gear-wide-connected"></i><span>{{ t('nav.operations') | default('Operations') }}
@@ -391,6 +389,10 @@
       <i class="bi bi-hourglass-split"></i>{{ t('nav.assignment_queue') }}
       {%- set pending_count = pending_assignments_count | default(0) -%}
       {% if pending_count > 0 %}<span class="badge bg-warning text-dark ms-1" style="font-size:.6rem">{{ pending_count }}</span>{% endif %}
+    </a>
+    <a class="sidebar-flyout-item {% if request.endpoint == 'discovery_history' %}active{% endif %}"
+       href="{{ url_for('discovery_history') }}">
+      <i class="bi bi-clock-history"></i>{{ t('nav.discovery_history') }}
     </a>
     <a class="sidebar-flyout-item {% if request.endpoint == 'discovery_conflicts' %}active{% endif %}"
        href="{{ url_for('discovery_conflicts') }}">
