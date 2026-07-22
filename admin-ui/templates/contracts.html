@@ -170,9 +170,9 @@
               {% if l.available == 0 %}
                 <span class="badge bg-danger">0</span>
               {% elif l.available * 5 < qty %}
-                <span class="badge bg-warning text-dark">{{ l.available }}</span>
+                <span class="badge bg-warning text-dark">{{ l.available | int }}</span>
               {% else %}
-                <span class="badge bg-success">{{ l.available }}</span>
+                <span class="badge bg-success">{{ l.available | int }}</span>
               {% endif %}
             {% else %}—{% endif %}
           </td>

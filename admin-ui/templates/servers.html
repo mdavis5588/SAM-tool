@@ -110,7 +110,7 @@
                 {% for row in s.licence_rows %}
                 <div class="{% if not loop.last %}mb-2 pb-2 border-bottom{% endif %}">
                   {% set assigned = row.total_licensed | int %}
-                  {% if assigned >= row.licences_required %}
+                  {% if assigned >= (row.licences_required | int) %}
                     <span class="badge bg-success">{{ assigned }}</span>
                   {% elif assigned > 0 %}
                     <span class="badge bg-warning text-dark">{{ assigned }}</span>

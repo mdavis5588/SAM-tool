@@ -213,9 +213,9 @@
                     {% if available == 0 %}
                       <span class="badge bg-danger">0</span>
                     {% elif available * 5 < qty %}
-                      <span class="badge bg-warning text-dark">{{ available }}</span>
+                      <span class="badge bg-warning text-dark">{{ available | int }}</span>
                     {% else %}
-                      <span class="badge bg-success">{{ available }}</span>
+                      <span class="badge bg-success">{{ available | int }}</span>
                     {% endif %}
                   {% else %}—{% endif %}
                 </td>
