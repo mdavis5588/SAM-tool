@@ -1320,6 +1320,149 @@ BEGIN
     RETURN NEXT;
   END LOOP;
 
+  -- Alert: new servers detected in the last 7 days (per client schema)
+  FOR v_client IN SELECT schema_name, client_code, client_name FROM sam_admin.clients WHERE is_active LOOP
+    BEGIN
+      v_sql := format(
+        $q$SELECT hostname, first_seen FROM %I.oracle_servers
+           WHERE is_active AND first_seen >= NOW() - INTERVAL '7 days'$q$,
+        v_client.schema_name
+      );
+      FOR v_row IN EXECUTE v_sql LOOP
+        alert_type    := 'NEW_SERVER_DETECTED';
+        severity      := 'MEDIUM';
+        client_code   := v_client.client_code;
+        client_name   := v_client.client_name;
+        object_name   := v_row.hostname;
+        description   := 'New server first detected on ' || v_row.first_seen::DATE::TEXT;
+        days_until    := NULL;
+        action_needed := 'Verify server is known, assign to a contract, and confirm licensing coverage';
+        RETURN NEXT;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+  END LOOP;
+
+  -- Alert: VMware servers running Oracle not covered by a ULA (per client schema)
+  FOR v_client IN SELECT schema_name, client_code, client_name FROM sam_admin.clients WHERE is_active LOOP
+    BEGIN
+      v_sql := format(
+        $q$SELECT s.server_id, s.hostname
+           FROM   %I.oracle_servers s
+           WHERE  s.is_active
+             AND  (s.virtualization_type ILIKE '%%vmware%%' OR s.virtualization_type ILIKE '%%vsphere%%'
+                   OR s.virtualization_type ILIKE '%%esxi%%')
+             AND  NOT EXISTS (
+               SELECT 1 FROM %I.server_csi_map m
+               JOIN shared.csi_contracts c ON c.csi_id = m.csi_id
+               WHERE m.server_id = s.server_id AND c.is_ula = TRUE
+             )$q$,
+        v_client.schema_name, v_client.schema_name
+      );
+      FOR v_row IN EXECUTE v_sql LOOP
+        alert_type    := 'VMWARE_SERVER_NO_ULA';
+        severity      := 'HIGH';
+        client_code   := v_client.client_code;
+        client_name   := v_client.client_name;
+        object_name   := v_row.hostname;
+        description   := 'VMware-hosted Oracle server has no ULA licence assignment';
+        days_until    := NULL;
+        action_needed := 'Assign a ULA contract or verify hard partitioning is in place';
+        RETURN NEXT;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+  END LOOP;
+
+  -- Alert: hardware increases (cores/sockets went up) — unacknowledged, last 30 days
+  FOR v_client IN SELECT schema_name, client_code, client_name FROM sam_admin.clients WHERE is_active LOOP
+    BEGIN
+      v_sql := format(
+        $q$SELECT cl.server_id, s.hostname, cl.field_changed, cl.old_value, cl.new_value, cl.detected_at
+           FROM   %I.discovery_changelog cl
+           JOIN   %I.oracle_servers s ON s.server_id = cl.server_id
+           WHERE  cl.change_category = 'hardware'
+             AND  cl.field_changed IN ('cpu_cores','total_cores','cpu_sockets','physical_cores')
+             AND  cl.new_value::NUMERIC > cl.old_value::NUMERIC
+             AND  COALESCE(cl.acknowledged, FALSE) = FALSE
+             AND  cl.detected_at >= NOW() - INTERVAL '30 days'$q$,
+        v_client.schema_name, v_client.schema_name
+      );
+      FOR v_row IN EXECUTE v_sql LOOP
+        alert_type    := 'HARDWARE_INCREASE';
+        severity      := 'HIGH';
+        client_code   := v_client.client_code;
+        client_name   := v_client.client_name;
+        object_name   := v_row.hostname;
+        description   := v_row.field_changed || ' increased from ' || v_row.old_value
+                         || ' to ' || v_row.new_value || ' (detected ' || v_row.detected_at::DATE::TEXT || ')';
+        days_until    := NULL;
+        action_needed := 'Review licence coverage for increased compute capacity and acknowledge change';
+        RETURN NEXT;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+  END LOOP;
+
+  -- Alert: hardware decreases (cores/sockets went down) — unacknowledged, last 30 days
+  FOR v_client IN SELECT schema_name, client_code, client_name FROM sam_admin.clients WHERE is_active LOOP
+    BEGIN
+      v_sql := format(
+        $q$SELECT cl.server_id, s.hostname, cl.field_changed, cl.old_value, cl.new_value, cl.detected_at
+           FROM   %I.discovery_changelog cl
+           JOIN   %I.oracle_servers s ON s.server_id = cl.server_id
+           WHERE  cl.change_category = 'hardware'
+             AND  cl.field_changed IN ('cpu_cores','total_cores','cpu_sockets','physical_cores')
+             AND  cl.new_value::NUMERIC < cl.old_value::NUMERIC
+             AND  COALESCE(cl.acknowledged, FALSE) = FALSE
+             AND  cl.detected_at >= NOW() - INTERVAL '30 days'$q$,
+        v_client.schema_name, v_client.schema_name
+      );
+      FOR v_row IN EXECUTE v_sql LOOP
+        alert_type    := 'HARDWARE_DECREASE';
+        severity      := 'MEDIUM';
+        client_code   := v_client.client_code;
+        client_name   := v_client.client_name;
+        object_name   := v_row.hostname;
+        description   := v_row.field_changed || ' decreased from ' || v_row.old_value
+                         || ' to ' || v_row.new_value || ' (detected ' || v_row.detected_at::DATE::TEXT || ')';
+        days_until    := NULL;
+        action_needed := 'Confirm change is intentional and acknowledge — may allow licence reductions';
+        RETURN NEXT;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+  END LOOP;
+
+  -- Alert: new Oracle options/features enabled — unacknowledged, last 30 days
+  FOR v_client IN SELECT schema_name, client_code, client_name FROM sam_admin.clients WHERE is_active LOOP
+    BEGIN
+      v_sql := format(
+        $q$SELECT cl.server_id, s.hostname, cl.field_changed, cl.new_value, cl.detected_at
+           FROM   %I.discovery_changelog cl
+           JOIN   %I.oracle_servers s ON s.server_id = cl.server_id
+           WHERE  cl.change_category IN ('option','feature','oracle_option')
+             AND  cl.change_type IN ('NEW','ADDED','ENABLED')
+             AND  COALESCE(cl.acknowledged, FALSE) = FALSE
+             AND  cl.detected_at >= NOW() - INTERVAL '30 days'$q$,
+        v_client.schema_name, v_client.schema_name
+      );
+      FOR v_row IN EXECUTE v_sql LOOP
+        alert_type    := 'NEW_OPTION_ENABLED';
+        severity      := 'HIGH';
+        client_code   := v_client.client_code;
+        client_name   := v_client.client_name;
+        object_name   := v_row.hostname;
+        description   := 'Oracle option/feature "' || v_row.new_value
+                         || '" newly enabled (detected ' || v_row.detected_at::DATE::TEXT || ')';
+        days_until    := NULL;
+        action_needed := 'Verify this option is licenced or disable it immediately';
+        RETURN NEXT;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+  END LOOP;
+
 END;
 $$;
 

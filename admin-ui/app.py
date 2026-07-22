@@ -5695,9 +5695,13 @@ def compliance_client(client_code):
 @app.route("/alerts")
 @login_required
 def alerts():
-    rows = query(
-        "SELECT * FROM shared.compliance_alerts ORDER BY severity, days_until NULLS LAST"
-    )
+    try:
+        rows = query(
+            "SELECT * FROM shared.compliance_alerts ORDER BY severity, days_until NULLS LAST"
+        )
+    except Exception as e:
+        flash(f"Could not load alerts: {e}", "danger")
+        rows = []
     return render_template("alerts.html", alerts=rows)
 
 
