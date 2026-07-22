@@ -323,14 +323,6 @@
           {% endif %}
         </span>
       </a>
-
-      <div class="sidebar-section-label">{{ t('nav.administration') }}</div>
-      <a class="sidebar-link {% if request.endpoint == 'clients' %}active{% endif %}"
-         href="{{ url_for('clients') }}"><i class="bi bi-people"></i><span>{{ t('nav.clients') }}</span></a>
-      <a class="sidebar-link {% if request.endpoint == 'register_server' %}active{% endif %}"
-         href="{{ url_for('register_server') }}"><i class="bi bi-hdd-network"></i><span>{{ t('nav.register_server') }}</span></a>
-<a class="sidebar-link {% if request.endpoint == 'settings' %}active{% endif %}"
-         href="{{ url_for('settings') }}"><i class="bi bi-gear"></i><span>{{ t('nav.alert_settings') }}</span></a>
       {%- set pending_count = pending_assignments_count | default(0) -%}
       <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['assignment_queue','discovery_conflicts','discovery_history','admin_audit','admin_snapshot_view'] %}active{% endif %}"
          href="{{ url_for('assignment_queue') }}" id="operationsFlyoutTrigger"
@@ -340,6 +332,14 @@
         </span>
         <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
       </a>
+
+      <div class="sidebar-section-label">{{ t('nav.administration') }}</div>
+      <a class="sidebar-link {% if request.endpoint == 'clients' %}active{% endif %}"
+         href="{{ url_for('clients') }}"><i class="bi bi-people"></i><span>{{ t('nav.clients') }}</span></a>
+      <a class="sidebar-link {% if request.endpoint == 'register_server' %}active{% endif %}"
+         href="{{ url_for('register_server') }}"><i class="bi bi-hdd-network"></i><span>{{ t('nav.register_server') }}</span></a>
+      <a class="sidebar-link {% if request.endpoint == 'settings' %}active{% endif %}"
+         href="{{ url_for('settings') }}"><i class="bi bi-gear"></i><span>{{ t('nav.alert_settings') }}</span></a>
       {% if is_superadmin %}
       <a class="sidebar-link {% if request.endpoint == 'admin_users' %}active{% endif %}"
          href="{{ url_for('admin_users') }}"><i class="bi bi-person-lock"></i><span>{{ t('nav.users_access') }}</span></a>
