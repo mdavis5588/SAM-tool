@@ -292,7 +292,7 @@
         <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
       </a>
       {% if current_role in ('superadmin', 'contracting') %}
-      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['finops','finops_client'] %}active{% endif %}"
+      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['finops','finops_client','finops_monthly_overview','finops_pool_snapshot_take'] %}active{% endif %}"
          href="{{ url_for('finops') }}" id="billingFlyoutTrigger" data-flyout="billingReportsFlyoutPanel">
         <i class="bi bi-receipt"></i><span>Billing Reports</span>
         <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
@@ -379,6 +379,10 @@
     <a class="sidebar-flyout-item {% if request.endpoint in ['finops','finops_client'] %}active{% endif %}"
        href="{{ url_for('finops') }}">
       <i class="bi bi-bar-chart-steps"></i>Annual Client Totals
+    </a>
+    <a class="sidebar-flyout-item {% if request.endpoint in ['finops_monthly_overview','finops_pool_snapshot_take'] %}active{% endif %}"
+       href="{{ url_for('finops_monthly_overview') }}">
+      <i class="bi bi-calendar-month"></i>Monthly Shared Pool Overview
     </a>
   </div>
 
