@@ -284,11 +284,18 @@
       </a>
       <a class="sidebar-link {% if request.endpoint in ['licence_summary','licence_summary_client','licence_summary_shared'] %}active{% endif %}"
          href="{{ url_for('licence_summary') }}"><i class="bi bi-bar-chart-line"></i><span>{{ t('nav.licence_summary') }}</span></a>
-      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['finops','finops_client','licence_summary_server_costs','cost_optimisation','shared_pool_monthly','finops_ulas','finops_monthly_overview'] %}active{% endif %}"
+      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['finops','finops_client','licence_summary_server_costs','cost_optimisation','shared_pool_monthly','finops_ulas'] %}active{% endif %}"
          href="{{ url_for('finops') }}" id="finopsFlyoutTrigger" data-flyout="sidebarFlyoutPanel">
         <i class="bi bi-currency-dollar"></i><span>{{ t('nav.finops') }}</span>
         <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
       </a>
+      {% if current_role in ('superadmin', 'contracting') %}
+      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['finops_annual_overview','finops_monthly_overview','finops_pool_snapshot_take'] %}active{% endif %}"
+         href="{{ url_for('finops_annual_overview') }}" id="billingFlyoutTrigger" data-flyout="billingReportsFlyoutPanel">
+        <i class="bi bi-receipt"></i><span>Billing Reports</span>
+        <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
+      </a>
+      {% endif %}
       <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['compliance','compliance_client','audit_readiness','vmware','alerts'] %}active{% endif %}"
          href="{{ url_for('compliance') }}" id="complianceFlyoutTrigger"
          data-flyout="complianceFlyoutPanel">
@@ -368,12 +375,21 @@
        href="{{ url_for('shared_pool_monthly') }}">
       <i class="bi bi-calendar3"></i>Shared Pool Monthly
     </a>
-    {% if current_role in ('superadmin', 'contracting') %}
-    <a class="sidebar-flyout-item {% if request.endpoint == 'finops_monthly_overview' %}active{% endif %}"
-       href="{{ url_for('finops_monthly_overview') }}">
-      <i class="bi bi-calendar-month"></i>Monthly Overview
+    <a class="sidebar-flyout-item {% if request.endpoint == 'finops_ulas' %}active{% endif %}"
+       href="{{ url_for('finops_ulas') }}">
+      <i class="bi bi-infinity"></i>ULA Coverage
     </a>
-    {% endif %}
+  </div>
+
+  <div id="billingReportsFlyoutPanel">
+    <a class="sidebar-flyout-item {% if request.endpoint == 'finops_annual_overview' %}active{% endif %}"
+       href="{{ url_for('finops_annual_overview') }}">
+      <i class="bi bi-calendar-check"></i>Annual Client Totals
+    </a>
+    <a class="sidebar-flyout-item {% if request.endpoint in ['finops_monthly_overview','finops_pool_snapshot_take'] %}active{% endif %}"
+       href="{{ url_for('finops_monthly_overview') }}">
+      <i class="bi bi-calendar-month"></i>Monthly Pool Overview
+    </a>
   </div>
 
   <div id="complianceFlyoutPanel">
