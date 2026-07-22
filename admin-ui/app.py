@@ -3270,6 +3270,15 @@ def _client_has_ulas(schema=None):
 @app.route("/finops")
 @login_required
 def finops():
+    schema = get_schema()
+    if schema and schema != "__all__":
+        client = query(
+            "SELECT client_code FROM sam_admin.clients WHERE schema_name = %s AND is_active",
+            (schema,)
+        )
+        if client:
+            return redirect(url_for("finops_client", client_code=client[0]["client_code"]))
+
     clients_list = query(
         "SELECT client_id, client_code, client_name FROM sam_admin.clients "
         "WHERE is_active ORDER BY client_name, client_code"
