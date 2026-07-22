@@ -1,7 +1,10 @@
 -- Migration 12: FinOps shared pool monthly cost snapshots
 -- Records point-in-time shared pool licence usage and cost per client per CSI per month.
 
-CREATE TABLE IF NOT EXISTS sam_admin.finops_pool_snapshots (
+DROP TABLE IF EXISTS sam_admin.finops_pool_snapshot_lines CASCADE;
+DROP TABLE IF EXISTS sam_admin.finops_pool_snapshots CASCADE;
+
+CREATE TABLE sam_admin.finops_pool_snapshots (
   snapshot_id    SERIAL PRIMARY KEY,
   snapshot_month DATE        NOT NULL,   -- first day of month
   taken_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -9,7 +12,7 @@ CREATE TABLE IF NOT EXISTS sam_admin.finops_pool_snapshots (
 );
 
 -- One row per client × CSI combination
-CREATE TABLE IF NOT EXISTS sam_admin.finops_pool_snapshot_lines (
+CREATE TABLE sam_admin.finops_pool_snapshot_lines (
   line_id        SERIAL PRIMARY KEY,
   snapshot_id    INTEGER NOT NULL
                    REFERENCES sam_admin.finops_pool_snapshots(snapshot_id) ON DELETE CASCADE,
@@ -23,8 +26,8 @@ CREATE TABLE IF NOT EXISTS sam_admin.finops_pool_snapshot_lines (
   monthly_cost   NUMERIC NOT NULL DEFAULT 0
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_finops_pool_snap_month
+CREATE UNIQUE INDEX idx_finops_pool_snap_month
   ON sam_admin.finops_pool_snapshots (snapshot_month);
 
-CREATE INDEX IF NOT EXISTS idx_finops_pool_snap_lines
+CREATE INDEX idx_finops_pool_snap_lines
   ON sam_admin.finops_pool_snapshot_lines (snapshot_id);
