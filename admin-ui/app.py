@@ -556,11 +556,11 @@ def admin_audit():
         "FROM sam_admin.clients WHERE is_active ORDER BY client_name"
     )
 
-    # Snapshot list with client name
+    # Licence position snapshots
     try:
         snapshots = query("""
             SELECT s.snapshot_id, s.snapshot_month, s.taken_at, s.taken_by, s.note,
-                   c.client_name, c.client_code,
+                   c.client_name, c.client_code, 'licence_position' AS snap_type,
                    (SELECT COUNT(*) FROM sam_admin.licence_snapshot_lines l
                     WHERE l.snapshot_id = s.snapshot_id) AS line_count
             FROM sam_admin.licence_snapshots s
@@ -569,6 +569,20 @@ def admin_audit():
         """)
     except Exception:
         snapshots = []
+
+    # Client shared pool snapshots
+    try:
+        pool_snapshots = query("""
+            SELECT s.snapshot_id, s.snapshot_month, s.taken_at, s.taken_by, s.note,
+                   c.client_name, c.client_code, 'shared_pool' AS snap_type,
+                   (SELECT COUNT(*) FROM sam_admin.client_pool_snapshot_lines l
+                    WHERE l.snapshot_id = s.snapshot_id) AS line_count
+            FROM sam_admin.client_pool_snapshots s
+            JOIN sam_admin.clients c ON c.client_id = s.client_id
+            ORDER BY s.snapshot_month DESC, c.client_name
+        """)
+    except Exception:
+        pool_snapshots = []
 
     # Audit log — most recent 500 rows
     try:
@@ -587,6 +601,7 @@ def admin_audit():
     return render_template("admin_audit.html",
                            all_clients=all_clients,
                            snapshots=snapshots,
+                           pool_snapshots=pool_snapshots,
                            audit_rows=audit_rows)
 
 
@@ -698,6 +713,79 @@ def admin_snapshot_take():
     return redirect(url_for("admin_audit"))
 
 
+@app.route("/admin/snapshot/pool/take", methods=["POST"])
+@superadmin_required
+def admin_pool_snapshot_take():
+    """Take a shared pool usage snapshot for a specific client."""
+    client_id = request.form.get("client_id")
+    note      = (request.form.get("note") or "").strip() or None
+
+    client = query(
+        "SELECT client_id, client_code, client_name, schema_name "
+        "FROM sam_admin.clients WHERE client_id = %s AND is_active",
+        (client_id,), fetchall=False
+    )
+    if not client:
+        flash("Client not found.", "danger")
+        return redirect(url_for("admin_audit"))
+
+    snap_month = date.today().replace(day=1)
+
+    existing = query(
+        "SELECT snapshot_id FROM sam_admin.client_pool_snapshots "
+        "WHERE client_id = %s AND snapshot_month = %s",
+        (client_id, snap_month), fetchall=False
+    )
+    if existing:
+        flash(f"A shared pool snapshot for {client['client_name']} already exists for "
+              f"{snap_month.strftime('%B %Y')}. Delete it first to retake.", "warning")
+        return redirect(url_for("admin_audit"))
+
+    # Build live shared pool usage for this client only
+    try:
+        client_rows = [r for r in _build_shared_pool_live()
+                       if r["client_code"] == client["client_code"]]
+    except Exception as e:
+        flash(f"Could not read shared pool usage for {client['client_name']}: {e}", "danger")
+        return redirect(url_for("admin_audit"))
+
+    taken_by = current_user().get("username", "admin")
+    line_count = sum(len(r["csi_lines"]) for r in client_rows)
+
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO sam_admin.client_pool_snapshots
+                      (client_id, snapshot_month, taken_by, note)
+                    VALUES (%s, %s, %s, %s) RETURNING snapshot_id
+                """, (client_id, snap_month, taken_by, note))
+                snap_id = cur.fetchone()[0]
+                for c in client_rows:
+                    for ln in c["csi_lines"]:
+                        cur.execute("""
+                            INSERT INTO sam_admin.client_pool_snapshot_lines
+                              (snapshot_id, csi_number, contract_name, product_name,
+                               licences_used, unit_price, monthly_cost)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """, (snap_id, ln["csi_number"], ln["contract_name"],
+                              ln["product_name"], ln["licences_used"],
+                              ln["unit_price"], ln["monthly_cost"]))
+            conn.commit()
+    except Exception as e:
+        flash(f"Shared pool snapshot failed: {e}", "danger")
+        return redirect(url_for("admin_audit"))
+
+    _audit("snapshot.pool.take",
+           entity_type="pool_snapshot", entity_id=snap_id,
+           entity_name=f"{client['client_name']} {snap_month.strftime('%Y-%m')}",
+           client_schema=client["schema_name"])
+
+    flash(f"Shared pool snapshot taken for {client['client_name']} — "
+          f"{snap_month.strftime('%B %Y')} ({line_count} lines).", "success")
+    return redirect(url_for("admin_audit"))
+
+
 @app.route("/admin/snapshot/<int:snapshot_id>")
 @superadmin_required
 def admin_snapshot_view(snapshot_id):
@@ -741,6 +829,25 @@ def admin_snapshot_delete(snapshot_id):
                entity_type="snapshot", entity_id=snapshot_id,
                entity_name=f"{snap['client_name']} {snap['snapshot_month']}")
         flash("Snapshot deleted.", "success")
+    return redirect(url_for("admin_audit"))
+
+
+@app.route("/admin/snapshot/pool/<int:snapshot_id>/delete", methods=["POST"])
+@superadmin_required
+def admin_pool_snapshot_delete(snapshot_id):
+    snap = query(
+        "SELECT s.snapshot_id, c.client_name, s.snapshot_month "
+        "FROM sam_admin.client_pool_snapshots s "
+        "JOIN sam_admin.clients c ON c.client_id = s.client_id "
+        "WHERE s.snapshot_id = %s",
+        (snapshot_id,), fetchall=False
+    )
+    if snap:
+        execute("DELETE FROM sam_admin.client_pool_snapshots WHERE snapshot_id = %s", (snapshot_id,))
+        _audit("snapshot.pool.delete",
+               entity_type="pool_snapshot", entity_id=snapshot_id,
+               entity_name=f"{snap['client_name']} {snap['snapshot_month']}")
+        flash("Shared pool snapshot deleted.", "success")
     return redirect(url_for("admin_audit"))
 
 

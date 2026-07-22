@@ -32,44 +32,84 @@
   <!-- ===== Snapshots Tab ===== -->
   <div class="tab-pane fade show active" id="tab-snapshots">
 
-    <!-- Take snapshot form -->
-    <div class="card mb-4">
-      <div class="card-header fw-semibold"><i class="bi bi-plus-circle me-1"></i>{{ t('admin_audit.take_title') }}</div>
-      <div class="card-body">
-        <form method="post" action="{{ url_for('admin_snapshot_take') }}" class="row g-3 align-items-end">
-          <div class="col-md-4">
-            <label class="form-label">{{ t('label.client') }}</label>
-            <select name="client_id" class="form-select" required>
-              <option value="">— select —</option>
-              {% for c in all_clients %}
-              <option value="{{ c.client_id }}">{{ c.client_name }}</option>
-              {% endfor %}
-            </select>
+    <div class="row g-4 mb-4">
+
+      <!-- Licence Position snapshot form -->
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header fw-semibold">
+            <i class="bi bi-server me-1"></i>Licence Position Snapshot
           </div>
-          <div class="col-md-5">
-            <label class="form-label">{{ t('admin_audit.take_note') }}</label>
-            <input type="text" name="note" class="form-control" placeholder="{{ t('admin_audit.take_note_hint') }}">
+          <div class="card-body">
+            <p class="text-muted small mb-3">Records the full licence position for a client — every server, product, and compliance status.</p>
+            <form method="post" action="{{ url_for('admin_snapshot_take') }}" class="row g-2 align-items-end">
+              <div class="col-12">
+                <label class="form-label">{{ t('label.client') }}</label>
+                <select name="client_id" class="form-select" required>
+                  <option value="">— select —</option>
+                  {% for c in all_clients %}
+                  <option value="{{ c.client_id }}">{{ c.client_name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-12">
+                <label class="form-label">{{ t('admin_audit.take_note') }}</label>
+                <input type="text" name="note" class="form-control" placeholder="{{ t('admin_audit.take_note_hint') }}">
+              </div>
+              <div class="col-12">
+                <button class="btn btn-primary w-100">
+                  <i class="bi bi-camera me-1"></i>{{ t('admin_audit.btn_take') }}
+                </button>
+              </div>
+            </form>
           </div>
-          <div class="col-md-3">
-            <button class="btn btn-primary w-100">
-              <i class="bi bi-camera me-1"></i>{{ t('admin_audit.btn_take') }}
-            </button>
-          </div>
-        </form>
-        <div class="mt-2 small text-muted">
-          {{ t('admin_audit.retention_hint') }}
         </div>
       </div>
+
+      <!-- Shared Pool snapshot form -->
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header fw-semibold">
+            <i class="bi bi-people-fill me-1"></i>Monthly Shared Pool Snapshot
+          </div>
+          <div class="card-body">
+            <p class="text-muted small mb-3">Records the current shared pool licence usage and monthly cost for a client.</p>
+            <form method="post" action="{{ url_for('admin_pool_snapshot_take') }}" class="row g-2 align-items-end">
+              <div class="col-12">
+                <label class="form-label">{{ t('label.client') }}</label>
+                <select name="client_id" class="form-select" required>
+                  <option value="">— select —</option>
+                  {% for c in all_clients %}
+                  <option value="{{ c.client_id }}">{{ c.client_name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-12">
+                <label class="form-label">Note (optional)</label>
+                <input type="text" name="note" class="form-control" placeholder="e.g. end-of-month billing">
+              </div>
+              <div class="col-12">
+                <button class="btn btn-outline-primary w-100">
+                  <i class="bi bi-camera me-1"></i>Take Pool Snapshot
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
     </div>
 
-    <!-- Snapshot list -->
-    {% if snapshots %}
+    <!-- Combined snapshot list -->
+    {% set all_snaps = (snapshots + pool_snapshots) | sort(attribute='snapshot_month', reverse=true) %}
+    {% if all_snaps %}
     <div class="table-responsive">
       <table class="table table-sm table-hover align-middle">
         <thead class="table-light">
           <tr>
             <th>{{ t('admin_audit.col_month') }}</th>
             <th>{{ t('admin_audit.col_client') }}</th>
+            <th>Type</th>
             <th>{{ t('admin_audit.col_lines') }}</th>
             <th>{{ t('admin_audit.col_taken_by') }}</th>
             <th>{{ t('admin_audit.col_taken_at') }}</th>
@@ -78,25 +118,47 @@
           </tr>
         </thead>
         <tbody>
-          {% for s in snapshots %}
+          {% for s in all_snaps %}
           <tr>
             <td class="fw-semibold">{{ s.snapshot_month.strftime('%B %Y') }}</td>
             <td>{{ s.client_name }}</td>
+            <td>
+              {% if s.snap_type == 'shared_pool' %}
+              <span class="badge" style="background:rgba(109,164,236,.15);color:#1a60b0;font-weight:600">
+                <i class="bi bi-people-fill me-1"></i>Shared Pool
+              </span>
+              {% else %}
+              <span class="badge" style="background:rgba(109,40,217,.1);color:#6d28d9;font-weight:600">
+                <i class="bi bi-server me-1"></i>Licence Position
+              </span>
+              {% endif %}
+            </td>
             <td>{{ s.line_count }}</td>
             <td>{{ s.taken_by }}</td>
             <td class="text-muted small">{{ s.taken_at.strftime('%Y-%m-%d %H:%M') }}</td>
             <td class="text-muted small">{{ s.note or '' }}</td>
             <td class="text-end">
+              {% if s.snap_type != 'shared_pool' %}
               <a href="{{ url_for('admin_snapshot_view', snapshot_id=s.snapshot_id) }}"
                  class="btn btn-sm btn-outline-primary me-1">
                 <i class="bi bi-eye"></i>
               </a>
+              {% endif %}
+              {% if s.snap_type == 'shared_pool' %}
+              <form method="post"
+                    action="{{ url_for('admin_pool_snapshot_delete', snapshot_id=s.snapshot_id) }}"
+                    style="display:inline"
+                    onsubmit="return confirm('Delete this shared pool snapshot?')">
+                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+              </form>
+              {% else %}
               <form method="post"
                     action="{{ url_for('admin_snapshot_delete', snapshot_id=s.snapshot_id) }}"
                     style="display:inline"
                     onsubmit="return confirm('{{ t('admin_audit.confirm_delete_snap') }}')">
                 <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
               </form>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}
