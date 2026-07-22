@@ -299,6 +299,7 @@
         <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
       </a>
       {% endif %}
+      <div class="sidebar-section-label">{{ t('nav.compliance') }}</div>
       <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['compliance','compliance_client','audit_readiness','vmware','alerts'] %}active{% endif %}"
          href="{{ url_for('compliance') }}" id="complianceFlyoutTrigger"
          data-flyout="complianceFlyoutPanel">
@@ -306,6 +307,7 @@
         <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
       </a>
 
+      <div class="sidebar-section-label">{{ t('nav.visibility') }}</div>
       <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['visibility_versions','visibility_versions_client','visibility_wls_versions','visibility_licence_history','visibility_licence_history_client'] %}active{% endif %}"
          href="{{ url_for('visibility_versions') }}" id="visibilityFlyoutTrigger"
          data-flyout="visibilityFlyoutPanel">
