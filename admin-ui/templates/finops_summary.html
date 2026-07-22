@@ -190,24 +190,12 @@
   <ul class="nav nav-tabs mb-4">
     <li class="nav-item">
       <a class="nav-link active" href="{{ url_for('finops') }}">
-        <i class="bi bi-bar-chart-steps me-1"></i>{{ t('finops.tab_cost_summary') }}
+        <i class="bi bi-bar-chart-steps me-1"></i>Annual Client Totals
       </a>
     </li>
     <li class="nav-item">
-      <a class="nav-link" href="{{ url_for('licence_summary_server_costs') }}">
-        <i class="bi bi-server me-1"></i>{{ t('nav.server_costs') }}
-      </a>
-    </li>
-    {% if has_ulas %}
-    <li class="nav-item">
-      <a class="nav-link" href="{{ url_for('finops_ulas') }}">
-        <i class="bi bi-infinity me-1"></i>ULA Coverage
-      </a>
-    </li>
-    {% endif %}
-    <li class="nav-item">
-      <a class="nav-link" href="{{ url_for('shared_pool_monthly') }}">
-        <i class="bi bi-calendar3 me-1"></i>Shared Pool Monthly
+      <a class="nav-link" href="{{ url_for('finops_monthly_overview') }}">
+        <i class="bi bi-calendar-month me-1"></i>Monthly Pool Overview
       </a>
     </li>
   </ul>
