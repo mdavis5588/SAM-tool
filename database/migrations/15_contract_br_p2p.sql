@@ -3,8 +3,10 @@ ALTER TABLE shared.csi_contracts
     ADD COLUMN IF NOT EXISTS br_number  TEXT,
     ADD COLUMN IF NOT EXISTS p2p_number TEXT;
 
--- Refresh the summary view so br_number and p2p_number are exposed
-CREATE OR REPLACE VIEW shared.csi_contract_summary AS
+-- Refresh the summary view so br_number and p2p_number are exposed.
+-- Must DROP first because CREATE OR REPLACE cannot change column positions.
+DROP VIEW IF EXISTS shared.csi_contract_summary CASCADE;
+CREATE VIEW shared.csi_contract_summary AS
 WITH line_totals AS (
   SELECT
     csi_id,
@@ -37,8 +39,6 @@ SELECT
   cs.csi_number,
   cs.contract_name,
   cs.vendor_reference,
-  cs.br_number,
-  cs.p2p_number,
   cs.currency,
   cs.purchase_date,
   cs.support_start,
@@ -48,6 +48,8 @@ SELECT
   cs.sharing_policy,
   cs.status,
   cs.notes,
+  cs.br_number,
+  cs.p2p_number,
   oc.client_code                                    AS owning_client,
   oc.client_name                                    AS owning_client_name,
   COALESCE(lt.line_count, 0)                        AS line_count,
