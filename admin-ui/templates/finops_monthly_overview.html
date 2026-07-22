@@ -35,31 +35,47 @@
   .kpi-value.purple { color: var(--s1); }
   .kpi-divider { width: 1px; background: var(--gridline); align-self: stretch; margin: .1rem 0; }
 
-  /* Tables */
-  .mo-table-wrap { overflow-x: auto; }
-  .mo-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
-  .mo-table thead th {
-    font-size: .67rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: .06em; color: var(--text-muted);
-    padding: .45rem .8rem; border-bottom: 2px solid var(--gridline);
-    white-space: nowrap; background: var(--surface);
+  /* Client cards */
+  .client-card {
+    border: 1px solid var(--gridline);
+    border-left: 4px solid var(--s1);
+    border-radius: 8px; overflow: hidden; margin-bottom: .6rem;
   }
-  .mo-table thead th.num { text-align: right; }
-  .mo-table tbody td { padding: .7rem .8rem; border-bottom: 1px solid var(--gridline); vertical-align: middle; color: var(--text-sec); }
-  .mo-table tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .mo-table tbody tr:hover td { background: rgba(109,40,217,.03); }
-  .mo-table tbody tr:last-child td { border-bottom: none; }
-  .mo-table tfoot td { padding: .7rem .8rem; border-top: 2px solid var(--gridline); font-weight: 700; color: var(--text-pri); background: rgba(109,40,217,.04); font-variant-numeric: tabular-nums; }
-  .mo-table tfoot td.num { text-align: right; }
+  .client-header {
+    display: grid; grid-template-columns: 1fr auto auto;
+    align-items: center; gap: 1rem;
+    padding: .85rem 1.1rem;
+    cursor: pointer; background: var(--surface);
+    border: none; width: 100%; text-align: left;
+    transition: background .12s;
+  }
+  .client-header:hover { background: rgba(109,40,217,.04); }
+  .client-header[aria-expanded="true"] { border-bottom: 1px solid var(--gridline); }
+  .client-name-text { font-weight: 700; font-size: .95rem; color: var(--text-pri); }
+  .client-sub { font-size: .72rem; color: var(--text-muted); margin-top: .1rem; }
+  .chevron { color: var(--text-muted); transition: transform .2s; font-size: .85rem; }
+  .client-header[aria-expanded="true"] .chevron { transform: rotate(180deg); }
 
-  .util-bar-track { height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; min-width: 100px; }
-  .util-bar-fill  { height: 100%; border-radius: 3px; background: var(--s1); }
+  .client-total-val { font-size: 1rem; font-weight: 700; color: var(--s1); font-variant-numeric: tabular-nums; text-align: right; }
+  .client-total-sub { font-size: .68rem; color: var(--text-muted); text-align: right; margin-top: .1rem; }
 
-  .client-cell { display: flex; align-items: center; gap: .55rem; }
-  .client-cell a { color: var(--text-pri); text-decoration: none; font-weight: 600; }
-  .client-cell a:hover { color: var(--s1); }
-  .prod-badge { font-size: .65rem; color: var(--text-muted); background: var(--track); border-radius: 20px; padding: .1rem .4rem; white-space: nowrap; }
-  .cost-cell { font-weight: 700; color: var(--s1); font-size: 1rem; }
+  /* CSI table inside each card */
+  .client-detail { padding: .75rem 1.1rem 1rem; background: rgba(109,40,217,.02); }
+  .csi-table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+  .csi-table th {
+    font-size: .67rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--text-muted); padding: .4rem .6rem;
+    border-bottom: 2px solid var(--gridline); text-align: left; white-space: nowrap;
+    background: rgba(109,40,217,.04);
+  }
+  .csi-table th.num { text-align: right; }
+  .csi-table td { padding: .5rem .6rem; border-bottom: 1px solid var(--gridline); color: var(--text-sec); vertical-align: middle; }
+  .csi-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .csi-table tbody tr:hover td { background: rgba(109,40,217,.03); }
+  .csi-table tbody tr:last-child td { border-bottom: none; }
+  .csi-table tfoot td { font-weight: 700; color: var(--text-pri); border-top: 2px solid var(--gridline); padding-top: .5rem; border-bottom: none; background: rgba(109,40,217,.04); }
+  .csi-table tfoot td.num { text-align: right; }
+  .csi-chip { font-size: .7rem; font-weight: 600; padding: .1rem .4rem; border-radius: 4px; background: rgba(109,40,217,.1); color: var(--s1); white-space: nowrap; }
 
   /* FY history */
   .fy-section { margin-top: 2.5rem; }
@@ -70,21 +86,12 @@
     background: var(--surface); border: 1px solid var(--gridline);
     border-radius: 6px; margin-bottom: 1rem;
   }
-  .month-block { margin-bottom: 1.5rem; }
+  .month-block { margin-bottom: 1.75rem; }
   .month-label {
-    font-size: .78rem; font-weight: 700; color: var(--text-sec);
-    margin-bottom: .5rem; display: flex; align-items: center; gap: .5rem;
+    font-size: .82rem; font-weight: 700; color: var(--text-pri);
+    margin-bottom: .6rem; display: flex; align-items: center; gap: .5rem;
   }
   .snap-meta { font-size: .7rem; color: var(--text-muted); font-weight: 400; }
-
-  .snap-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
-  .snap-table th { font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); padding: .35rem .7rem; border-bottom: 1px solid var(--gridline); background: var(--surface); }
-  .snap-table th.num { text-align: right; }
-  .snap-table td { padding: .5rem .7rem; border-bottom: 1px solid var(--gridline); color: var(--text-sec); font-variant-numeric: tabular-nums; }
-  .snap-table td.num { text-align: right; }
-  .snap-table tbody tr:last-child td { border-bottom: none; }
-  .snap-table tfoot td { font-weight: 700; color: var(--text-pri); border-top: 1px solid var(--gridline); padding-top: .5rem; border-bottom: none; background: rgba(109,40,217,.03); }
-  .snap-table tfoot td.num { text-align: right; }
 </style>
 
 <div class="mo-root">
@@ -96,42 +103,24 @@
   </h4>
 </div>
 <p class="text-muted small mb-4">
-  Monthly shared pool cost per client — licences in use × unit price ÷ 12.
+  Monthly shared pool cost per client and CSI — licences in use × unit price ÷ 12.
   <span class="badge" style="background:rgba(109,40,217,.1);color:var(--s1);font-weight:600;font-size:.72rem">Admin / Contracting only</span>
 </p>
 
-{# ── Tab nav ── #}
 <ul class="nav nav-tabs mb-4">
-  <li class="nav-item">
-    <a class="nav-link" href="{{ url_for('finops') }}">
-      <i class="bi bi-bar-chart-steps me-1"></i>Cost Summary
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link" href="{{ url_for('licence_summary_server_costs') }}">
-      <i class="bi bi-server me-1"></i>Server Costs
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link" href="{{ url_for('finops_ulas') }}">
-      <i class="bi bi-infinity me-1"></i>ULA Coverage
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link active" href="#">
-      <i class="bi bi-calendar-month me-1"></i>Monthly Overview
-    </a>
-  </li>
+  <li class="nav-item"><a class="nav-link" href="{{ url_for('finops') }}"><i class="bi bi-bar-chart-steps me-1"></i>Cost Summary</a></li>
+  <li class="nav-item"><a class="nav-link" href="{{ url_for('licence_summary_server_costs') }}"><i class="bi bi-server me-1"></i>Server Costs</a></li>
+  <li class="nav-item"><a class="nav-link" href="{{ url_for('finops_ulas') }}"><i class="bi bi-infinity me-1"></i>ULA Coverage</a></li>
+  <li class="nav-item"><a class="nav-link active" href="#"><i class="bi bi-calendar-month me-1"></i>Monthly Overview</a></li>
 </ul>
 
-{# ── Live section ── #}
+{# ── Live section header ── #}
 <div class="d-flex align-items-center justify-content-between mb-3">
   <h5 class="mb-0">Live — {{ this_month.strftime('%B %Y') }}</h5>
   <form method="POST" action="{{ url_for('finops_pool_snapshot_take') }}" style="display:inline">
     <button type="submit" class="btn btn-sm {% if snapshot_exists %}btn-outline-secondary{% else %}btn-primary{% endif %}"
-            {% if snapshot_exists %}title="A snapshot already exists for this month — submitting will overwrite it"{% endif %}>
-      <i class="bi bi-camera me-1"></i>
-      {% if snapshot_exists %}Re-take Snapshot{% else %}Take Snapshot{% endif %}
+            {% if snapshot_exists %}title="A snapshot exists for this month — submitting will overwrite it"{% endif %}>
+      <i class="bi bi-camera me-1"></i>{% if snapshot_exists %}Re-take Snapshot{% else %}Take Snapshot{% endif %}
     </button>
   </form>
 </div>
@@ -141,8 +130,7 @@
 {% else %}
 
 {% set grand_total    = live_rows | sum(attribute='monthly_cost') %}
-{% set grand_licences = live_rows | sum(attribute='total_licences') %}
-{% set max_cost = (live_rows | sort(attribute='monthly_cost', reverse=true) | first).monthly_cost if live_rows else 1 %}
+{% set grand_licences = live_rows | sum(attribute='total_licences') | int %}
 
 <div class="kpi-strip">
   <div class="kpi">
@@ -161,45 +149,67 @@
   </div>
 </div>
 
-<div class="mo-table-wrap mb-5">
-  <table class="mo-table">
-    <thead>
-      <tr>
-        <th>Client</th>
-        <th class="num">Licences in Use</th>
-        <th>Relative Usage</th>
-        <th class="num">Monthly Cost</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for r in live_rows %}
-      {% set bar_pct = ((r.monthly_cost / max_cost * 100) | round(1)) if max_cost > 0 else 0 %}
-      <tr>
-        <td>
-          <div class="client-cell">
-            <i class="bi bi-building text-muted" style="font-size:.85rem;flex-shrink:0"></i>
-            <a href="{{ url_for('finops_client', client_code=r.client_code) }}">{{ r.client_name }}</a>
-            {% if r.product_count > 0 %}
-            <span class="prod-badge">{{ r.product_count }} product{{ 's' if r.product_count != 1 }}</span>
-            {% endif %}
-          </div>
-        </td>
-        <td class="num"><strong>{{ r.total_licences }}</strong></td>
-        <td><div class="util-bar-track"><div class="util-bar-fill" style="width:{{ bar_pct }}%"></div></div></td>
-        <td class="num"><span class="cost-cell">${{ "{:,.0f}".format(r.monthly_cost) }}</span></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-    <tfoot>
-      <tr>
-        <td>All clients</td>
-        <td class="num">{{ grand_licences }}</td>
-        <td></td>
-        <td class="num">${{ "{:,.0f}".format(grand_total) }}</td>
-      </tr>
-    </tfoot>
-  </table>
+{# ── Live client cards ── #}
+{% for c in live_rows %}
+{% set card_id = "live-" ~ loop.index %}
+<div class="client-card">
+  <button class="client-header" type="button"
+          data-bs-toggle="collapse" data-bs-target="#{{ card_id }}"
+          aria-expanded="true" aria-controls="{{ card_id }}">
+    <div>
+      <div class="client-name-text">
+        <i class="bi bi-building text-muted me-1" style="font-size:.85rem"></i>
+        <a href="{{ url_for('finops_client', client_code=c.client_code) }}"
+           onclick="event.stopPropagation()" style="color:inherit;text-decoration:none">{{ c.client_name }}</a>
+      </div>
+      <div class="client-sub">{{ c.csi_lines | length }} CSI{{ 's' if c.csi_lines | length != 1 }} · {{ c.total_licences | int }} licence{{ 's' if c.total_licences != 1 }} in use</div>
+    </div>
+    <div>
+      <div class="client-total-val">${{ "{:,.0f}".format(c.monthly_cost) }}<span style="font-size:.75rem;font-weight:400;color:var(--text-muted)">/mo</span></div>
+    </div>
+    <i class="bi bi-chevron-down chevron"></i>
+  </button>
+
+  <div class="collapse show" id="{{ card_id }}">
+    <div class="client-detail">
+      <table class="csi-table">
+        <thead>
+          <tr>
+            <th>CSI Number</th>
+            <th>Contract</th>
+            <th>Product</th>
+            <th class="num">Licences in Use</th>
+            <th class="num">Unit Price</th>
+            <th class="num">Monthly Cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ln in c.csi_lines %}
+          <tr>
+            <td><span class="csi-chip">{{ ln.csi_number }}</span></td>
+            <td style="color:var(--text-sec)">{{ ln.contract_name or '—' }}</td>
+            <td style="font-weight:600;color:var(--text-pri)">{{ ln.product_name or '—' }}</td>
+            <td class="num"><strong>{{ ln.licences_used | int }}</strong></td>
+            <td class="num">${{ "{:,.2f}".format(ln.unit_price) }}</td>
+            <td class="num" style="font-weight:700;color:var(--s1)">${{ "{:,.0f}".format(ln.monthly_cost) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        {% if c.csi_lines | length > 1 %}
+        <tfoot>
+          <tr>
+            <td colspan="3">Total</td>
+            <td class="num">{{ c.total_licences | int }}</td>
+            <td class="num"></td>
+            <td class="num">${{ "{:,.0f}".format(c.monthly_cost) }}</td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
+  </div>
 </div>
+{% endfor %}
 {% endif %}
 
 {# ── Historical snapshots ── #}
@@ -214,49 +224,74 @@
   </div>
 
   {% for snap in months %}
-  {% set snap_total    = snap.lines | sum(attribute='monthly_cost') %}
-  {% set snap_licences = snap.lines | sum(attribute='licences_used') %}
-  {% set snap_max = (snap.lines | sort(attribute='monthly_cost', reverse=true) | first).monthly_cost if snap.lines else 1 %}
+  {% set snap_total    = snap.clients | sum(attribute='monthly_cost') %}
+  {% set snap_licences = snap.clients | sum(attribute='total_licences') | int %}
   <div class="month-block">
     <div class="month-label">
       <i class="bi bi-camera text-muted" style="font-size:.8rem"></i>
       {{ snap.snapshot_month.strftime('%B %Y') }}
       <span class="snap-meta">recorded {{ snap.taken_at.strftime('%d %b %Y') }} by {{ snap.taken_by }}</span>
-      <span style="margin-left:auto;font-weight:700;color:var(--s1);font-variant-numeric:tabular-nums">${{ "{:,.0f}".format(snap_total) }}</span>
+      <span style="margin-left:auto;font-weight:700;color:var(--s1);font-variant-numeric:tabular-nums">${{ "{:,.0f}".format(snap_total) }} / mo</span>
     </div>
-    <table class="snap-table">
-      <thead>
-        <tr>
-          <th>Client</th>
-          <th class="num">Licences</th>
-          <th class="num">Monthly Cost</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for ln in snap.lines %}
-        <tr>
-          <td>
-            <i class="bi bi-building text-muted me-1" style="font-size:.8rem"></i>
-            {{ ln.client_name }}
-          </td>
-          <td class="num">{{ ln.licences_used }}</td>
-          <td class="num" style="font-weight:600;color:var(--s1)">${{ "{:,.0f}".format(ln.monthly_cost) }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-      {% if snap.lines | length > 1 %}
-      <tfoot>
-        <tr>
-          <td>Total</td>
-          <td class="num">{{ snap_licences }}</td>
-          <td class="num">${{ "{:,.0f}".format(snap_total) }}</td>
-        </tr>
-      </tfoot>
-      {% endif %}
-    </table>
-  </div>
-  {% endfor %}
 
+    {% for c in snap.clients %}
+    {% set card_id2 = "snap-" ~ loop.index ~ "-" ~ snap.snapshot_month.strftime('%Y%m') %}
+    <div class="client-card" style="margin-bottom:.4rem">
+      <button class="client-header" type="button"
+              data-bs-toggle="collapse" data-bs-target="#{{ card_id2 }}"
+              aria-expanded="false" aria-controls="{{ card_id2 }}">
+        <div>
+          <div class="client-name-text">
+            <i class="bi bi-building text-muted me-1" style="font-size:.85rem"></i>{{ c.client_name }}
+          </div>
+          <div class="client-sub">{{ c.csi_lines | length }} CSI{{ 's' if c.csi_lines | length != 1 }} · {{ c.total_licences | int }} licence{{ 's' if c.total_licences != 1 }}</div>
+        </div>
+        <div>
+          <div class="client-total-val">${{ "{:,.0f}".format(c.monthly_cost) }}<span style="font-size:.75rem;font-weight:400;color:var(--text-muted)">/mo</span></div>
+        </div>
+        <i class="bi bi-chevron-down chevron"></i>
+      </button>
+      <div class="collapse" id="{{ card_id2 }}">
+        <div class="client-detail">
+          <table class="csi-table">
+            <thead>
+              <tr>
+                <th>CSI Number</th>
+                <th>Contract</th>
+                <th>Product</th>
+                <th class="num">Licences</th>
+                <th class="num">Unit Price</th>
+                <th class="num">Monthly Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for ln in c.csi_lines %}
+              <tr>
+                <td><span class="csi-chip">{{ ln.csi_number }}</span></td>
+                <td>{{ ln.contract_name or '—' }}</td>
+                <td style="font-weight:600;color:var(--text-pri)">{{ ln.product_name or '—' }}</td>
+                <td class="num"><strong>{{ ln.licences_used | int }}</strong></td>
+                <td class="num">${{ "{:,.2f}".format(ln.unit_price) }}</td>
+                <td class="num" style="font-weight:700;color:var(--s1)">${{ "{:,.0f}".format(ln.monthly_cost) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            {% if c.csi_lines | length > 1 %}
+            <tfoot>
+              <tr>
+                <td colspan="3">Total</td>
+                <td class="num">{{ c.total_licences | int }}</td>
+                <td class="num"></td>
+                <td class="num">${{ "{:,.0f}".format(c.monthly_cost) }}</td>
+              </tr>
+            </tfoot>
+            {% endif %}
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
   {% endfor %}
 </div>
 {% else %}
@@ -266,4 +301,14 @@
 {% endif %}
 
 </div>
+
+<script>
+  document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(btn => {
+    const target = document.querySelector(btn.dataset.bsTarget);
+    if (target) {
+      target.addEventListener('show.bs.collapse', () => btn.setAttribute('aria-expanded', 'true'));
+      target.addEventListener('hide.bs.collapse', () => btn.setAttribute('aria-expanded', 'false'));
+    }
+  });
+</script>
 {% endblock %}

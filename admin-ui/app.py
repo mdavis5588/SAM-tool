@@ -3030,6 +3030,88 @@ def _build_client_finops(client_id):
     }
 
 
+def _build_shared_pool_live():
+    """Return list of clients with per-CSI shared pool usage for the monthly overview."""
+    shareable_csis = query("""
+        SELECT cs.csi_id, cs.csi_number, cs.contract_name,
+               lel.product_name, lel.unit_price
+        FROM shared.csi_contracts cs
+        JOIN shared.license_entitlement_lines lel ON lel.csi_id = cs.csi_id AND lel.is_active
+        WHERE cs.sharing_policy = 'shareable' AND cs.status = 'active'
+        ORDER BY lel.product_name
+    """) or []
+
+    if not shareable_csis:
+        return []
+
+    csi_meta = {}   # csi_id -> {csi_number, contract_name, product_name, unit_price}
+    for r in shareable_csis:
+        csi_meta[r["csi_id"]] = {
+            "csi_number":    r["csi_number"] or str(r["csi_id"]),
+            "contract_name": r["contract_name"],
+            "product_name":  r["product_name"],
+            "unit_price":    float(r["unit_price"] or 0),
+        }
+    csi_id_list = list(csi_meta.keys())
+
+    clients_list = query(
+        "SELECT client_id, client_code, client_name, schema_name FROM sam_admin.clients "
+        "WHERE is_active ORDER BY client_name, client_code"
+    ) or []
+
+    client_rows = []
+    for c in clients_list:
+        s = c["schema_name"]
+        try:
+            usage = query(f"""
+                SELECT csi_id, COALESCE(SUM(licences_consumed), 0)::numeric AS licences_used
+                FROM {s}.server_csi_map
+                WHERE csi_id = ANY(%s)
+                GROUP BY csi_id
+            """, (csi_id_list,)) or []
+        except Exception:
+            usage = []
+
+        csi_lines = []
+        for u in usage:
+            licences = float(u["licences_used"] or 0)
+            if licences <= 0:
+                continue
+            meta = csi_meta.get(u["csi_id"])
+            if not meta:
+                continue
+            monthly_cost = round(licences * meta["unit_price"] / 12.0, 2)
+            csi_lines.append({
+                "csi_number":    meta["csi_number"],
+                "contract_name": meta["contract_name"],
+                "product_name":  meta["product_name"],
+                "unit_price":    meta["unit_price"],
+                "licences_used": licences,
+                "monthly_cost":  monthly_cost,
+            })
+
+        if not csi_lines:
+            continue
+
+        csi_lines.sort(key=lambda x: -x["monthly_cost"])
+        client_rows.append({
+            "client_id":      c["client_id"],
+            "client_code":    c["client_code"],
+            "client_name":    c["client_name"] or c["client_code"],
+            "csi_lines":      csi_lines,
+            "total_licences": sum(l["licences_used"] for l in csi_lines),
+            "monthly_cost":   round(sum(l["monthly_cost"] for l in csi_lines), 2),
+        })
+
+    client_rows.sort(key=lambda x: -x["monthly_cost"])
+    return client_rows
+
+
+def _fy_label(m):
+    y = m.year if m.month >= 4 else m.year - 1
+    return f"FY {y}/{str(y+1)[-2:]}"
+
+
 @app.route("/finops/monthly-overview")
 @login_required
 def finops_monthly_overview():
@@ -3037,71 +3119,51 @@ def finops_monthly_overview():
         flash("Access restricted.", "danger")
         return redirect(url_for("finops"))
 
-    # Live data — current shared pool usage per client
-    clients_list = query(
-        "SELECT client_id, client_code, client_name FROM sam_admin.clients "
-        "WHERE is_active ORDER BY client_name, client_code"
-    )
-    live_rows = []
-    for c in clients_list:
-        data = _build_client_finops(c["client_id"])
-        if not data:
-            continue
-        shared_lines   = [ln for ln in data["lines"] if ln["source"] == "shareable"]
-        total_licences = sum(ln["assigned_qty"] for ln in shared_lines)
-        monthly_cost   = round(data["total_shared_inuse"] / 12.0, 2)
-        if monthly_cost <= 0 and total_licences <= 0:
-            continue
-        live_rows.append({
-            "client_code":    c["client_code"],
-            "client_name":    c["client_name"] or c["client_code"],
-            "total_licences": total_licences,
-            "monthly_cost":   monthly_cost,
-            "product_count":  len(shared_lines),
-        })
-    live_rows.sort(key=lambda x: -x["monthly_cost"])
+    live_rows = _build_shared_pool_live()
 
-    # Historical snapshots — grouped by FY then month
-    today     = date.today()
-    fy_year   = today.year if today.month >= 4 else today.year - 1
-
-    # Pull all snapshots and their lines
+    # Historical snapshots
     snap_rows = query("""
         SELECT s.snapshot_id, s.snapshot_month, s.taken_at, s.taken_by,
-               l.client_id, l.client_name, l.licences_used, l.monthly_cost
+               l.client_id, l.client_name, l.csi_number, l.contract_name,
+               l.product_name, l.licences_used, l.unit_price, l.monthly_cost
         FROM sam_admin.finops_pool_snapshots s
         JOIN sam_admin.finops_pool_snapshot_lines l ON l.snapshot_id = s.snapshot_id
-        ORDER BY s.snapshot_month DESC, l.monthly_cost DESC
+        ORDER BY s.snapshot_month DESC, l.client_name, l.monthly_cost DESC
     """) or []
 
-    # Group into {snapshot_month -> {snapshot_meta, lines[]}}
+    # Group: month -> {meta, clients: {client_name -> [csi_lines]}}
     snap_map = {}
     for r in snap_rows:
         m = r["snapshot_month"]
         if m not in snap_map:
-            snap_map[m] = {
-                "snapshot_month": m,
-                "taken_at":       r["taken_at"],
-                "taken_by":       r["taken_by"],
-                "lines":          [],
-            }
-        snap_map[m]["lines"].append({
-            "client_name":    r["client_name"],
-            "licences_used":  int(r["licences_used"] or 0),
-            "monthly_cost":   float(r["monthly_cost"] or 0),
+            snap_map[m] = {"snapshot_month": m, "taken_at": r["taken_at"],
+                           "taken_by": r["taken_by"], "clients": {}}
+        clients = snap_map[m]["clients"]
+        cname = r["client_name"]
+        clients.setdefault(cname, []).append({
+            "csi_number":    r["csi_number"],
+            "contract_name": r["contract_name"],
+            "product_name":  r["product_name"],
+            "licences_used": float(r["licences_used"] or 0),
+            "unit_price":    float(r["unit_price"] or 0),
+            "monthly_cost":  float(r["monthly_cost"] or 0),
         })
 
-    # Group months into FYs
-    def _fy_label(m):
-        y = m.year if m.month >= 4 else m.year - 1
-        return f"FY {y}/{str(y+1)[-2:]}"
+    # Convert clients dict to sorted list
+    for snap in snap_map.values():
+        snap["clients"] = sorted(
+            [{"client_name": k, "csi_lines": v,
+              "total_licences": sum(l["licences_used"] for l in v),
+              "monthly_cost": sum(l["monthly_cost"] for l in v)}
+             for k, v in snap["clients"].items()],
+            key=lambda x: -x["monthly_cost"]
+        )
 
     fy_map = {}
     for m, snap in sorted(snap_map.items(), reverse=True):
-        label = _fy_label(m)
-        fy_map.setdefault(label, []).append(snap)
+        fy_map.setdefault(_fy_label(m), []).append(snap)
 
-    # Does a snapshot already exist for the current month?
+    today      = date.today()
     this_month = date(today.year, today.month, 1)
     snapshot_exists = this_month in snap_map
 
@@ -3123,28 +3185,12 @@ def finops_pool_snapshot_take():
     snap_month = date(today.year, today.month, 1)
     taken_by   = current_user().get("username", "admin")
 
-    # Build live rows
-    clients_list = query(
-        "SELECT client_id, client_code, client_name FROM sam_admin.clients "
-        "WHERE is_active ORDER BY client_name, client_code"
-    )
-    lines = []
-    for c in clients_list:
-        data = _build_client_finops(c["client_id"])
-        if not data:
-            continue
-        shared_lines   = [ln for ln in data["lines"] if ln["source"] == "shareable"]
-        total_licences = sum(ln["assigned_qty"] for ln in shared_lines)
-        monthly_cost   = round(data["total_shared_inuse"] / 12.0, 2)
-        if monthly_cost <= 0 and total_licences <= 0:
-            continue
-        lines.append((c["client_id"], c["client_name"] or c["client_code"],
-                      total_licences, monthly_cost))
+    client_rows = _build_shared_pool_live()
+    line_count  = sum(len(c["csi_lines"]) for c in client_rows)
 
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
-                # Upsert the snapshot header (replace if same month)
                 cur.execute("""
                     INSERT INTO sam_admin.finops_pool_snapshots (snapshot_month, taken_by)
                     VALUES (%s, %s)
@@ -3157,14 +3203,19 @@ def finops_pool_snapshot_take():
                     "DELETE FROM sam_admin.finops_pool_snapshot_lines WHERE snapshot_id = %s",
                     (snap_id,)
                 )
-                for client_id, client_name, licences, cost in lines:
-                    cur.execute("""
-                        INSERT INTO sam_admin.finops_pool_snapshot_lines
-                          (snapshot_id, client_id, client_name, licences_used, monthly_cost)
-                        VALUES (%s, %s, %s, %s, %s)
-                    """, (snap_id, client_id, client_name, licences, cost))
+                for c in client_rows:
+                    for ln in c["csi_lines"]:
+                        cur.execute("""
+                            INSERT INTO sam_admin.finops_pool_snapshot_lines
+                              (snapshot_id, client_id, client_name, csi_number,
+                               contract_name, product_name, licences_used, unit_price, monthly_cost)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (snap_id, c["client_id"], c["client_name"],
+                              ln["csi_number"], ln["contract_name"], ln["product_name"],
+                              ln["licences_used"], ln["unit_price"], ln["monthly_cost"]))
             conn.commit()
-        flash(f"Snapshot taken for {snap_month.strftime('%B %Y')} — {len(lines)} client(s) recorded.", "success")
+        flash(f"Snapshot taken for {snap_month.strftime('%B %Y')} — "
+              f"{len(client_rows)} client(s), {line_count} CSI line(s) recorded.", "success")
     except Exception as e:
         flash(f"Snapshot failed: {e}", "danger")
 
