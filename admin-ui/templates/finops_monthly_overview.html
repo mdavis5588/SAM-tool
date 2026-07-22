@@ -123,6 +123,17 @@
     color: var(--text-muted); padding: .9rem .75rem .3rem;
     border-bottom: none; background: transparent;
   }
+  .type-badge {
+    display: inline-flex; align-items: center; gap: .25rem;
+    font-size: .67rem; font-weight: 700; white-space: nowrap;
+    padding: .15rem .45rem; border-radius: 20px;
+  }
+  .type-badge.shared { background: rgba(109,164,236,.15); color: #1a60b0; }
+  .type-badge.locked { background: rgba(109,40,217,.12); color: var(--s1); }
+  @media (prefers-color-scheme: dark) {
+    .type-badge.shared { background: rgba(109,164,236,.18); color: #86b6ef; }
+    .type-badge.locked { background: rgba(124,58,237,.18); color: #a78bfa; }
+  }
 </style>
 
 <div class="mo-root">
@@ -215,6 +226,7 @@
             <th>CSI Number</th>
             <th>Contract</th>
             <th>Product</th>
+            <th>Type</th>
             <th class="num">Licences in Use</th>
             <th class="num">Unit Price</th>
             <th class="num">Monthly Cost</th>
@@ -226,6 +238,7 @@
             <td><span class="csi-chip">{{ ln.csi_number }}</span></td>
             <td style="color:var(--text-sec)">{{ ln.contract_name or '—' }}</td>
             <td style="font-weight:600;color:var(--text-pri)">{{ ln.product_name or '—' }}</td>
+            <td><span class="type-badge shared"><i class="bi bi-people-fill"></i>Shared Pool</span></td>
             <td class="num"><strong>{{ ln.licences_used | int }}</strong></td>
             <td class="num">${{ "{:,.2f}".format(ln.unit_price) }}</td>
             <td class="num" style="font-weight:700;color:var(--s1)">${{ "{:,.0f}".format(ln.monthly_cost) }}</td>
@@ -235,7 +248,7 @@
         {% if c.csi_lines | length > 1 %}
         <tfoot>
           <tr>
-            <td colspan="3">Total</td>
+            <td colspan="4">Total</td>
             <td class="num">{{ c.total_licences | int }}</td>
             <td class="num"></td>
             <td class="num">${{ "{:,.0f}".format(c.monthly_cost) }}</td>
@@ -306,6 +319,7 @@
                       <th>Client</th>
                       <th>CSI</th>
                       <th>Product</th>
+                      <th>Type</th>
                       <th class="num">Licences</th>
                       <th class="num">Unit Price</th>
                       <th class="num">Monthly Cost</th>
@@ -322,6 +336,7 @@
                       {% endif %}
                       <td><span class="csi-chip">{{ ln.csi_number }}</span></td>
                       <td style="color:var(--text-pri)">{{ ln.product_name or '—' }}</td>
+                      <td><span class="type-badge shared"><i class="bi bi-people-fill"></i>Shared Pool</span></td>
                       <td class="num"><strong>{{ ln.licences_used | int }}</strong></td>
                       <td class="num">${{ "{:,.2f}".format(ln.unit_price) }}</td>
                       <td class="num" style="font-weight:700;color:var(--s1)">${{ "{:,.0f}".format(ln.monthly_cost) }}</td>
@@ -331,7 +346,7 @@
                   </tbody>
                   <tfoot>
                     <tr>
-                      <td colspan="3">Total</td>
+                      <td colspan="4">Total</td>
                       <td class="num">{{ snap_licences }}</td>
                       <td class="num"></td>
                       <td class="num">${{ "{:,.0f}".format(snap_total) }}</td>
