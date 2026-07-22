@@ -59,14 +59,18 @@ Each client schema contains identical tables and views:
 
 ```bash
 createdb oracle_sam
-psql oracle_sam -f database/01_admin_schema.sql
+psql oracle_sam -f database/00_full_schema.sql
 psql oracle_sam -f database/02_shared_schema.sql
 psql oracle_sam -f database/03_client_template_functions.sql
 psql oracle_sam -f database/00_init.sql
 ```
 
-`00_init.sql` creates roles, provisions example clients, and seeds sample entitlements.
-Edit it before running to use your real client names and CSI data.
+| File | What it creates |
+|---|---|
+| `00_full_schema.sql` | All `sam_admin` tables, enums, RBAC, audit log, snapshots, FinOps, discovery, VMware — everything in one file |
+| `02_shared_schema.sql` | `shared` schema — CSI contracts, entitlement lines, core factor table |
+| `03_client_template_functions.sql` | Per-client view and function installers called by `provision_client()` |
+| `00_init.sql` | Roles, example clients, seed data — edit before running to use your real client names and CSI data |
 
 > **Upgrading an existing database?** See [Database migrations](#database-migrations) below.
 
@@ -412,6 +416,7 @@ python app.py
 | **Contracts** | CSI contracts, entitlement lines, server consumption |
 | **Renewal Calendar** | Timeline of upcoming support and ULA expiry dates |
 | **FinOps** | Cost summary and per-server support cost breakdown; cost optimisation recommendations |
+| **FinOps → Monthly Overview** | Shared pool cost per client and CSI per month; take and browse historical monthly snapshots grouped by financial year *(admin / contracting only)* |
 | **Licence Summary** | Aggregate licence position across all contracts |
 | **Compliance** | Audit-ready compliance findings |
 | **Audit Readiness** | Five-section audit report: licence gaps, unassigned servers, contract risks, empty contracts, ULA scope violations |
@@ -485,8 +490,11 @@ when `user["auth_method"] == "active_directory"`.
 
 ## Database migrations
 
-Run migration scripts in order when upgrading an existing database. All scripts are
+Run migration scripts in order when upgrading an **existing** database. All scripts are
 safe to re-run.
+
+> **New installs:** Use `database/00_full_schema.sql` — it includes everything below in
+> one file. You do **not** need to run any migration scripts on a fresh database.
 
 ```bash
 psql oracle_sam -f database/migrations/01_java_licence_exemptions.sql
@@ -503,6 +511,7 @@ psql oracle_sam -f database/migrations/10_discovery_runs.sql
 psql oracle_sam -f database/01_admin_schema.sql                # refresh install_client_tables()
 psql oracle_sam -f database/03_client_template_functions.sql   # refresh view installer functions
 psql oracle_sam -f database/migrations/11_refresh_client_functions.sql
+psql oracle_sam -f database/migrations/12_finops_pool_snapshots.sql
 ```
 
 | Script | What it adds |
@@ -518,10 +527,8 @@ psql oracle_sam -f database/migrations/11_refresh_client_functions.sql
 | `08_assignment_queue.sql` | `sam_admin.assignment_requests` — approval workflow for licence assignments |
 | `09_server_dedup.sql` | `sam_admin.register_server()` — 4-priority deduplication; `sam_admin.list_conflicts()` |
 | `10_discovery_runs.sql` | `sam_admin.discovery_runs` table; `sam_admin.log_discovery_run()` function |
-| `11_refresh_client_functions.sql` | Rebuilds all views in every client schema after `03_client_template_functions.sql` is updated (run this after re-sourcing that file) |
-
-> **New installs:** `01_admin_schema.sql` and `02_shared_schema.sql` already include
-> everything above. Migrations are only needed when upgrading an existing database.
+| `11_refresh_client_functions.sql` | Rebuilds all views in every client schema after `03_client_template_functions.sql` is updated |
+| `12_finops_pool_snapshots.sql` | `sam_admin.finops_pool_snapshots` and `finops_pool_snapshot_lines` — FinOps monthly cost history |
 
 ---
 
@@ -535,8 +542,9 @@ SAM-tool/
 │       ├── discover_oracle.yml
 │       └── discover_weblogic.yml
 ├── database/
+│   ├── 00_full_schema.sql                   ★ FRESH INSTALL — all sam_admin tables + migrations consolidated
 │   ├── 00_init.sql                          Roles, sample clients, seed data
-│   ├── 01_admin_schema.sql                  Client registry, provision_client()
+│   ├── 01_admin_schema.sql                  Client registry, provision_client() (legacy — use 00_full_schema.sql)
 │   ├── 02_shared_schema.sql                 CSI entitlements, core factor table
 │   ├── 03_client_template_functions.sql     Per-client views, upsert functions, triggers
 │   ├── 05_migration_per_line_csi.sql        Per-line CSI migration
@@ -544,7 +552,7 @@ SAM-tool/
 │   ├── sample_data_globex.sql               Sample data — client_globex
 │   ├── sample_data_nup.sql                  Sample NUP data — client_acme
 │   ├── sample_data_weblogic.sql             Sample WebLogic data
-│   └── migrations/
+│   └── migrations/                          Run in order only when UPGRADING an existing DB
 │       ├── 01_java_licence_exemptions.sql
 │       ├── 02_vmware_se2_cpu_alerts.sql
 │       ├── 03_merge_tuning_pack_names.sql
@@ -555,7 +563,8 @@ SAM-tool/
 │       ├── 08_assignment_queue.sql
 │       ├── 09_server_dedup.sql
 │       ├── 10_discovery_runs.sql
-│       └── 11_refresh_client_functions.sql
+│       ├── 11_refresh_client_functions.sql
+│       └── 12_finops_pool_snapshots.sql
 ├── admin-ui/
 │   ├── app.py
 │   ├── requirements.txt
