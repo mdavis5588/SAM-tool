@@ -2619,6 +2619,8 @@ def _build_licence_detail(entitlement_rows):
             if _is_compatible_product(r["product_family"], detail or None,
                                       r["product_family"], r["product_name"]):
                 for e in entries:
+                    if not e["consumed"]:
+                        continue
                     h = e["hostname"]
                     product_totals[pname]["servers"][h] = (
                         product_totals[pname]["servers"].get(h, 0) + e["consumed"]
