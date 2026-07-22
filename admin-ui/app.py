@@ -3305,6 +3305,15 @@ def finops():
 @app.route("/finops/<client_code>")
 @login_required
 def finops_client(client_code):
+    schema = get_schema()
+    if schema and schema != "__all__":
+        session_client = query(
+            "SELECT client_code FROM sam_admin.clients WHERE schema_name = %s AND is_active",
+            (schema,), fetchall=False
+        )
+        if session_client and session_client["client_code"] != client_code:
+            return redirect(url_for("finops_client", client_code=session_client["client_code"]))
+
     client = query(
         "SELECT client_id, client_code, client_name FROM sam_admin.clients "
         "WHERE client_code = %s", (client_code,), fetchall=False
