@@ -163,6 +163,7 @@
     /* The menu is rendered as a fixed panel via JS */
     #contractsFlyoutPanel,
     #sidebarFlyoutPanel,
+    #billingReportsFlyoutPanel,
     #complianceFlyoutPanel,
     #visibilityFlyoutPanel,
     #operationsFlyoutPanel {
@@ -179,6 +180,7 @@
     }
     #contractsFlyoutPanel.visible,
     #sidebarFlyoutPanel.visible,
+    #billingReportsFlyoutPanel.visible,
     #complianceFlyoutPanel.visible,
     #visibilityFlyoutPanel.visible,
     #operationsFlyoutPanel.visible { display: block; }
@@ -370,10 +372,6 @@
     </a>
     <a class="sidebar-flyout-item" href="{{ url_for('cost_optimisation') }}">
       <i class="bi bi-lightbulb"></i>{{ t('nav.cost_optimisation') }}
-    </a>
-    <a class="sidebar-flyout-item {% if request.endpoint == 'shared_pool_monthly' %}active{% endif %}"
-       href="{{ url_for('shared_pool_monthly') }}">
-      <i class="bi bi-calendar3"></i>Shared Pool Monthly
     </a>
   </div>
 
