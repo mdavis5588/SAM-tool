@@ -3112,6 +3112,60 @@ def _fy_label(m):
     return f"FY {y}/{str(y+1)[-2:]}"
 
 
+@app.route("/finops/annual-overview")
+@login_required
+def finops_annual_overview():
+    if current_role() not in ("superadmin", "contracting"):
+        flash("Access restricted.", "danger")
+        return redirect(url_for("finops"))
+
+    clients_list = query(
+        "SELECT client_id, client_code, client_name FROM sam_admin.clients "
+        "WHERE is_active ORDER BY client_name, client_code"
+    ) or []
+
+    # Build per-client live shared pool usage for "this month" column
+    try:
+        live_by_client = {
+            r["client_code"]: r["monthly_cost"]
+            for r in _build_shared_pool_live()
+        }
+    except Exception:
+        live_by_client = {}
+
+    rows = []
+    for c in clients_list:
+        try:
+            data = _build_client_finops(c["client_id"])
+        except Exception:
+            data = None
+        if not data:
+            continue
+        rows.append({
+            "client_code":     c["client_code"],
+            "client_name":     c["client_name"] or c["client_code"],
+            "annual_support":  data["total_support"],
+            "shared_fy":       data["shared_pool_fy_cost"],
+            "shared_months":   data["shared_pool_months"],
+            "is_estimated":    data["shared_pool_estimated"],
+            "fy_label":        data["fy_label"],
+            "total_annual":    data["total_client_cost"],
+            "this_month_pool": live_by_client.get(c["client_code"], 0.0),
+        })
+
+    rows.sort(key=lambda x: -x["total_annual"])
+
+    today = date.today()
+    fy_year = today.year if today.month >= 4 else today.year - 1
+    current_fy = f"FY {fy_year}/{str(fy_year + 1)[2:]}"
+
+    return render_template(
+        "finops_annual_overview.html",
+        rows=rows,
+        current_fy=current_fy,
+    )
+
+
 @app.route("/finops/monthly-overview")
 @login_required
 def finops_monthly_overview():
