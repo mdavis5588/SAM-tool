@@ -128,7 +128,7 @@
   </li>
   <li class="nav-item">
     <a class="nav-link" href="{{ url_for('finops_monthly_overview') }}">
-      <i class="bi bi-calendar-month me-1"></i>Monthly Pool Overview
+      <i class="bi bi-calendar-month me-1"></i>Monthly Shared Pool Overview
     </a>
   </li>
 </ul>
@@ -265,7 +265,7 @@
   <strong>Shared Pool (FY)</strong>: actual spend from licence snapshots for {{ current_fy }};
   <em>est.</em> means no snapshot exists yet and the current live usage is shown as an estimate.
   <strong>This Month (live)</strong>: live shared pool usage cost for the current month from
-  <a href="{{ url_for('finops_monthly_overview') }}" style="color:var(--s1)">Monthly Pool Overview</a>.
+  <a href="{{ url_for('finops_monthly_overview') }}" style="color:var(--s1)">Monthly Shared Pool Overview</a>.
 </p>
 
 {% endif %}
