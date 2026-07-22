@@ -5876,11 +5876,13 @@ def healthz():
 @app.context_processor
 def inject_globals():
     today = date.today()
+    schema = get_schema() if session.get("logged_in") else DEFAULT_CLIENT_SCHEMA
     return {
         "today":         today.isoformat(),
         "today_date":    today,
-        "active_schema": get_schema() if session.get("logged_in") else DEFAULT_CLIENT_SCHEMA,
+        "active_schema": schema,
         "all_clients":   get_clients() if session.get("logged_in") else [],
+        "has_ulas":      _client_has_ulas(schema) if session.get("logged_in") else False,
     }
 
 
