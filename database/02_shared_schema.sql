@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS shared.csi_contracts (
   sharing_policy    shared.sharing_policy NOT NULL DEFAULT 'unassigned',
   owning_client_id  INTEGER REFERENCES sam_admin.clients (client_id),
 
+  br_number         TEXT,
+  p2p_number        TEXT,
   notes             TEXT,
   status            shared.license_status NOT NULL DEFAULT 'active',
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),

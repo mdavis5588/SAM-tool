@@ -45,6 +45,8 @@
           <tr><th>CSI Number</th><td><code>{{ contract.csi_number or '—' }}</code></td></tr>
           <tr><th>Contract Name</th><td>{{ contract.contract_name }}</td></tr>
           <tr><th>Vendor Reference</th><td>{{ contract.vendor_reference or '—' }}</td></tr>
+          <tr><th>BR Number</th><td>{{ contract.br_number or '—' }}</td></tr>
+          <tr><th>P2P Number</th><td>{{ contract.p2p_number or '—' }}</td></tr>
           <tr><th>Purchase Date</th><td>{{ contract.purchase_date or '—' }}</td></tr>
           {% if not contract.is_ula %}
           <tr><th>Support Start</th><td>{{ contract.support_start or '—' }}</td></tr>
@@ -61,6 +63,49 @@
             {% endif %}
           </td></tr>
         </table>
+      </div>
+    </div>
+
+    <!-- Reference Numbers -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-hash me-1"></i>Reference Numbers</span>
+        <button class="btn btn-sm btn-outline-secondary" type="button"
+                data-bs-toggle="collapse" data-bs-target="#refsEditArea" aria-expanded="false">
+          <i class="bi bi-pencil"></i> {{ t('action.edit') }}
+        </button>
+      </div>
+      <div class="card-body">
+        <table class="table table-sm table-borderless mb-0">
+          <tr>
+            <th style="width:40%">BR Number</th>
+            <td>{{ contract.br_number or '<span class="text-muted fst-italic">Not set</span>' | safe }}</td>
+          </tr>
+          <tr>
+            <th>P2P Number</th>
+            <td>{{ contract.p2p_number or '<span class="text-muted fst-italic">Not set</span>' | safe }}</td>
+          </tr>
+        </table>
+        <div class="collapse" id="refsEditArea">
+          <hr class="my-2">
+          <form method="POST" action="{{ url_for('contract_save_references', csi_id=contract.csi_id) }}">
+            <div class="mb-2">
+              <label class="form-label form-label-sm mb-1">BR Number</label>
+              <input type="text" name="br_number" class="form-control form-control-sm"
+                     value="{{ contract.br_number or '' }}" placeholder="e.g. BR-2024-00123">
+            </div>
+            <div class="mb-2">
+              <label class="form-label form-label-sm mb-1">P2P Number</label>
+              <input type="text" name="p2p_number" class="form-control form-control-sm"
+                     value="{{ contract.p2p_number or '' }}" placeholder="e.g. P2P-2024-00456">
+            </div>
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-sm btn-primary">{{ t('action.save') }}</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary"
+                      data-bs-toggle="collapse" data-bs-target="#refsEditArea">{{ t('action.cancel') }}</button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
 

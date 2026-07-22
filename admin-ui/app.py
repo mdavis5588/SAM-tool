@@ -4433,6 +4433,27 @@ def contract_save_notes(csi_id):
     return redirect(url_for("contract_detail", csi_id=csi_id))
 
 
+@app.route("/contracts/<int:csi_id>/references", methods=["POST"])
+@login_required
+def contract_save_references(csi_id):
+    br_number  = request.form.get("br_number",  "").strip() or None
+    p2p_number = request.form.get("p2p_number", "").strip() or None
+    old = query(
+        "SELECT br_number, p2p_number FROM shared.csi_contracts WHERE csi_id = %s",
+        (csi_id,), fetchall=False
+    )
+    execute(
+        "UPDATE shared.csi_contracts SET br_number = %s, p2p_number = %s WHERE csi_id = %s",
+        (br_number, p2p_number, csi_id)
+    )
+    _audit("contract.update_references", entity_type="contract", entity_id=csi_id,
+           old_values={"br_number": old["br_number"] if old else None,
+                       "p2p_number": old["p2p_number"] if old else None},
+           new_values={"br_number": br_number, "p2p_number": p2p_number})
+    flash("Reference numbers saved.", "success")
+    return redirect(url_for("contract_detail", csi_id=csi_id))
+
+
 @app.route("/contracts/<int:csi_id>/ula/products", methods=["POST"])
 @login_required
 def ula_save_products(csi_id):
@@ -4602,6 +4623,8 @@ def add_contract():
             csi_number      = request.form.get("csi_number", "").strip() or None
             contract_name   = request.form.get("contract_name", "").strip()
             vendor_ref      = request.form.get("vendor_reference", "").strip() or None
+            br_number       = request.form.get("br_number", "").strip() or None
+            p2p_number      = request.form.get("p2p_number", "").strip() or None
             purchase_date   = request.form.get("purchase_date") or None
             support_start   = request.form.get("support_start") or None
             support_expiry  = request.form.get("support_expiry") or None
@@ -4631,13 +4654,13 @@ def add_contract():
             try:
                 new_row = query("""
                     INSERT INTO shared.csi_contracts
-                      (csi_number, contract_name, vendor_reference,
+                      (csi_number, contract_name, vendor_reference, br_number, p2p_number,
                        purchase_date, support_start, support_expiry,
                        ula_expiry, is_ula,
                        currency, sharing_policy, owning_client_id, notes, status)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::shared.sharing_policy,%s,%s,%s::shared.license_status)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::shared.sharing_policy,%s,%s,%s::shared.license_status)
                     RETURNING csi_id
-                """, (csi_number, contract_name, vendor_ref,
+                """, (csi_number, contract_name, vendor_ref, br_number, p2p_number,
                       purchase_date, support_start, support_expiry,
                       ula_expiry, is_ula,
                       currency, sharing_policy, owning_client_id, notes, status),

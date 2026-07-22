@@ -1082,6 +1082,9 @@ BEGIN
     SELECT 1 FROM information_schema.tables
     WHERE table_schema = 'shared' AND table_name = 'csi_contracts'
   ) THEN
+    -- Migration 15: BR / P2P reference numbers
+    EXECUTE $sql$ ALTER TABLE shared.csi_contracts ADD COLUMN IF NOT EXISTS br_number  TEXT $sql$;
+    EXECUTE $sql$ ALTER TABLE shared.csi_contracts ADD COLUMN IF NOT EXISTS p2p_number TEXT $sql$;
     EXECUTE $sql$
       CREATE TABLE IF NOT EXISTS shared.ula_covered_products (
         id           SERIAL PRIMARY KEY,

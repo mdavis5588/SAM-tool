@@ -89,10 +89,20 @@
     </div>
 
     <div class="row g-3 mb-3">
-      <div class="col-md-6">
+      <div class="col-md-4">
         <div class="field-label">{{ t('add_contract.vendor_reference') }}</div>
         <input type="text" name="vendor_reference" class="form-control" placeholder="PO / Oracle ref">
       </div>
+      <div class="col-md-4">
+        <div class="field-label">BR Number</div>
+        <input type="text" name="br_number" class="form-control" placeholder="e.g. BR-2024-00123">
+      </div>
+      <div class="col-md-4">
+        <div class="field-label">P2P Number</div>
+        <input type="text" name="p2p_number" class="form-control" placeholder="e.g. P2P-2024-00456">
+      </div>
+    </div>
+    <div class="row g-3 mb-3">
       <div class="col-md-3">
         <div class="field-label">Currency</div>
         <select name="currency" class="form-select">

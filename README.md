@@ -542,6 +542,7 @@ psql oracle_sam -f database/migrations/12_finops_pool_snapshots.sql
 psql oracle_sam -f database/migrations/add_client_pool_snapshots.sql
 psql oracle_sam -f database/migrations/13_stale_server_investigations.sql
 psql oracle_sam -f database/migrations/14_decommissioned_servers.sql
+psql oracle_sam -f database/migrations/15_contract_br_p2p.sql
 ```
 
 | Script | What it adds |
@@ -562,6 +563,7 @@ psql oracle_sam -f database/migrations/14_decommissioned_servers.sql
 | `add_client_pool_snapshots.sql` | `sam_admin.client_pool_snapshots` and `client_pool_snapshot_lines` — per-client monthly shared pool snapshots for Audit & Snapshots |
 | `13_stale_server_investigations.sql` | `sam_admin.stale_server_investigations` — tracks assignment and resolution of servers missing for 14+ days |
 | `14_decommissioned_servers.sql` | `sam_admin.decommissioned_servers` — permanent archive of decommissioned servers and their licence snapshots |
+| `15_contract_br_p2p.sql` | `br_number` and `p2p_number` columns on `shared.csi_contracts` |
 
 ---
 
@@ -600,7 +602,8 @@ SAM-tool/
 │       ├── 12_finops_pool_snapshots.sql
 │       ├── add_client_pool_snapshots.sql
 │       ├── 13_stale_server_investigations.sql
-│       └── 14_decommissioned_servers.sql
+│       ├── 14_decommissioned_servers.sql
+│       └── 15_contract_br_p2p.sql
 ├── admin-ui/
 │   ├── app.py
 │   ├── requirements.txt
