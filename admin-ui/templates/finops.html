@@ -1,7 +1,23 @@
 {% extends "base.html" %}
-{% block title %}{{ client.client_name }} — FinOps — Helios{% endblock %}
+{% block title %}{{ (client.client_name if client else client_name) }} — FinOps — Helios{% endblock %}
 
 {% block content %}
+{% if not client %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('finops') }}">FinOps</a></li>
+    <li class="breadcrumb-item active">{{ client_name }}</li>
+  </ol>
+</nav>
+<div class="d-flex align-items-center gap-2 mb-4">
+  <h4 class="mb-0"><i class="bi bi-building me-1"></i>{{ client_name }}</h4>
+  <span class="text-muted small">— Licence Cost Detail</span>
+</div>
+<div class="alert alert-info">
+  <i class="bi bi-info-circle me-2"></i>No cost data found for <strong>{{ client_name }}</strong> yet.
+  Once licences and contracts are configured, the cost summary will appear here.
+</div>
+{% else %}
 <style>
   :root {
     --card-bg:     #ffffff;
@@ -355,4 +371,5 @@
   </div>
 
 </div>
+{% endif %}
 {% endblock %}

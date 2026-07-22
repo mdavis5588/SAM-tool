@@ -3323,8 +3323,9 @@ def finops_client(client_code):
         return redirect(url_for("finops"))
     data = _build_client_finops(client["client_id"])
     if not data:
-        flash("No cost data found for this client.", "warning")
-        return redirect(url_for("finops"))
+        return render_template("finops.html", client=None,
+                               client_name=client["client_name"] or client["client_code"],
+                               client_code=client["client_code"])
     data["client_code"] = client["client_code"]
     data["client_name"] = client["client_name"] or client["client_code"]
     return render_template("finops.html", client=data)
