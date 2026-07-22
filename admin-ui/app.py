@@ -3275,6 +3275,21 @@ def _client_has_ulas(schema=None):
         return True  # fail-open: show the tab rather than hide it on error
 
 
+@app.route("/finops/current")
+@login_required
+def finops_current():
+    """Redirect to the selected client's cost detail, or the overview if all-clients."""
+    schema = get_schema()
+    if schema and schema != "__all__":
+        client = query(
+            "SELECT client_code FROM sam_admin.clients WHERE schema_name = %s AND is_active",
+            (schema,), fetchall=False
+        )
+        if client:
+            return redirect(url_for("finops_client", client_code=client["client_code"]))
+    return redirect(url_for("finops"))
+
+
 @app.route("/finops")
 @login_required
 def finops():
