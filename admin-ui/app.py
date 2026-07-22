@@ -3066,7 +3066,7 @@ def _build_shared_pool_live():
             usage = query(f"""
                 SELECT csi_id, COALESCE(SUM(licences_consumed), 0)::numeric AS licences_used
                 FROM {s}.server_csi_map
-                WHERE csi_id = ANY(%s)
+                WHERE csi_id = ANY(%s::integer[])
                 GROUP BY csi_id
             """, (csi_id_list,)) or []
         except Exception:
@@ -3119,7 +3119,12 @@ def finops_monthly_overview():
         flash("Access restricted.", "danger")
         return redirect(url_for("finops"))
 
-    live_rows = _build_shared_pool_live()
+    try:
+        live_rows = _build_shared_pool_live()
+    except Exception as e:
+        app.logger.exception("finops_monthly_overview: _build_shared_pool_live() failed")
+        flash(f"Error loading live data: {e}", "danger")
+        live_rows = []
 
     # Historical snapshots — gracefully handle missing/old table
     try:
@@ -3134,33 +3139,36 @@ def finops_monthly_overview():
     except Exception:
         snap_rows = []
 
-    # Group: month -> {meta, clients: {client_name -> [csi_lines]}}
+    # Group snap rows: month -> {meta, clients: {client_name -> [csi_lines]}}
     snap_map = {}
-    for r in snap_rows:
-        m = r["snapshot_month"]
-        if m not in snap_map:
-            snap_map[m] = {"snapshot_month": m, "taken_at": r["taken_at"],
-                           "taken_by": r["taken_by"], "clients": {}}
-        clients = snap_map[m]["clients"]
-        cname = r["client_name"]
-        clients.setdefault(cname, []).append({
-            "csi_number":    r["csi_number"],
-            "contract_name": r["contract_name"],
-            "product_name":  r["product_name"],
-            "licences_used": float(r["licences_used"] or 0),
-            "unit_price":    float(r["unit_price"] or 0),
-            "monthly_cost":  float(r["monthly_cost"] or 0),
-        })
+    try:
+        for r in snap_rows:
+            m = r["snapshot_month"]
+            if m not in snap_map:
+                snap_map[m] = {"snapshot_month": m, "taken_at": r["taken_at"],
+                               "taken_by": r["taken_by"], "clients": {}}
+            clients = snap_map[m]["clients"]
+            cname = r["client_name"]
+            clients.setdefault(cname, []).append({
+                "csi_number":    r["csi_number"],
+                "contract_name": r["contract_name"],
+                "product_name":  r["product_name"],
+                "licences_used": float(r["licences_used"] or 0),
+                "unit_price":    float(r["unit_price"] or 0),
+                "monthly_cost":  float(r["monthly_cost"] or 0),
+            })
 
-    # Convert clients dict to sorted list
-    for snap in snap_map.values():
-        snap["clients"] = sorted(
-            [{"client_name": k, "csi_lines": v,
-              "total_licences": sum(l["licences_used"] for l in v),
-              "monthly_cost": sum(l["monthly_cost"] for l in v)}
-             for k, v in snap["clients"].items()],
-            key=lambda x: -x["monthly_cost"]
-        )
+        for snap in snap_map.values():
+            snap["clients"] = sorted(
+                [{"client_name": k, "csi_lines": v,
+                  "total_licences": sum(l["licences_used"] for l in v),
+                  "monthly_cost": sum(l["monthly_cost"] for l in v)}
+                 for k, v in snap["clients"].items()],
+                key=lambda x: -x["monthly_cost"]
+            )
+    except Exception as e:
+        app.logger.exception("finops_monthly_overview: snapshot processing failed")
+        snap_map = {}
 
     fy_map = {}
     for m, snap in sorted(snap_map.items(), reverse=True):
