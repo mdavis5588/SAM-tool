@@ -198,11 +198,13 @@
         <i class="bi bi-server me-1"></i>{{ t('nav.server_costs') }}
       </a>
     </li>
+    {% if has_ulas %}
     <li class="nav-item">
       <a class="nav-link" href="{{ url_for('finops_ulas') }}">
         <i class="bi bi-infinity me-1"></i>ULA Coverage
       </a>
     </li>
+    {% endif %}
     <li class="nav-item">
       <a class="nav-link" href="{{ url_for('shared_pool_monthly') }}">
         <i class="bi bi-calendar3 me-1"></i>Shared Pool Monthly

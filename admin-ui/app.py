@@ -3287,6 +3287,35 @@ def finops_pool_snapshot_take():
     return redirect(url_for("finops_monthly_overview"))
 
 
+def _client_has_ulas(schema=None):
+    """Return True if the given schema's client (or any client if None/'__all__') has ULA contracts."""
+    try:
+        if schema and schema != "__all__":
+            row = query("""
+                SELECT 1 FROM shared.csi_contracts cs
+                WHERE cs.is_ula
+                  AND (
+                    cs.owning_client_id = (
+                        SELECT client_id FROM sam_admin.clients WHERE schema_name = %s
+                    )
+                    OR cs.csi_id IN (
+                        SELECT cm.csi_id FROM shared.csi_client_map cm
+                        JOIN sam_admin.clients cl ON cl.client_id = cm.client_id
+                        WHERE cl.schema_name = %s
+                    )
+                  )
+                LIMIT 1
+            """, (schema, schema), fetchall=False)
+        else:
+            row = query(
+                "SELECT 1 FROM shared.csi_contracts WHERE is_ula LIMIT 1",
+                fetchall=False
+            )
+        return bool(row)
+    except Exception:
+        return True  # fail-open: show the tab rather than hide it on error
+
+
 @app.route("/finops")
 @login_required
 def finops():
@@ -3309,7 +3338,8 @@ def finops():
                 "total_client_cost":  data["total_client_cost"],
                 "product_count":      len(data["lines"]),
             })
-    return render_template("finops_summary.html", summary=summary)
+    has_ulas = _client_has_ulas(get_schema())
+    return render_template("finops_summary.html", summary=summary, has_ulas=has_ulas)
 
 
 @app.route("/finops/<client_code>")
@@ -3408,6 +3438,7 @@ def finops_ulas():
         ulas=ula_list,
         selected_csi=selected_csi,
         selected_ula=selected_ula,
+        has_ulas=True,
     )
 
 
