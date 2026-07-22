@@ -368,7 +368,7 @@
        href="{{ url_for('shared_pool_monthly') }}">
       <i class="bi bi-calendar3"></i>Shared Pool Monthly
     </a>
-    {% if current_role() in ('superadmin', 'contracting') %}
+    {% if current_role in ('superadmin', 'contracting') %}
     <a class="sidebar-flyout-item {% if request.endpoint == 'finops_monthly_overview' %}active{% endif %}"
        href="{{ url_for('finops_monthly_overview') }}">
       <i class="bi bi-calendar-month"></i>Monthly Overview
