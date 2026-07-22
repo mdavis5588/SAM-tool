@@ -122,7 +122,7 @@
 
   {% set grand_total    = rows | sum(attribute='monthly_cost') %}
   {% set grand_licences = rows | sum(attribute='total_licences') %}
-  {% set max_cost       = rows | map(attribute='monthly_cost') | max %}
+  {% set max_cost       = (rows | sort(attribute='monthly_cost', reverse=true) | first).monthly_cost if rows else 1 %}
 
   <div class="kpi-strip">
     <div class="kpi">
