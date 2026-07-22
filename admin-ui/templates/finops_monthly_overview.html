@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+{% block title %}Monthly Cost Overview — FinOps — Helios{% endblock %}
+
+{% block content %}
+<style>
+  .mo-root {
+    --s1:         #6d28d9;
+    --s2:         #6da7ec;
+    --text-pri:   #0b0b0b;
+    --text-sec:   #52514e;
+    --text-muted: #898781;
+    --surface:    #fcfcfb;
+    --gridline:   #e1e0d9;
+    --track:      #e1e0d9;
+  }
+  @media (prefers-color-scheme: dark) {
+    .mo-root {
+      --s1:         #7c3aed;
+      --s2:         #86b6ef;
+      --text-pri:   #ffffff;
+      --text-sec:   #c3c2b7;
+      --text-muted: #898781;
+      --surface:    #1a1a19;
+      --gridline:   #2c2c2a;
+      --track:      #2c2c2a;
+    }
+  }
+
+  /* KPI strip */
+  .kpi-strip {
+    display: flex; gap: 1.25rem; flex-wrap: wrap;
+    margin-bottom: 2rem; padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--gridline);
+  }
+  .kpi { display: flex; flex-direction: column; }
+  .kpi-label {
+    font-size: .68rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .07em; color: var(--text-muted); margin-bottom: .15rem;
+  }
+  .kpi-value {
+    font-size: 1.6rem; font-weight: 700; color: var(--text-pri);
+    line-height: 1; font-variant-numeric: tabular-nums;
+  }
+  .kpi-value.purple { color: var(--s1); }
+  .kpi-divider { width: 1px; background: var(--gridline); align-self: stretch; margin: .1rem 0; }
+
+  /* Legend */
+  .legend-row {
+    display: flex; align-items: center; gap: 1.25rem; margin-bottom: 1.25rem;
+  }
+  .legend-item { display: flex; align-items: center; gap: .4rem; font-size: .78rem; color: var(--text-sec); }
+  .legend-swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+
+  /* Table */
+  .mo-table-wrap { overflow-x: auto; }
+  .mo-table {
+    width: 100%; border-collapse: collapse; font-size: .88rem;
+  }
+  .mo-table thead th {
+    font-size: .67rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--text-muted);
+    padding: .45rem .8rem; border-bottom: 2px solid var(--gridline);
+    white-space: nowrap; background: var(--surface);
+  }
+  .mo-table thead th.num { text-align: right; }
+  .mo-table tbody td {
+    padding: .7rem .8rem; border-bottom: 1px solid var(--gridline);
+    vertical-align: middle; color: var(--text-sec);
+  }
+  .mo-table tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .mo-table tbody tr { transition: background .1s; }
+  .mo-table tbody tr:hover td { background: rgba(109,40,217,.03); }
+  .mo-table tbody tr:last-child td { border-bottom: none; }
+  .mo-table tfoot td {
+    padding: .7rem .8rem; border-top: 2px solid var(--gridline);
+    font-weight: 700; color: var(--text-pri); background: rgba(109,40,217,.04);
+    font-variant-numeric: tabular-nums;
+  }
+  .mo-table tfoot td.num { text-align: right; }
+
+  /* Mini bar */
+  .split-bar {
+    height: 6px; border-radius: 3px;
+    background: var(--track); overflow: hidden;
+    display: flex; margin-top: .35rem; min-width: 120px;
+  }
+  .split-seg { height: 100%; }
+  .split-seg:first-child { border-radius: 3px 0 0 3px; }
+  .split-seg:last-child  { border-radius: 0 3px 3px 0; }
+  .split-seg:only-child  { border-radius: 3px; }
+
+  /* Client name cell */
+  .client-cell { display: flex; align-items: center; gap: .55rem; }
+  .client-cell a { color: var(--text-pri); text-decoration: none; font-weight: 600; }
+  .client-cell a:hover { color: var(--s1); }
+  .prod-badge {
+    font-size: .65rem; color: var(--text-muted); background: var(--track);
+    border-radius: 20px; padding: .1rem .4rem; white-space: nowrap;
+  }
+
+  .total-cell { font-weight: 700; color: var(--s1); font-size: 1rem; }
+</style>
+
+<div class="mo-root">
+
+  <div class="d-flex align-items-baseline gap-2 mb-1">
+    <h4 class="mb-0">
+      <i class="bi bi-calendar-month me-1" style="color:var(--s1)"></i>
+      Monthly Cost Overview
+    </h4>
+  </div>
+  <p class="text-muted small mb-4">
+    Current monthly spend per client — support cost ÷ 12 plus live shared pool usage ÷ 12.
+    <span class="badge" style="background:rgba(109,40,217,.1);color:var(--s1);font-weight:600;font-size:.72rem">Admin / Contracting only</span>
+  </p>
+
+  {# ── Tab nav ── #}
+  <ul class="nav nav-tabs mb-4">
+    <li class="nav-item">
+      <a class="nav-link" href="{{ url_for('finops') }}">
+        <i class="bi bi-bar-chart-steps me-1"></i>Cost Summary
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="{{ url_for('licence_summary_server_costs') }}">
+        <i class="bi bi-server me-1"></i>Server Costs
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="{{ url_for('finops_ulas') }}">
+        <i class="bi bi-infinity me-1"></i>ULA Coverage
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link active" href="#">
+        <i class="bi bi-calendar-month me-1"></i>Monthly Overview
+      </a>
+    </li>
+  </ul>
+
+  {% if not rows %}
+  <div class="alert alert-info">No cost data available.</div>
+  {% else %}
+
+  {% set grand_total    = rows | sum(attribute='monthly_total') %}
+  {% set grand_support  = rows | sum(attribute='monthly_support') %}
+  {% set grand_shared   = rows | sum(attribute='monthly_shared') %}
+  {% set grand_licences = rows | sum(attribute='total_licences') %}
+
+  {# ── KPI strip ── #}
+  <div class="kpi-strip">
+    <div class="kpi">
+      <span class="kpi-label">Total Monthly Spend</span>
+      <span class="kpi-value purple">${{ "{:,.0f}".format(grand_total) }}</span>
+    </div>
+    <div class="kpi-divider"></div>
+    <div class="kpi">
+      <span class="kpi-label">Monthly Support</span>
+      <span class="kpi-value">${{ "{:,.0f}".format(grand_support) }}</span>
+    </div>
+    <div class="kpi-divider"></div>
+    <div class="kpi">
+      <span class="kpi-label">Monthly Shared Pool</span>
+      <span class="kpi-value">${{ "{:,.0f}".format(grand_shared) }}</span>
+    </div>
+    <div class="kpi-divider"></div>
+    <div class="kpi">
+      <span class="kpi-label">Total Licences in Use</span>
+      <span class="kpi-value">{{ grand_licences }}</span>
+    </div>
+    <div class="kpi-divider"></div>
+    <div class="kpi">
+      <span class="kpi-label">Clients</span>
+      <span class="kpi-value">{{ rows | length }}</span>
+    </div>
+  </div>
+
+  {# ── Legend ── #}
+  <div class="legend-row">
+    <span class="text-muted small fw-semibold me-1">Cost breakdown</span>
+    <div class="legend-item">
+      <span class="legend-swatch" style="background:var(--s1)"></span>
+      Support (locked licences ÷ 12)
+    </div>
+    <div class="legend-item">
+      <span class="legend-swatch" style="background:var(--s2)"></span>
+      Shared pool (live usage ÷ 12)
+    </div>
+  </div>
+
+  {# ── Table ── #}
+  <div class="mo-table-wrap">
+    <table class="mo-table">
+      <thead>
+        <tr>
+          <th>Client</th>
+          <th class="num">Licences in Use</th>
+          <th>Cost Split</th>
+          <th class="num">Monthly Support</th>
+          <th class="num">Monthly Shared Pool</th>
+          <th class="num">Monthly Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        {% set support_pct = ((r.monthly_support / r.monthly_total * 100) | round(1)) if r.monthly_total > 0 else 0 %}
+        {% set shared_pct  = ((r.monthly_shared  / r.monthly_total * 100) | round(1)) if r.monthly_total > 0 else 0 %}
+        <tr>
+          <td>
+            <div class="client-cell">
+              <i class="bi bi-building text-muted" style="font-size:.85rem;flex-shrink:0"></i>
+              <a href="{{ url_for('finops_client', client_code=r.client_code) }}">{{ r.client_name }}</a>
+              <span class="prod-badge">{{ r.product_count }}p</span>
+            </div>
+          </td>
+          <td class="num">
+            <strong>{{ r.total_licences }}</strong>
+          </td>
+          <td>
+            <div class="split-bar">
+              {% if support_pct > 0 %}
+              <div class="split-seg" style="width:{{ support_pct }}%;background:var(--s1)"></div>
+              {% endif %}
+              {% if shared_pct > 0 %}
+              <div class="split-seg" style="width:{{ shared_pct }}%;background:var(--s2)"></div>
+              {% endif %}
+            </div>
+          </td>
+          <td class="num">
+            {% if r.monthly_support > 0 %}${{ "{:,.0f}".format(r.monthly_support) }}{% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td class="num">
+            {% if r.monthly_shared > 0 %}${{ "{:,.0f}".format(r.monthly_shared) }}{% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td class="num">
+            <span class="total-cell">${{ "{:,.0f}".format(r.monthly_total) }}</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2">All clients</td>
+          <td></td>
+          <td class="num">${{ "{:,.0f}".format(grand_support) }}</td>
+          <td class="num">${{ "{:,.0f}".format(grand_shared) }}</td>
+          <td class="num">${{ "{:,.0f}".format(grand_total) }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -3030,6 +3030,39 @@ def _build_client_finops(client_id):
     }
 
 
+@app.route("/finops/monthly-overview")
+@login_required
+def finops_monthly_overview():
+    if current_role() not in ("superadmin", "contracting"):
+        flash("Access restricted.", "danger")
+        return redirect(url_for("finops"))
+
+    clients_list = query(
+        "SELECT client_id, client_code, client_name FROM sam_admin.clients "
+        "WHERE is_active ORDER BY client_name, client_code"
+    )
+    rows = []
+    for c in clients_list:
+        data = _build_client_finops(c["client_id"])
+        if not data:
+            continue
+        total_licences = sum(ln["assigned_qty"] for ln in data["lines"])
+        monthly_support = round(data["total_support"] / 12.0, 2)
+        monthly_shared  = round(data["total_shared_inuse"] / 12.0, 2)
+        monthly_total   = round(monthly_support + monthly_shared, 2)
+        rows.append({
+            "client_code":      c["client_code"],
+            "client_name":      c["client_name"] or c["client_code"],
+            "total_licences":   total_licences,
+            "monthly_support":  monthly_support,
+            "monthly_shared":   monthly_shared,
+            "monthly_total":    monthly_total,
+            "product_count":    len(data["lines"]),
+        })
+    rows.sort(key=lambda x: -x["monthly_total"])
+    return render_template("finops_monthly_overview.html", rows=rows)
+
+
 @app.route("/finops")
 @login_required
 def finops():
