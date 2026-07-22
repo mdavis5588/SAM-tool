@@ -161,6 +161,7 @@
     .sidebar-flyout-trigger:hover .sidebar-flyout-arrow,
     .sidebar-flyout-trigger.flyout-open .sidebar-flyout-arrow { transform: rotate(90deg); opacity: 1; }
     /* The menu is rendered as a fixed panel via JS */
+    #serversFlyoutPanel,
     #contractsFlyoutPanel,
     #sidebarFlyoutPanel,
     #billingReportsFlyoutPanel,
@@ -178,6 +179,7 @@
       z-index: 2000;
       box-shadow: 4px 4px 16px rgba(0,0,0,.35);
     }
+    #serversFlyoutPanel.visible,
     #contractsFlyoutPanel.visible,
     #sidebarFlyoutPanel.visible,
     #billingReportsFlyoutPanel.visible,
@@ -512,7 +514,7 @@
 
     function showFlyout() {
       // Hide any other open panels first
-      document.querySelectorAll('#contractsFlyoutPanel,#sidebarFlyoutPanel,#complianceFlyoutPanel,#visibilityFlyoutPanel,#operationsFlyoutPanel').forEach(p => {
+      document.querySelectorAll('#serversFlyoutPanel,#contractsFlyoutPanel,#sidebarFlyoutPanel,#billingReportsFlyoutPanel,#complianceFlyoutPanel,#visibilityFlyoutPanel,#operationsFlyoutPanel').forEach(p => {
         if (p !== panel) p.classList.remove('visible');
       });
       document.querySelectorAll('.sidebar-flyout-trigger').forEach(t => {
