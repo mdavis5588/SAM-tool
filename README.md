@@ -404,6 +404,29 @@ pip install -r requirements.txt
 python app.py
 ```
 
+### Sidebar sections
+
+The sidebar is divided into named sections. Some sections are role-gated:
+
+| Section | Who sees it | Contents |
+|---|---|---|
+| *(top)* | All | Executive Summary |
+| **Inventory** | All | Servers |
+| **Licensing** | All | Contracts, Licence Summary, FinOps (cost / server costs / optimisation) |
+| **Billing** | superadmin, contracting | Billing Reports flyout (Annual Client Totals + Monthly Shared Pool Overview) |
+| **Compliance** | All | Compliance, Audit Readiness, VMware |
+| **Visibility** | All | Version Lifecycle, Licence History |
+| **Administration** | superadmin | Clients, Register Server, Users & Access, Audit & Snapshots, Discovery History/Conflicts |
+
+### Client switcher
+
+The top-right client switcher scopes most pages to a single client. Key behaviours:
+
+- **FinOps → Cost Summary** (via the FinOps sidebar link) — jumps directly to the selected client's Licence Cost Detail page. Falls back to the all-clients overview when "All Clients" is selected.
+- **Billing Reports → Annual Client Totals** — always shows the full all-clients list regardless of switcher state, so you can click through to any client.
+- **Server Costs** — filters to the selected client's servers only.
+- **ULA Coverage tab** — hidden automatically when the selected client has no ULA contracts.
+
 ### Pages
 
 | Page | Description |
@@ -415,8 +438,12 @@ python app.py
 | **WebLogic Servers** | WebLogic domain inventory with licence position |
 | **Contracts** | CSI contracts, entitlement lines, server consumption |
 | **Renewal Calendar** | Timeline of upcoming support and ULA expiry dates |
-| **FinOps** | Cost summary and per-server support cost breakdown; cost optimisation recommendations |
-| **FinOps → Monthly Overview** | Shared pool cost per client and CSI per month; take and browse historical monthly snapshots grouped by financial year *(admin / contracting only)* |
+| **FinOps → Cost Summary** | Per-client licence cost breakdown — client-locked annual support vs. shared pool, product-by-product utilisation |
+| **FinOps → Server Costs** | Per-server licence cost breakdown scoped to the selected client |
+| **FinOps → Cost Optimisation** | Recommendations for reducing licence spend — unused lines, low-utilisation contracts, ULA candidates |
+| **FinOps → ULA Coverage** | ULA contracts — assigned servers, product licence requirements, expiry status *(hidden when client has no ULAs)* |
+| **Billing Reports → Annual Client Totals** | All-clients cost overview — annual support + shared pool FY cost per client; click any client to drill into their detail *(superadmin / contracting only)* |
+| **Billing Reports → Monthly Shared Pool Overview** | Shared pool usage per client and CSI for the current month; scannable month-by-month history table (click a row to expand per-client/CSI detail); take and re-take monthly snapshots *(superadmin / contracting only)* |
 | **Licence Summary** | Aggregate licence position across all contracts |
 | **Compliance** | Audit-ready compliance findings |
 | **Audit Readiness** | Five-section audit report: licence gaps, unassigned servers, contract risks, empty contracts, ULA scope violations |
@@ -429,7 +456,7 @@ python app.py
 | **LMS Export** | Download a 10-sheet Excel audit workbook |
 | **Settings** | Configure email, Slack, and Teams alert channels |
 | **Administration → Users & Access** | Create/manage users, assign roles and client scope *(superadmin only)* |
-| **Administration → Audit & Snapshots** | Take/view licence snapshots; browse user activity audit trail *(superadmin only)* |
+| **Administration → Audit & Snapshots** | Take/view licence snapshots and shared pool snapshots; browse user activity audit trail *(superadmin only)* |
 
 The UI supports **English and French** — toggle in the top navigation bar.
 
@@ -512,6 +539,7 @@ psql oracle_sam -f database/01_admin_schema.sql                # refresh install
 psql oracle_sam -f database/03_client_template_functions.sql   # refresh view installer functions
 psql oracle_sam -f database/migrations/11_refresh_client_functions.sql
 psql oracle_sam -f database/migrations/12_finops_pool_snapshots.sql
+psql oracle_sam -f database/migrations/add_client_pool_snapshots.sql
 ```
 
 | Script | What it adds |
@@ -529,6 +557,7 @@ psql oracle_sam -f database/migrations/12_finops_pool_snapshots.sql
 | `10_discovery_runs.sql` | `sam_admin.discovery_runs` table; `sam_admin.log_discovery_run()` function |
 | `11_refresh_client_functions.sql` | Rebuilds all views in every client schema after `03_client_template_functions.sql` is updated |
 | `12_finops_pool_snapshots.sql` | `sam_admin.finops_pool_snapshots` and `finops_pool_snapshot_lines` — FinOps monthly cost history |
+| `add_client_pool_snapshots.sql` | `sam_admin.client_pool_snapshots` and `client_pool_snapshot_lines` — per-client monthly shared pool snapshots for Audit & Snapshots |
 
 ---
 
@@ -564,7 +593,8 @@ SAM-tool/
 │       ├── 09_server_dedup.sql
 │       ├── 10_discovery_runs.sql
 │       ├── 11_refresh_client_functions.sql
-│       └── 12_finops_pool_snapshots.sql
+│       ├── 12_finops_pool_snapshots.sql
+│       └── add_client_pool_snapshots.sql
 ├── admin-ui/
 │   ├── app.py
 │   ├── requirements.txt
