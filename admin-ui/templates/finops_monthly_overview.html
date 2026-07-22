@@ -163,15 +163,7 @@
 </ul>
 
 {# ── Live section header ── #}
-<div class="d-flex align-items-center justify-content-between mb-3">
-  <h5 class="mb-0">Live — {{ this_month.strftime('%B %Y') }}</h5>
-  <form method="POST" action="{{ url_for('finops_pool_snapshot_take') }}" style="display:inline">
-    <button type="submit" class="btn btn-sm {% if snapshot_exists %}btn-outline-secondary{% else %}btn-primary{% endif %}"
-            {% if snapshot_exists %}title="A snapshot exists for this month — submitting will overwrite it"{% endif %}>
-      <i class="bi bi-camera me-1"></i>{% if snapshot_exists %}Re-take Snapshot{% else %}Take Snapshot{% endif %}
-    </button>
-  </form>
-</div>
+<h5 class="mb-3">Live — {{ this_month.strftime('%B %Y') }}</h5>
 
 {% if not live_rows %}
 <div class="alert alert-info mb-4">No shared pool usage found across any clients.</div>
@@ -366,7 +358,7 @@
 </div>
 {% else %}
 <div class="text-muted small mt-4">
-  <i class="bi bi-info-circle me-1"></i>No historical snapshots yet — click <strong>Take Snapshot</strong> above to record this month's data.
+  <i class="bi bi-info-circle me-1"></i>No historical snapshots yet. Use <strong>Audit &amp; Snapshots</strong> in Operations to record a snapshot.
 </div>
 {% endif %}
 
