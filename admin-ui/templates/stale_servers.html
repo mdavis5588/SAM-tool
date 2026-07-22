@@ -23,6 +23,27 @@
   {% endfor %}
 {% endwith %}
 
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-3" id="staleTabs">
+  <li class="nav-item">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-stale">
+      <i class="bi bi-exclamation-triangle me-1"></i>Active Stale
+      <span class="badge bg-secondary ms-1">{{ rows|length }}</span>
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-archive">
+      <i class="bi bi-archive me-1"></i>Decommissioned Archive
+      <span class="badge bg-secondary ms-1">{{ decomm_rows|length }}</span>
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content">
+
+<!-- ===== Active Stale Tab ===== -->
+<div class="tab-pane fade show active" id="tab-stale">
+
 {% if not rows %}
 <div class="alert alert-success d-flex align-items-center gap-2">
   <i class="bi bi-check-circle-fill fs-5"></i>
@@ -31,19 +52,16 @@
 {% else %}
 
 <!-- Summary tiles -->
-{% set open_count      = rows | selectattr('investigation') | selectattr('investigation.status', 'equalto', 'open')        | list | length %}
-{% set progress_count  = rows | selectattr('investigation') | selectattr('investigation.status', 'equalto', 'in_progress') | list | length %}
-{% set unassigned      = rows | selectattr('investigation', 'none') | list | length %}
+{% set open_count     = rows | selectattr('investigation') | selectattr('investigation.status', 'equalto', 'open')        | list | length %}
+{% set progress_count = rows | selectattr('investigation') | selectattr('investigation.status', 'equalto', 'in_progress') | list | length %}
+{% set unassigned     = rows | selectattr('investigation', 'none') | list | length %}
 
 <div class="row g-3 mb-4">
   <div class="col-sm-4">
     <div class="card border-0 bg-warning bg-opacity-10 h-100">
       <div class="card-body py-3 d-flex align-items-center gap-3">
         <i class="bi bi-question-circle-fill text-warning fs-3"></i>
-        <div>
-          <div class="fw-bold fs-5">{{ unassigned }}</div>
-          <div class="text-muted small">Unassigned</div>
-        </div>
+        <div><div class="fw-bold fs-5">{{ unassigned }}</div><div class="text-muted small">Unassigned</div></div>
       </div>
     </div>
   </div>
@@ -51,10 +69,7 @@
     <div class="card border-0 bg-primary bg-opacity-10 h-100">
       <div class="card-body py-3 d-flex align-items-center gap-3">
         <i class="bi bi-person-fill text-primary fs-3"></i>
-        <div>
-          <div class="fw-bold fs-5">{{ open_count + progress_count }}</div>
-          <div class="text-muted small">Assigned / In Progress</div>
-        </div>
+        <div><div class="fw-bold fs-5">{{ open_count + progress_count }}</div><div class="text-muted small">Assigned / In Progress</div></div>
       </div>
     </div>
   </div>
@@ -62,10 +77,7 @@
     <div class="card border-0 bg-secondary bg-opacity-10 h-100">
       <div class="card-body py-3 d-flex align-items-center gap-3">
         <i class="bi bi-server text-secondary fs-3"></i>
-        <div>
-          <div class="fw-bold fs-5">{{ rows|length }}</div>
-          <div class="text-muted small">Total Stale</div>
-        </div>
+        <div><div class="fw-bold fs-5">{{ rows|length }}</div><div class="text-muted small">Total Stale</div></div>
       </div>
     </div>
   </div>
@@ -114,11 +126,7 @@
           </a>
         </td>
         <td class="small text-muted">{{ r._client_name }}</td>
-        <td>
-          {% if r.environment %}
-          <span class="badge bg-secondary">{{ r.environment }}</span>
-          {% endif %}
-        </td>
+        <td>{% if r.environment %}<span class="badge bg-secondary">{{ r.environment }}</span>{% endif %}</td>
         <td class="small">{{ r.datacenter or '—' }}</td>
         <td class="small {% if r.days_missing > 30 %}text-danger fw-semibold{% elif r.days_missing > 21 %}text-warning{% else %}text-muted{% endif %}">
           {{ r.last_seen.strftime('%Y-%m-%d') if r.last_seen else '—' }}
@@ -140,25 +148,21 @@
           <span class="badge bg-secondary">{{ inv.status | title }}</span>
           {% endif %}
         </td>
-        <td class="small text-muted" style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+        <td class="small text-muted" style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
           {{ inv.notes if inv and inv.notes else '' }}
         </td>
         <td class="text-end text-nowrap">
           {% if not inv %}
-          <!-- Open investigation -->
-          <button class="btn btn-sm btn-outline-warning"
+          <button class="btn btn-sm btn-outline-warning me-1"
                   data-bs-toggle="modal" data-bs-target="#investigateModal"
                   data-schema="{{ r._client_schema }}"
                   data-server-id="{{ r.server_id }}"
                   data-hostname="{{ r.hostname }}"
-                  data-inv-id=""
-                  data-assigned=""
-                  data-status="open"
-                  data-notes="">
+                  data-inv-id="" data-assigned="" data-status="open" data-notes="">
             <i class="bi bi-person-plus me-1"></i>Assign
           </button>
           {% else %}
-          <button class="btn btn-sm btn-outline-secondary"
+          <button class="btn btn-sm btn-outline-secondary me-1"
                   data-bs-toggle="modal" data-bs-target="#investigateModal"
                   data-schema="{{ r._client_schema }}"
                   data-server-id="{{ r.server_id }}"
@@ -170,6 +174,16 @@
             <i class="bi bi-pencil me-1"></i>Update
           </button>
           {% endif %}
+          <button class="btn btn-sm btn-outline-danger"
+                  data-bs-toggle="modal" data-bs-target="#decommissionModal"
+                  data-schema="{{ r._client_schema }}"
+                  data-server-id="{{ r.server_id }}"
+                  data-hostname="{{ r.hostname }}"
+                  data-client="{{ r._client_name }}"
+                  data-last-seen="{{ r.last_seen.strftime('%Y-%m-%d') if r.last_seen else 'unknown' }}"
+                  data-inv-notes="{{ inv.notes if inv and inv.notes else '' }}">
+            <i class="bi bi-trash me-1"></i>Decommission
+          </button>
         </td>
       </tr>
       {% endfor %}
@@ -177,8 +191,78 @@
   </table>
 </div>
 {% endif %}
+</div><!-- /tab-stale -->
 
-<!-- Assign / Update Modal -->
+<!-- ===== Decommissioned Archive Tab ===== -->
+<div class="tab-pane fade" id="tab-archive">
+
+  {% if not decomm_rows %}
+  <p class="text-muted">No servers have been decommissioned yet.</p>
+  {% else %}
+
+  <div class="row g-2 mb-3">
+    <div class="col-md-4">
+      <input type="text" id="archiveSearch" class="form-control form-control-sm" placeholder="Filter by hostname, client…">
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle" id="archiveTable">
+      <thead class="table-light">
+        <tr>
+          <th>Hostname</th>
+          <th>Client</th>
+          <th>Environment</th>
+          <th>Datacenter</th>
+          <th>First Seen</th>
+          <th>Last Seen</th>
+          <th>Licences Released</th>
+          <th>Decommissioned</th>
+          <th>By</th>
+          <th>Notes</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in decomm_rows %}
+        {% set snap = d.licence_snapshot if d.licence_snapshot is string else d.licence_snapshot | tojson %}
+        <tr data-search="{{ d.hostname }} {{ d.client_name }}">
+          <td class="fw-semibold">{{ d.hostname }}</td>
+          <td class="small text-muted">{{ d.client_name }}</td>
+          <td>{% if d.environment %}<span class="badge bg-secondary">{{ d.environment }}</span>{% endif %}</td>
+          <td class="small">{{ d.datacenter or '—' }}</td>
+          <td class="small text-muted">{{ d.first_seen.strftime('%Y-%m-%d') if d.first_seen else '—' }}</td>
+          <td class="small text-muted">{{ d.last_seen.strftime('%Y-%m-%d') if d.last_seen else '—' }}</td>
+          <td class="text-center">
+            {% set snap_list = d.licence_snapshot %}
+            <span class="badge bg-secondary">{{ snap_list | length if snap_list is iterable and snap_list is not string else '?' }}</span>
+          </td>
+          <td class="small text-muted text-nowrap">{{ d.decommissioned_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td class="small">{{ d.decommissioned_by }}</td>
+          <td class="small text-muted" style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            {{ d.notes or '' }}
+          </td>
+          <td class="text-end">
+            {% if d.licence_snapshot %}
+            <button class="btn btn-sm btn-outline-secondary"
+                    data-bs-toggle="modal" data-bs-target="#licenceSnapshotModal"
+                    data-hostname="{{ d.hostname }}"
+                    data-snap='{{ d.licence_snapshot | tojson }}'>
+              <i class="bi bi-eye"></i>
+            </button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div><!-- /tab-archive -->
+
+</div><!-- /tab-content -->
+
+<!-- ===== Assign / Update Modal ===== -->
 <div class="modal fade" id="investigateModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -186,7 +270,6 @@
         <h5 class="modal-title"><i class="bi bi-search me-2"></i><span id="modalTitle">Assign Investigation</span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
-      <!-- New investigation form -->
       <form id="openForm" method="post" action="{{ url_for('stale_investigate_open') }}">
         <input type="hidden" name="client_schema" id="f_schema">
         <input type="hidden" name="server_id"    id="f_server_id">
@@ -204,8 +287,7 @@
           </div>
           <div class="mb-0">
             <label class="form-label">Notes</label>
-            <textarea name="notes" id="f_notes_open" class="form-control" rows="3"
-                      placeholder="What do we know so far?"></textarea>
+            <textarea name="notes" id="f_notes_open" class="form-control" rows="3" placeholder="What do we know so far?"></textarea>
           </div>
         </div>
         <div class="modal-footer">
@@ -213,7 +295,6 @@
           <button type="submit" class="btn btn-warning"><i class="bi bi-person-plus me-1"></i>Open Investigation</button>
         </div>
       </form>
-      <!-- Update existing investigation form -->
       <form id="updateForm" method="post" style="display:none">
         <input type="hidden" name="status" id="u_status_hidden">
         <div class="modal-body">
@@ -243,8 +324,48 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="button" class="btn btn-primary" onclick="submitUpdate()">
-            <i class="bi bi-check-lg me-1"></i>Save
+          <button type="button" class="btn btn-primary" onclick="submitUpdate()"><i class="bi bi-check-lg me-1"></i>Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Decommission Confirm Modal ===== -->
+<div class="modal fade" id="decommissionModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content border-danger">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title"><i class="bi bi-trash me-2"></i>Decommission Server</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{{ url_for('stale_decommission') }}">
+        <input type="hidden" name="client_schema" id="d_schema">
+        <input type="hidden" name="server_id"     id="d_server_id">
+        <div class="modal-body">
+          <div class="alert alert-danger py-2 mb-3">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            This action will:
+            <ul class="mb-0 mt-1">
+              <li>Archive the server's name and all licence assignments</li>
+              <li><strong>Release all licences</strong> back to the contract pools</li>
+              <li>Remove <strong id="d_hostname_display" class="text-danger"></strong> from the Servers page</li>
+            </ul>
+          </div>
+          <p class="small text-muted mb-3">
+            Client: <strong id="d_client_display"></strong> &nbsp;·&nbsp;
+            Last seen: <strong id="d_last_seen_display"></strong>
+          </p>
+          <div class="mb-0">
+            <label class="form-label">Notes <span class="text-muted">(optional — reason for decommission)</span></label>
+            <textarea name="notes" id="d_notes" class="form-control" rows="3"
+                      placeholder="e.g. Server physically decommissioned, migrated to cloud, replaced by new host…"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-trash me-1"></i>Confirm Decommission
           </button>
         </div>
       </form>
@@ -252,8 +373,42 @@
   </div>
 </div>
 
+<!-- ===== Licence Snapshot Viewer Modal ===== -->
+<div class="modal fade" id="licenceSnapshotModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-archive me-2"></i>Archived Licence Assignments — <span id="snap_hostname"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>CSI Number</th>
+                <th>Contract</th>
+                <th>Product Family</th>
+                <th>Product Detail</th>
+                <th class="text-end">Licences</th>
+                <th>Effective Date</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="snap_tbody"></tbody>
+          </table>
+        </div>
+        <p class="text-muted small px-3 py-2 mb-0" id="snap_empty" style="display:none">No licence assignments were recorded for this server.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-// Table filter
+// ── Stale table filter ──────────────────────────────────────────────────────
 const staleSearch = document.getElementById('staleSearch');
 const staleFilter = document.getElementById('staleStatusFilter');
 function filterStale() {
@@ -268,46 +423,87 @@ function filterStale() {
 if (staleSearch) staleSearch.addEventListener('input', filterStale);
 if (staleFilter) staleFilter.addEventListener('change', filterStale);
 
-// Modal wiring
-const investigateModal = document.getElementById('investigateModal');
-investigateModal.addEventListener('show.bs.modal', function(e) {
-  const btn      = e.relatedTarget;
-  const invId    = btn.dataset.invId;
-  const hostname = btn.dataset.hostname;
-  const schema   = btn.dataset.schema;
-  const serverId = btn.dataset.serverId;
+// ── Archive table filter ────────────────────────────────────────────────────
+const archiveSearch = document.getElementById('archiveSearch');
+if (archiveSearch) archiveSearch.addEventListener('input', () => {
+  const q = archiveSearch.value.toLowerCase();
+  document.querySelectorAll('#archiveTable tbody tr').forEach(tr => {
+    tr.style.display = (!q || (tr.dataset.search || '').toLowerCase().includes(q)) ? '' : 'none';
+  });
+});
 
+// ── Investigate modal ───────────────────────────────────────────────────────
+const investigateModal = document.getElementById('investigateModal');
+if (investigateModal) investigateModal.addEventListener('show.bs.modal', function(e) {
+  const btn = e.relatedTarget;
+  const invId = btn.dataset.invId;
   const openForm   = document.getElementById('openForm');
   const updateForm = document.getElementById('updateForm');
-
   document.getElementById('modalTitle').textContent = invId ? 'Update Investigation' : 'Assign Investigation';
-
   if (!invId) {
-    // New
-    openForm.style.display = '';
-    updateForm.style.display = 'none';
-    document.getElementById('f_schema').value    = schema;
-    document.getElementById('f_server_id').value = serverId;
-    document.getElementById('f_hostname').value  = hostname;
-    document.getElementById('f_hostname_display').textContent = hostname;
+    openForm.style.display = ''; updateForm.style.display = 'none';
+    document.getElementById('f_schema').value    = btn.dataset.schema;
+    document.getElementById('f_server_id').value = btn.dataset.serverId;
+    document.getElementById('f_hostname').value  = btn.dataset.hostname;
+    document.getElementById('f_hostname_display').textContent = btn.dataset.hostname;
     document.getElementById('f_assigned_to_open').value = btn.dataset.assigned || '';
     document.getElementById('f_notes_open').value = btn.dataset.notes || '';
   } else {
-    // Update
-    openForm.style.display = 'none';
-    updateForm.style.display = '';
+    openForm.style.display = 'none'; updateForm.style.display = '';
     updateForm.action = `/servers/stale/${invId}/update`;
-    document.getElementById('u_hostname_display').textContent = hostname;
-    document.getElementById('u_assigned_to').value  = btn.dataset.assigned || '';
+    document.getElementById('u_hostname_display').textContent = btn.dataset.hostname;
+    document.getElementById('u_assigned_to').value   = btn.dataset.assigned || '';
     document.getElementById('u_status_select').value = btn.dataset.status || 'open';
     document.getElementById('u_notes').value = btn.dataset.notes || '';
   }
 });
-
 function submitUpdate() {
-  const sel = document.getElementById('u_status_select');
-  document.getElementById('u_status_hidden').value = sel.value;
+  document.getElementById('u_status_hidden').value = document.getElementById('u_status_select').value;
   document.getElementById('updateForm').submit();
+}
+
+// ── Decommission modal ──────────────────────────────────────────────────────
+const decommModal = document.getElementById('decommissionModal');
+if (decommModal) decommModal.addEventListener('show.bs.modal', function(e) {
+  const btn = e.relatedTarget;
+  document.getElementById('d_schema').value    = btn.dataset.schema;
+  document.getElementById('d_server_id').value = btn.dataset.serverId;
+  document.getElementById('d_hostname_display').textContent = btn.dataset.hostname;
+  document.getElementById('d_client_display').textContent   = btn.dataset.client;
+  document.getElementById('d_last_seen_display').textContent = btn.dataset.lastSeen;
+  document.getElementById('d_notes').value = btn.dataset.invNotes || '';
+});
+
+// ── Licence snapshot modal ──────────────────────────────────────────────────
+const snapModal = document.getElementById('licenceSnapshotModal');
+if (snapModal) snapModal.addEventListener('show.bs.modal', function(e) {
+  const btn  = e.relatedTarget;
+  const snap = JSON.parse(btn.dataset.snap || '[]');
+  document.getElementById('snap_hostname').textContent = btn.dataset.hostname;
+  const tbody = document.getElementById('snap_tbody');
+  const empty = document.getElementById('snap_empty');
+  tbody.innerHTML = '';
+  if (!snap || snap.length === 0) {
+    empty.style.display = '';
+  } else {
+    empty.style.display = 'none';
+    snap.forEach(row => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="small"><code>${esc(row.csi_number)}</code></td>
+        <td class="small">${esc(row.contract_name || '—')}</td>
+        <td class="small">${esc(row.product_family || '—')}</td>
+        <td class="small">${esc(row.product_detail || '—')}</td>
+        <td class="small text-end">${row.licences_consumed != null ? Number(row.licences_consumed).toLocaleString() : '—'}</td>
+        <td class="small text-muted">${esc(row.effective_date || '—')}</td>
+        <td class="small text-muted">${esc(row.notes || '')}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+});
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 </script>
 {% endblock %}

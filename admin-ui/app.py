@@ -1854,8 +1854,22 @@ def stale_servers():
     app_users = query(
         "SELECT username, display_name FROM sam_admin.app_users WHERE is_active ORDER BY display_name"
     )
+
+    # Decommissioned archive — show all clients' records
+    schema = get_schema()
+    if schema == "__all__":
+        decomm_rows = query("""
+            SELECT * FROM sam_admin.decommissioned_servers
+            ORDER BY decommissioned_at DESC
+        """)
+    else:
+        decomm_rows = query("""
+            SELECT * FROM sam_admin.decommissioned_servers
+            WHERE client_schema = %s ORDER BY decommissioned_at DESC
+        """, (schema,))
+
     return render_template("stale_servers.html", rows=rows, app_users=app_users,
-                           threshold=STALE_THRESHOLD_DAYS)
+                           decomm_rows=decomm_rows, threshold=STALE_THRESHOLD_DAYS)
 
 
 @app.route("/servers/stale/investigate", methods=["POST"])
@@ -1925,6 +1939,123 @@ def stale_investigate_update(investigation_id):
 
     flash(f"Investigation updated.", "success")
     return redirect(url_for("stale_servers"))
+
+
+@app.route("/servers/stale/decommission", methods=["POST"])
+@login_required
+def stale_decommission():
+    """Archive a server's licence snapshot, release its licences, and deactivate it."""
+    import json as _json
+
+    client_schema = request.form["client_schema"]
+    server_id     = int(request.form["server_id"])
+    notes         = request.form.get("notes") or None
+    username      = session.get("username", "system")
+
+    # Resolve the client name
+    client_row = query(
+        "SELECT client_name FROM sam_admin.clients WHERE schema_name = %s AND is_active",
+        (client_schema,), fetchall=False
+    )
+    client_name = client_row["client_name"] if client_row else client_schema
+
+    # Fetch server metadata
+    server = query(
+        f"SELECT * FROM {client_schema}.oracle_servers WHERE server_id = %s",
+        (server_id,), fetchall=False
+    )
+    if not server:
+        flash("Server not found.", "danger")
+        return redirect(url_for("stale_servers"))
+
+    # Build the licence snapshot from server_csi_map joined to contract info
+    licence_rows = query(f"""
+        SELECT
+            m.map_id,
+            m.csi_id,
+            cs.csi_number,
+            cs.product_family,
+            m.product_detail,
+            cs.contract_name,
+            m.licences_consumed,
+            m.effective_date::TEXT AS effective_date,
+            m.notes
+        FROM {client_schema}.server_csi_map m
+        JOIN shared.csi_contracts cs ON cs.csi_id = m.csi_id
+        WHERE m.server_id = %s
+        ORDER BY cs.product_family, m.product_detail
+    """, (server_id,))
+
+    licence_snapshot = _json.dumps([dict(r) for r in licence_rows], default=str)
+
+    # Insert into archive
+    execute("""
+        INSERT INTO sam_admin.decommissioned_servers
+            (client_schema, client_name, server_id, hostname, fqdn, ip_address,
+             environment, datacenter, os_family, first_seen, last_seen,
+             licence_snapshot, decommissioned_by, notes)
+        VALUES (%s, %s, %s, %s, %s, %s::TEXT, %s, %s, %s, %s, %s, %s::JSONB, %s, %s)
+    """, (
+        client_schema, client_name, server_id,
+        server["hostname"], server.get("fqdn"),
+        str(server["ip_address"]) if server.get("ip_address") else None,
+        server.get("environment"), server.get("datacenter"), server.get("os_family"),
+        server.get("first_seen"), server.get("last_seen"),
+        licence_snapshot, username, notes
+    ))
+
+    # Release licences — delete all CSI map entries for this server
+    execute(
+        f"DELETE FROM {client_schema}.server_csi_map WHERE server_id = %s",
+        (server_id,)
+    )
+
+    # Deactivate the server (removes it from the servers page)
+    execute(
+        f"UPDATE {client_schema}.oracle_servers SET is_active = FALSE WHERE server_id = %s",
+        (server_id,)
+    )
+
+    # Close any open investigation for this server
+    execute("""
+        UPDATE sam_admin.stale_server_investigations
+        SET status      = 'dismissed',
+            notes       = COALESCE(notes || E'\n', '') || 'Server decommissioned.',
+            resolved_by = %s,
+            resolved_at = NOW()
+        WHERE client_schema = %s AND server_id = %s
+          AND status NOT IN ('resolved', 'dismissed')
+    """, (username, client_schema, server_id))
+
+    _audit("server.decommission", entity_type="server", entity_id=server_id,
+           entity_name=server["hostname"], client_schema=client_schema,
+           new_values={
+               "hostname":          server["hostname"],
+               "licences_released": len(licence_rows),
+               "notes":             notes,
+           })
+
+    flash(f"{server['hostname']} has been decommissioned. "
+          f"{len(licence_rows)} licence assignment(s) archived and released.", "success")
+    return redirect(url_for("stale_servers"))
+
+
+@app.route("/servers/decommissioned")
+@login_required
+def decommissioned_servers():
+    schema = get_schema()
+    if schema == "__all__":
+        rows = query("""
+            SELECT * FROM sam_admin.decommissioned_servers
+            ORDER BY decommissioned_at DESC
+        """)
+    else:
+        rows = query("""
+            SELECT * FROM sam_admin.decommissioned_servers
+            WHERE client_schema = %s
+            ORDER BY decommissioned_at DESC
+        """, (schema,))
+    return render_template("decommissioned_servers.html", rows=rows)
 
 
 # ---------------------------------------------------------------------------

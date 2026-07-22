@@ -541,6 +541,7 @@ psql oracle_sam -f database/migrations/11_refresh_client_functions.sql
 psql oracle_sam -f database/migrations/12_finops_pool_snapshots.sql
 psql oracle_sam -f database/migrations/add_client_pool_snapshots.sql
 psql oracle_sam -f database/migrations/13_stale_server_investigations.sql
+psql oracle_sam -f database/migrations/14_decommissioned_servers.sql
 ```
 
 | Script | What it adds |
@@ -560,6 +561,7 @@ psql oracle_sam -f database/migrations/13_stale_server_investigations.sql
 | `12_finops_pool_snapshots.sql` | `sam_admin.finops_pool_snapshots` and `finops_pool_snapshot_lines` — FinOps monthly cost history |
 | `add_client_pool_snapshots.sql` | `sam_admin.client_pool_snapshots` and `client_pool_snapshot_lines` — per-client monthly shared pool snapshots for Audit & Snapshots |
 | `13_stale_server_investigations.sql` | `sam_admin.stale_server_investigations` — tracks assignment and resolution of servers missing for 14+ days |
+| `14_decommissioned_servers.sql` | `sam_admin.decommissioned_servers` — permanent archive of decommissioned servers and their licence snapshots |
 
 ---
 
@@ -597,7 +599,8 @@ SAM-tool/
 │       ├── 11_refresh_client_functions.sql
 │       ├── 12_finops_pool_snapshots.sql
 │       ├── add_client_pool_snapshots.sql
-│       └── 13_stale_server_investigations.sql
+│       ├── 13_stale_server_investigations.sql
+│       └── 14_decommissioned_servers.sql
 ├── admin-ui/
 │   ├── app.py
 │   ├── requirements.txt
