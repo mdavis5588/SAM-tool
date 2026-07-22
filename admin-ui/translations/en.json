@@ -487,7 +487,7 @@
   "licence_history.go_audit": "Audit & Snapshots",
 
   "nav.discovery_conflicts": "Discovery Conflicts",
-  "nav.register_server": "Register Server",
+  "nav.register_server": "Manual Server Registration",
   "nav.discovery_history": "Discovery History",
 
   "discovery_conflicts.title": "Server Discovery Conflicts",
@@ -577,5 +577,5 @@
   "discovery_history.status_completed": "Completed",
   "discovery_history.status_running": "Running",
   "discovery_history.status_failed": "Failed",
-  "discovery_history.btn_register": "Register Server Manually"
+  "discovery_history.btn_register": "Manual Server Registration"
 }

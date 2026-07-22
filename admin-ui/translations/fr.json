@@ -511,7 +511,7 @@
   "discovery_conflicts.func_ansible": "Ansible (module postgresql_query)",
   "discovery_conflicts.func_psql": "Script cron PSQL",
 
-  "nav.register_server": "Enregistrer un serveur",
+  "nav.register_server": "Enregistrement manuel de serveur",
   "nav.discovery_history": "Historique de détection",
 
   "register_server.title": "Enregistrer un serveur manuellement",
