@@ -3121,15 +3121,18 @@ def finops_monthly_overview():
 
     live_rows = _build_shared_pool_live()
 
-    # Historical snapshots
-    snap_rows = query("""
-        SELECT s.snapshot_id, s.snapshot_month, s.taken_at, s.taken_by,
-               l.client_id, l.client_name, l.csi_number, l.contract_name,
-               l.product_name, l.licences_used, l.unit_price, l.monthly_cost
-        FROM sam_admin.finops_pool_snapshots s
-        JOIN sam_admin.finops_pool_snapshot_lines l ON l.snapshot_id = s.snapshot_id
-        ORDER BY s.snapshot_month DESC, l.client_name, l.monthly_cost DESC
-    """) or []
+    # Historical snapshots — gracefully handle missing/old table
+    try:
+        snap_rows = query("""
+            SELECT s.snapshot_id, s.snapshot_month, s.taken_at, s.taken_by,
+                   l.client_id, l.client_name, l.csi_number, l.contract_name,
+                   l.product_name, l.licences_used, l.unit_price, l.monthly_cost
+            FROM sam_admin.finops_pool_snapshots s
+            JOIN sam_admin.finops_pool_snapshot_lines l ON l.snapshot_id = s.snapshot_id
+            ORDER BY s.snapshot_month DESC, l.client_name, l.monthly_cost DESC
+        """) or []
+    except Exception:
+        snap_rows = []
 
     # Group: month -> {meta, clients: {client_name -> [csi_lines]}}
     snap_map = {}
