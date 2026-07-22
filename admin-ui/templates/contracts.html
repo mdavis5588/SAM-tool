@@ -156,10 +156,10 @@
               <span class="badge bg-light text-dark border">{{ l.license_metric | replace('_',' ') | title }}</span>
             {% endif %}
           </td>
-          <td class="text-end">{{ l.quantity or '—' }}</td>
+          <td class="text-end">{{ (l.quantity | int) if l.quantity else '—' }}</td>
           <td class="text-end">
             {% if l.consumed %}
-              <span class="fw-semibold">{{ l.consumed }}</span>
+              <span class="fw-semibold">{{ l.consumed | int }}</span>
             {% else %}
               <span class="text-muted">0</span>
             {% endif %}

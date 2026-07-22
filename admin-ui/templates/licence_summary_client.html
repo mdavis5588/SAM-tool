@@ -300,7 +300,7 @@
               <strong>{{ sv.hostname }}</strong>
               {% if sv.is_nup %}<span class="nup-badge">NUP</span>{% endif %}
             </td>
-            <td class="num" style="font-weight:700;color:var(--s1)">{{ sv.consumed }}</td>
+            <td class="num" style="font-weight:700;color:var(--s1)">{{ sv.consumed | int }}</td>
             {% if line.any_nup %}
             <td class="num">{% if sv.required is not none %}<span style="font-weight:600">{{ sv.required | int }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
             <td class="num">{% if sv.nup_minimum is not none %}<span style="color:var(--s1);font-weight:600">{{ sv.nup_minimum | int }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>

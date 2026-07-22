@@ -206,7 +206,7 @@
   <div class="kpi-row">
     <div class="kpi">
       <span class="kpi-label">Total Licences in Use</span>
-      <span class="kpi-value blue">{{ grand_total_licences }}</span>
+      <span class="kpi-value blue">{{ grand_total_licences | int }}</span>
     </div>
     <div class="kpi-divider"></div>
     <div class="kpi">
@@ -307,7 +307,7 @@
                 <strong>{{ cl.client_name }}</strong>
                 <div class="client-share-bar" style="width:{{ pct_of_pool }}%"></div>
               </td>
-              <td class="num" style="font-weight:600;color:var(--s2)">{{ cl.licences }}</td>
+              <td class="num" style="font-weight:600;color:var(--s2)">{{ cl.licences | int }}</td>
               <td class="num">{{ pct_of_pool }}%</td>
               <td class="num">{% if monthly > 0 %}${{ "{:,.0f}".format(monthly) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
               <td class="num">{% if annual > 0 %}${{ "{:,.0f}".format(annual) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>

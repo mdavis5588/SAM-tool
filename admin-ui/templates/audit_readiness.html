@@ -216,9 +216,9 @@
             {% endif %}
             {{ r.product_detail }}
           </td>
-          <td class="text-end">{{ r.licences_required }}</td>
-          <td class="text-end">{{ r.total_licensed }}</td>
-          <td class="text-end"><span class="badge bg-danger">{{ r.shortfall }}</span></td>
+          <td class="text-end">{{ r.licences_required | int }}</td>
+          <td class="text-end">{{ r.total_licensed | int }}</td>
+          <td class="text-end"><span class="badge bg-danger">{{ r.shortfall | int }}</span></td>
         </tr>
         {% endfor %}
       </tbody>

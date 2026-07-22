@@ -200,10 +200,10 @@
                 <td>{{ l.line_number }}</td>
                 <td>{{ l.product_name }}</td>
                 <td>{{ l.license_metric | replace('_',' ') | title }}</td>
-                <td>{{ l.quantity or '—' }}</td>
+                <td>{{ (l.quantity | int) if l.quantity else '—' }}</td>
                 <td>
                   {% if consumed %}
-                    <span class="fw-semibold">{{ consumed }}</span>
+                    <span class="fw-semibold">{{ consumed | int }}</span>
                   {% else %}
                     <span class="text-muted">0</span>
                   {% endif %}

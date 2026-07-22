@@ -219,7 +219,7 @@
               <strong>{{ cl.client_name }}</strong>
               <div class="client-share-bar" style="width:{{ pct_of_pool }}%"></div>
             </td>
-            <td class="num" style="font-weight:700;color:var(--s1)">{{ cl.licences }}</td>
+            <td class="num" style="font-weight:700;color:var(--s1)">{{ cl.licences | int }}</td>
             <td class="num">{{ pct_of_pool }}%</td>
           </tr>
           {% endfor %}

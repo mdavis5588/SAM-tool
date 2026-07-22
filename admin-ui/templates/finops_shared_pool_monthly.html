@@ -280,7 +280,7 @@
           <td><code>{{ ln.csi_number }}</code></td>
           <td>{{ ln.contract_name }}</td>
           <td>{{ ln.product }}</td>
-          <td class="text-end">{{ '{:,.1f}'.format(ln.licences) }}</td>
+          <td class="text-end">{{ '{:,}'.format(ln.licences | int) }}</td>
           <td class="text-end">${{ '{:,.2f}'.format(ln.unit_price) }}</td>
           <td class="text-end fw-semibold">${{ '{:,.2f}'.format(ln.monthly_cost) }}</td>
         </tr>

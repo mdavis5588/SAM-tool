@@ -149,7 +149,7 @@
                        border-radius:10px;padding:.05rem .35rem">NUP</span>
           {% endif %}
         </td>
-        <td class="text-end"><span class="badge" style="background:{{ accent }}">{{ sv.consumed }}</span></td>
+        <td class="text-end"><span class="badge" style="background:{{ accent }}">{{ sv.consumed | int }}</span></td>
         {% if line.any_nup %}
         <td class="text-end">
           {% if sv.required is not none %}
