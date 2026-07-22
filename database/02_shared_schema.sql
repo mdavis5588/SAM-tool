@@ -705,6 +705,8 @@ SELECT
   cs.csi_number,
   cs.contract_name,
   cs.vendor_reference,
+  cs.br_number,
+  cs.p2p_number,
   cs.currency,
   cs.purchase_date,
   cs.support_start,
