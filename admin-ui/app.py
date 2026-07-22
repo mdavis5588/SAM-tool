@@ -3037,11 +3037,12 @@ def finops_monthly_overview():
         flash("Access restricted.", "danger")
         return redirect(url_for("finops"))
 
+    # Live data — current shared pool usage per client
     clients_list = query(
         "SELECT client_id, client_code, client_name FROM sam_admin.clients "
         "WHERE is_active ORDER BY client_name, client_code"
     )
-    rows = []
+    live_rows = []
     for c in clients_list:
         data = _build_client_finops(c["client_id"])
         if not data:
@@ -3051,15 +3052,123 @@ def finops_monthly_overview():
         monthly_cost   = round(data["total_shared_inuse"] / 12.0, 2)
         if monthly_cost <= 0 and total_licences <= 0:
             continue
-        rows.append({
+        live_rows.append({
             "client_code":    c["client_code"],
             "client_name":    c["client_name"] or c["client_code"],
             "total_licences": total_licences,
             "monthly_cost":   monthly_cost,
             "product_count":  len(shared_lines),
         })
-    rows.sort(key=lambda x: -x["monthly_cost"])
-    return render_template("finops_monthly_overview.html", rows=rows)
+    live_rows.sort(key=lambda x: -x["monthly_cost"])
+
+    # Historical snapshots — grouped by FY then month
+    today     = date.today()
+    fy_year   = today.year if today.month >= 4 else today.year - 1
+
+    # Pull all snapshots and their lines
+    snap_rows = query("""
+        SELECT s.snapshot_id, s.snapshot_month, s.taken_at, s.taken_by,
+               l.client_id, l.client_name, l.licences_used, l.monthly_cost
+        FROM sam_admin.finops_pool_snapshots s
+        JOIN sam_admin.finops_pool_snapshot_lines l ON l.snapshot_id = s.snapshot_id
+        ORDER BY s.snapshot_month DESC, l.monthly_cost DESC
+    """) or []
+
+    # Group into {snapshot_month -> {snapshot_meta, lines[]}}
+    snap_map = {}
+    for r in snap_rows:
+        m = r["snapshot_month"]
+        if m not in snap_map:
+            snap_map[m] = {
+                "snapshot_month": m,
+                "taken_at":       r["taken_at"],
+                "taken_by":       r["taken_by"],
+                "lines":          [],
+            }
+        snap_map[m]["lines"].append({
+            "client_name":    r["client_name"],
+            "licences_used":  int(r["licences_used"] or 0),
+            "monthly_cost":   float(r["monthly_cost"] or 0),
+        })
+
+    # Group months into FYs
+    def _fy_label(m):
+        y = m.year if m.month >= 4 else m.year - 1
+        return f"FY {y}/{str(y+1)[-2:]}"
+
+    fy_map = {}
+    for m, snap in sorted(snap_map.items(), reverse=True):
+        label = _fy_label(m)
+        fy_map.setdefault(label, []).append(snap)
+
+    # Does a snapshot already exist for the current month?
+    this_month = date(today.year, today.month, 1)
+    snapshot_exists = this_month in snap_map
+
+    return render_template("finops_monthly_overview.html",
+                           live_rows=live_rows,
+                           fy_history=list(fy_map.items()),
+                           snapshot_exists=snapshot_exists,
+                           this_month=this_month)
+
+
+@app.route("/finops/monthly-overview/snapshot", methods=["POST"])
+@login_required
+def finops_pool_snapshot_take():
+    if current_role() not in ("superadmin", "contracting"):
+        flash("Access restricted.", "danger")
+        return redirect(url_for("finops_monthly_overview"))
+
+    today      = date.today()
+    snap_month = date(today.year, today.month, 1)
+    taken_by   = current_user().get("username", "admin")
+
+    # Build live rows
+    clients_list = query(
+        "SELECT client_id, client_code, client_name FROM sam_admin.clients "
+        "WHERE is_active ORDER BY client_name, client_code"
+    )
+    lines = []
+    for c in clients_list:
+        data = _build_client_finops(c["client_id"])
+        if not data:
+            continue
+        shared_lines   = [ln for ln in data["lines"] if ln["source"] == "shareable"]
+        total_licences = sum(ln["assigned_qty"] for ln in shared_lines)
+        monthly_cost   = round(data["total_shared_inuse"] / 12.0, 2)
+        if monthly_cost <= 0 and total_licences <= 0:
+            continue
+        lines.append((c["client_id"], c["client_name"] or c["client_code"],
+                      total_licences, monthly_cost))
+
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                # Upsert the snapshot header (replace if same month)
+                cur.execute("""
+                    INSERT INTO sam_admin.finops_pool_snapshots (snapshot_month, taken_by)
+                    VALUES (%s, %s)
+                    ON CONFLICT (snapshot_month) DO UPDATE
+                      SET taken_at = NOW(), taken_by = EXCLUDED.taken_by
+                    RETURNING snapshot_id
+                """, (snap_month, taken_by))
+                snap_id = cur.fetchone()[0]
+                cur.execute(
+                    "DELETE FROM sam_admin.finops_pool_snapshot_lines WHERE snapshot_id = %s",
+                    (snap_id,)
+                )
+                for client_id, client_name, licences, cost in lines:
+                    cur.execute("""
+                        INSERT INTO sam_admin.finops_pool_snapshot_lines
+                          (snapshot_id, client_id, client_name, licences_used, monthly_cost)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (snap_id, client_id, client_name, licences, cost))
+            conn.commit()
+        flash(f"Snapshot taken for {snap_month.strftime('%B %Y')} — {len(lines)} client(s) recorded.", "success")
+    except Exception as e:
+        flash(f"Snapshot failed: {e}", "danger")
+
+    return redirect(url_for("finops_monthly_overview"))
 
 
 @app.route("/finops")
