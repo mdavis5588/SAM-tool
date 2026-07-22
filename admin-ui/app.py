@@ -3058,7 +3058,7 @@ def finops_monthly_overview():
             "monthly_cost":   monthly_cost,
             "product_count":  len(shared_lines),
         })
-    rows.sort(key=lambda x: -x["monthly_total"])
+    rows.sort(key=lambda x: -x["monthly_cost"])
     return render_template("finops_monthly_overview.html", rows=rows)
 
 
