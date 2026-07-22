@@ -1800,6 +1800,134 @@ def servers():
 
 
 # ---------------------------------------------------------------------------
+# Stale servers
+# ---------------------------------------------------------------------------
+STALE_THRESHOLD_DAYS = 14
+
+@app.route("/servers/stale")
+@login_required
+def stale_servers():
+    active_clients = query(
+        "SELECT client_id, schema_name, client_name, client_code FROM sam_admin.clients "
+        "WHERE is_active ORDER BY client_name"
+    )
+    rows = []
+    for c in active_clients:
+        s = c["schema_name"]
+        try:
+            client_rows = query(f"""
+                SELECT
+                    s.server_id,
+                    s.hostname,
+                    s.environment::TEXT AS environment,
+                    s.datacenter,
+                    s.ip_address::TEXT  AS ip_address,
+                    s.last_seen::DATE   AS last_seen,
+                    (CURRENT_DATE - s.last_seen::DATE) AS days_missing,
+                    s.discovery_source
+                FROM {s}.oracle_servers s
+                WHERE s.is_active
+                  AND s.last_seen < NOW() - INTERVAL '{STALE_THRESHOLD_DAYS} days'
+                ORDER BY s.last_seen ASC
+            """)
+            for r in client_rows:
+                r = dict(r)
+                r["_client_name"]   = c["client_name"]
+                r["_client_code"]   = c["client_code"]
+                r["_client_schema"] = s
+                rows.append(r)
+        except Exception:
+            pass
+
+    # Attach any existing investigations
+    if rows:
+        inv_map = {}
+        invs = query(
+            "SELECT * FROM sam_admin.stale_server_investigations WHERE status NOT IN ('resolved','dismissed')"
+        )
+        for inv in invs:
+            inv_map[(inv["client_schema"], inv["server_id"])] = inv
+
+        for r in rows:
+            r["investigation"] = inv_map.get((r["_client_schema"], r["server_id"]))
+
+    app_users = query(
+        "SELECT username, display_name FROM sam_admin.app_users WHERE is_active ORDER BY display_name"
+    )
+    return render_template("stale_servers.html", rows=rows, app_users=app_users,
+                           threshold=STALE_THRESHOLD_DAYS)
+
+
+@app.route("/servers/stale/investigate", methods=["POST"])
+@login_required
+def stale_investigate_open():
+    client_schema = request.form["client_schema"]
+    server_id     = int(request.form["server_id"])
+    hostname      = request.form["hostname"]
+    assigned_to   = request.form.get("assigned_to") or None
+    notes         = request.form.get("notes") or None
+    username      = session.get("username", "system")
+
+    execute("""
+        INSERT INTO sam_admin.stale_server_investigations
+            (client_schema, server_id, hostname, assigned_to, notes, opened_by, status)
+        VALUES (%s, %s, %s, %s, %s, %s, 'open')
+        ON CONFLICT (client_schema, server_id) DO UPDATE
+            SET assigned_to = EXCLUDED.assigned_to,
+                notes       = COALESCE(EXCLUDED.notes, stale_server_investigations.notes),
+                status      = CASE WHEN stale_server_investigations.status IN ('resolved','dismissed')
+                                   THEN 'open' ELSE stale_server_investigations.status END,
+                opened_by   = EXCLUDED.opened_by,
+                opened_at   = CASE WHEN stale_server_investigations.status IN ('resolved','dismissed')
+                                   THEN NOW() ELSE stale_server_investigations.opened_at END
+    """, (client_schema, server_id, hostname, assigned_to, notes, username))
+
+    _audit("stale_server.open", entity_type="server", entity_name=hostname,
+           client_schema=client_schema,
+           new_values={"assigned_to": assigned_to, "notes": notes})
+
+    flash(f"Investigation opened for {hostname}.", "success")
+    return redirect(url_for("stale_servers"))
+
+
+@app.route("/servers/stale/<int:investigation_id>/update", methods=["POST"])
+@login_required
+def stale_investigate_update(investigation_id):
+    status      = request.form["status"]
+    assigned_to = request.form.get("assigned_to") or None
+    notes       = request.form.get("notes") or None
+    username    = session.get("username", "system")
+
+    inv = query(
+        "SELECT * FROM sam_admin.stale_server_investigations WHERE investigation_id = %s",
+        (investigation_id,), fetchall=False
+    )
+    if not inv:
+        flash("Investigation not found.", "danger")
+        return redirect(url_for("stale_servers"))
+
+    resolved_at = "NOW()" if status in ("resolved", "dismissed") else "NULL"
+    execute(f"""
+        UPDATE sam_admin.stale_server_investigations
+        SET status      = %s,
+            assigned_to = %s,
+            notes       = %s,
+            resolved_by = %s,
+            resolved_at = {resolved_at}
+        WHERE investigation_id = %s
+    """, (status, assigned_to, notes, username if status in ("resolved","dismissed") else None,
+          investigation_id))
+
+    _audit("stale_server.update", entity_type="server", entity_name=inv["hostname"],
+           client_schema=inv["client_schema"],
+           old_values={"status": inv["status"], "assigned_to": inv["assigned_to"]},
+           new_values={"status": status, "assigned_to": assigned_to})
+
+    flash(f"Investigation updated.", "success")
+    return redirect(url_for("stale_servers"))
+
+
+# ---------------------------------------------------------------------------
 # Edit server
 # ---------------------------------------------------------------------------
 @app.route("/servers/<int:server_id>", methods=["GET", "POST"])
@@ -5990,12 +6118,33 @@ def healthz():
 def inject_globals():
     today = date.today()
     schema = get_schema() if session.get("logged_in") else DEFAULT_CLIENT_SCHEMA
+
+    stale_count = 0
+    if session.get("logged_in"):
+        try:
+            active_clients = query(
+                "SELECT schema_name FROM sam_admin.clients WHERE is_active"
+            )
+            for c in active_clients:
+                s = c["schema_name"]
+                try:
+                    result = query(f"""
+                        SELECT COUNT(*) AS n FROM {s}.oracle_servers
+                        WHERE is_active AND last_seen < NOW() - INTERVAL '{STALE_THRESHOLD_DAYS} days'
+                    """, fetchall=False)
+                    stale_count += result["n"] if result else 0
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     return {
-        "today":         today.isoformat(),
-        "today_date":    today,
-        "active_schema": schema,
-        "all_clients":   get_clients() if session.get("logged_in") else [],
-        "has_ulas":      _client_has_ulas(schema) if session.get("logged_in") else False,
+        "today":               today.isoformat(),
+        "today_date":          today,
+        "active_schema":       schema,
+        "all_clients":         get_clients() if session.get("logged_in") else [],
+        "has_ulas":            _client_has_ulas(schema) if session.get("logged_in") else False,
+        "stale_servers_count": stale_count,
     }
 
 
