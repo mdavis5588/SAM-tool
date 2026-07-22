@@ -2454,10 +2454,18 @@ def licence_summary():
 @login_required
 def licence_summary_server_costs():
     """Per-server licence cost breakdown across all active client schemas."""
-    active_clients = query(
-        "SELECT client_id, client_code, client_name, schema_name "
-        "FROM sam_admin.clients WHERE is_active ORDER BY client_name"
-    )
+    schema = get_schema()
+    if schema and schema != "__all__":
+        active_clients = query(
+            "SELECT client_id, client_code, client_name, schema_name "
+            "FROM sam_admin.clients WHERE is_active AND schema_name = %s",
+            (schema,)
+        )
+    else:
+        active_clients = query(
+            "SELECT client_id, client_code, client_name, schema_name "
+            "FROM sam_admin.clients WHERE is_active ORDER BY client_name"
+        )
 
     # Build a lookup: (csi_id, product_name) -> line data, for fallback when
     # server_csi_map.line_id is NULL but product_detail is set.
