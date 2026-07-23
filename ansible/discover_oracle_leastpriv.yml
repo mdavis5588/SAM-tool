@@ -1,0 +1,428 @@
+---
+# =============================================================================
+# Oracle SAM - Discovery Playbook (Least-Privilege Edition)
+#
+# Identical to discover_oracle.yml but connects to each Oracle instance
+# using the dedicated sam_discovery account instead of / AS SYSDBA.
+#
+# Prerequisites:
+#   1. Run scripts/create_sam_discovery_user.sql on each target database.
+#   2. Add the password to your Ansible vault:
+#        ansible-vault edit group_vars/all/vault.yml
+#        vault_sam_discovery_password: <password>
+#   3. Ensure TNS connectivity from the Ansible control node is NOT required —
+#      sqlplus connects locally on the DB server using ORACLE_SID (bequeath),
+#      which works without a listener as long as the OS user running the
+#      playbook has read access to ORACLE_HOME.
+#
+# The sam_discovery account requires no OS-level sudo and no SYSDBA privilege.
+# See scripts/create_sam_discovery_user.sql for the exact grants needed.
+# =============================================================================
+
+- name: Oracle SAM discovery (least privilege)
+  hosts: oracle_servers
+  gather_facts: true
+  become: false
+  serial: 10
+
+  vars:
+    sam_run_id: "{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}-{{ inventory_hostname | hash('md5') | truncate(6, true, '') }}"
+    sam_discovery_user: "sam_discovery"
+    sam_discovery_password: "{{ vault_sam_discovery_password }}"
+    oracle_base_paths:
+      - /u01/app/oracle
+      - /oracle
+      - /opt/oracle
+    oratab_paths:
+      - /etc/oratab
+      - /var/opt/oracle/oratab
+
+  tasks:
+
+    # ------------------------------------------------------------------
+    # 1. SERVER METADATA
+    # ------------------------------------------------------------------
+    - name: Collect OS release details
+      ansible.builtin.command: cat /etc/os-release
+      register: os_release_raw
+      changed_when: false
+      ignore_errors: true
+
+    - name: Collect system uptime
+      ansible.builtin.command: uptime -p
+      register: uptime_raw
+      changed_when: false
+      ignore_errors: true
+
+    # ------------------------------------------------------------------
+    # 2. CPU / PROCESSOR TOPOLOGY
+    # ------------------------------------------------------------------
+    - name: Run lscpu for CPU topology
+      ansible.builtin.command: lscpu --json
+      register: lscpu_output
+      changed_when: false
+      ignore_errors: true
+
+    - name: Read /proc/cpuinfo for processor model string
+      ansible.builtin.slurp:
+        src: /proc/cpuinfo
+      register: cpuinfo_raw
+      ignore_errors: true
+
+    - name: Parse CPU topology from lscpu JSON
+      ansible.builtin.set_fact:
+        cpu_topology: "{{ lscpu_output.stdout | from_json }}"
+      when: lscpu_output.rc == 0
+
+    - name: Extract key CPU fields
+      ansible.builtin.set_fact:
+        sam_cpu_sockets:          "{{ (cpu_topology.lscpu | selectattr('field', 'equalto', 'Socket(s):') | map(attribute='data') | first | int) if cpu_topology is defined else ansible_processor_count }}"
+        sam_cpu_cores_per_socket: "{{ (cpu_topology.lscpu | selectattr('field', 'equalto', 'Core(s) per socket:') | map(attribute='data') | first | int) if cpu_topology is defined else (ansible_processor_cores | default(1)) }}"
+        sam_cpu_threads_per_core: "{{ (cpu_topology.lscpu | selectattr('field', 'equalto', 'Thread(s) per core:') | map(attribute='data') | first | int) if cpu_topology is defined else 1 }}"
+        sam_cpu_architecture:     "{{ (cpu_topology.lscpu | selectattr('field', 'equalto', 'Architecture:') | map(attribute='data') | first) if cpu_topology is defined else ansible_architecture }}"
+        sam_cpu_model:            "{{ ansible_processor[2] | default('Unknown') }}"
+        sam_total_physical_cores: "{{ sam_cpu_sockets | int * sam_cpu_cores_per_socket | int }}"
+
+    # ------------------------------------------------------------------
+    # 3. VIRTUALISATION DETECTION
+    # ------------------------------------------------------------------
+    - name: Detect virtualisation type
+      ansible.builtin.set_fact:
+        sam_virt_type: "{{ ansible_virtualization_type | default('physical') }}"
+        sam_virt_role: "{{ ansible_virtualization_role | default('host') }}"
+
+    - name: Check for VMware tools
+      ansible.builtin.command: which vmware-toolsd
+      register: vmware_tools_check
+      changed_when: false
+      ignore_errors: true
+
+    - name: Set VMware flag
+      ansible.builtin.set_fact:
+        sam_is_vmware: "{{ vmware_tools_check.rc == 0 or sam_virt_type in ['VMware', 'vmware'] }}"
+
+    # ------------------------------------------------------------------
+    # 4. ORACLE INSTANCE DISCOVERY
+    #    Parse oratab to find ORACLE_HOME per SID, then connect using
+    #    the sam_discovery account (no SYSDBA, no OS sudo required).
+    # ------------------------------------------------------------------
+    - name: Find oratab file
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: "{{ oratab_paths }}"
+      register: oratab_stat
+
+    - name: Read oratab
+      ansible.builtin.slurp:
+        src: "{{ item.stat.path }}"
+      loop: "{{ oratab_stat.results | selectattr('stat.exists') | list }}"
+      register: oratab_content
+      when: item.stat.exists
+
+    - name: Parse oratab entries
+      ansible.builtin.set_fact:
+        oracle_instances_raw: >-
+          {{
+            (oratab_content.results
+              | selectattr('content', 'defined')
+              | map(attribute='content')
+              | map('b64decode')
+              | join('\n')
+            ).split('\n')
+            | reject('match', '^\\s*#')
+            | reject('match', '^\\s*$')
+            | map('regex_findall', '^([^:]+):([^:]+):([YyNn])')
+            | select
+            | map('first')
+            | list
+          }}
+
+    - name: Set instance list fact
+      ansible.builtin.set_fact:
+        sam_oracle_instances: >-
+          {{
+            oracle_instances_raw | map('zip', ['sid', 'oracle_home', 'autostart'])
+            | map('community.general.dict')
+            | list
+          }}
+      when: oracle_instances_raw is defined
+
+    # ------------------------------------------------------------------
+    # KEY DIFFERENCE: connect as sam_discovery/<password>@<SID>
+    # using a local bequeath connection (no listener required).
+    # become / become_user are not needed.
+    # ------------------------------------------------------------------
+    - name: Query each Oracle instance for edition and version
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        SELECT
+          '{"version":"'      || version         || '",'  ||
+          '"edition":"'       || edition          || '",'  ||
+          '"db_name":"'       || name             || '",'  ||
+          '"platform_name":"' || platform_name    || '",'  ||
+          '"created":"'       || TO_CHAR(created,'YYYY-MM-DD') || '"}'
+        FROM   v$instance  i
+        CROSS  JOIN v$database  d;
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: sqlplus_results
+      ignore_errors: true
+      changed_when: false
+      no_log: true   # suppress password from Ansible output
+
+    - name: Query installed options per instance (dba_registry)
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        SELECT '{"option":"' || comp_name || '","version":"' || version || '","status":"' || status || '"}'
+        FROM   dba_registry
+        WHERE  status IN ('VALID','OPTION OFF')
+        ORDER BY comp_name;
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: options_results
+      ignore_errors: true
+      changed_when: false
+      no_log: true
+
+    - name: Query v$option for all licensed features
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        SELECT '{"option":"' || parameter || '","value":"' || value || '"}'
+        FROM   v$option
+        WHERE  value = 'TRUE'
+          AND  parameter IN (
+            'Real Application Clusters',
+            'Active Data Guard',
+            'Advanced Compression',
+            'Oracle Database Vault',
+            'Label Security',
+            'Advanced Security',
+            'Multitenant',
+            'Partitioning',
+            'OLAP',
+            'Spatial and Graph',
+            'Oracle Streams AQ',
+            'Data Mining'
+          )
+        ORDER BY parameter;
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: voption_results
+      ignore_errors: true
+      changed_when: false
+      no_log: true
+
+    - name: Query dba_users for Named User Plus counting
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        SELECT
+          '{"nup_total_users":' || COUNT(*) ||
+          ',"nup_active_users":' || SUM(CASE WHEN account_status = 'OPEN' THEN 1 ELSE 0 END) ||
+          ',"nup_locked_users":' || SUM(CASE WHEN account_status LIKE '%LOCKED%' THEN 1 ELSE 0 END) ||
+          ',"nup_sample_users":' || '[' ||
+            LISTAGG('"' || username || '"', ',') WITHIN GROUP (ORDER BY username) ||
+          ']' || '}'
+        FROM (
+          SELECT username, account_status
+          FROM   dba_users
+          WHERE  oracle_maintained = 'N'
+             OR  oracle_maintained IS NULL
+          ORDER  BY username
+          FETCH FIRST 50 ROWS ONLY
+        );
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: nup_results
+      ignore_errors: true
+      changed_when: false
+      no_log: true
+
+    - name: Query v$pdbs for CDB/PDB topology (Oracle 12c+)
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        WHENEVER SQLERROR CONTINUE
+        SELECT '{"pdb_name":"' || name || '","con_id":' || con_id ||
+               ',"open_mode":"' || open_mode || '","restricted":"' || restricted || '"}'
+        FROM   v$pdbs
+        ORDER  BY con_id;
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: pdb_results
+      ignore_errors: true
+      changed_when: false
+      no_log: true
+
+    - name: Query gv$instance for RAC cluster nodes
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        WHENEVER SQLERROR CONTINUE
+        SELECT '{"node_name":"' || host_name || '","node_number":' || instance_number ||
+               ',"instance_name":"' || instance_name || '"}'
+        FROM   gv$instance
+        ORDER  BY instance_number;
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: rac_results
+      ignore_errors: true
+      changed_when: false
+      no_log: true
+
+    # ------------------------------------------------------------------
+    # 5. ASSEMBLE EXTENDED INSTANCE DATA
+    # ------------------------------------------------------------------
+    - name: Assemble extended instance data
+      ansible.builtin.set_fact:
+        sam_extended_instances: >-
+          {{
+            sam_oracle_instances | default([]) | map('combine', {}) | list
+            | zip(
+                nup_results.results | map(attribute='stdout') | map('trim') | list,
+                pdb_results.results | map(attribute='stdout') | map('trim') | list,
+                rac_results.results | map(attribute='stdout') | map('trim') | list,
+                voption_results.results | map(attribute='stdout') | map('trim') | list
+              )
+            | list
+          }}
+
+    - name: Build extended instance payload list
+      ansible.builtin.set_fact:
+        sam_instances_extended: >-
+          {{
+            sam_instances_extended | default([]) + [{
+              'sid': item.0.sid,
+              'nup_total_users':  (item.1 | from_json).nup_total_users  | default(0),
+              'nup_active_users': (item.1 | from_json).nup_active_users | default(0),
+              'nup_locked_users': (item.1 | from_json).nup_locked_users | default(0),
+              'nup_sample_users': (item.1 | from_json).nup_sample_users | default([]),
+              'pdbs': item.2.split('\n') | reject('equalto','') | map('from_json') | list,
+              'rac_nodes': item.3.split('\n') | reject('equalto','') | map('from_json') | list,
+              'v_options': item.4.split('\n') | reject('equalto','') | map('from_json') | list
+            }]
+          }}
+      loop: "{{ sam_extended_instances | default([]) }}"
+      when: sam_extended_instances is defined
+
+    # ------------------------------------------------------------------
+    # 6. ASSEMBLE FACT PAYLOAD
+    # ------------------------------------------------------------------
+    - name: Assemble SAM discovery payload
+      ansible.builtin.set_fact:
+        sam_payload:
+          run_id:               "{{ sam_run_id }}"
+          hostname:             "{{ inventory_hostname }}"
+          fqdn:                 "{{ ansible_fqdn }}"
+          ip_address:           "{{ ansible_default_ipv4.address | default('') }}"
+          os_family:            "{{ ansible_os_family }}"
+          os_distribution:      "{{ ansible_distribution }}"
+          os_version:           "{{ ansible_distribution_version }}"
+          environment:          "{{ sam_environment | default('unknown') }}"
+          criticality:          "{{ sam_criticality | default('unknown') }}"
+          cpu_sockets:          "{{ sam_cpu_sockets | int }}"
+          cpu_cores_per_socket: "{{ sam_cpu_cores_per_socket | int }}"
+          cpu_threads_per_core: "{{ sam_cpu_threads_per_core | int }}"
+          total_physical_cores: "{{ sam_total_physical_cores | int }}"
+          cpu_model:            "{{ sam_cpu_model }}"
+          cpu_architecture:     "{{ sam_cpu_architecture }}"
+          virt_type:            "{{ sam_virt_type }}"
+          virt_role:            "{{ sam_virt_role }}"
+          is_vmware:            "{{ sam_is_vmware | bool }}"
+          total_ram_mb:         "{{ ansible_memtotal_mb | default(0) }}"
+          discovered_at:        "{{ ansible_date_time.iso8601 }}"
+          instances: >-
+            {{
+              sqlplus_results.results
+              | selectattr('rc', 'equalto', 0)
+              | map(attribute='stdout')
+              | map('trim')
+              | map('from_json')
+              | list
+            }}
+
+    - name: Assemble SAM extended payload
+      ansible.builtin.set_fact:
+        sam_extended_payload:
+          run_id:    "{{ sam_run_id }}"
+          hostname:  "{{ inventory_hostname }}"
+          instances: "{{ sam_instances_extended | default([]) }}"
+
+    # ------------------------------------------------------------------
+    # 7. WRITE TO POSTGRESQL
+    # ------------------------------------------------------------------
+    - name: Load SAM payload into PostgreSQL
+      community.postgresql.postgresql_query:
+        db:             "{{ sam_db_name }}"
+        login_host:     "{{ sam_db_host }}"
+        login_port:     "{{ sam_db_port }}"
+        login_user:     "{{ sam_db_user }}"
+        login_password: "{{ sam_db_password }}"
+        query: "SELECT {{ sam_client_schema }}.upsert_server_discovery(%(payload)s::jsonb)"
+        named_args:
+          payload: "{{ sam_payload | to_json }}"
+      delegate_to: localhost
+      ignore_errors: true
+
+    - name: Load extended SAM payload into PostgreSQL (RAC, PDB, NUP)
+      community.postgresql.postgresql_query:
+        db:             "{{ sam_db_name }}"
+        login_host:     "{{ sam_db_host }}"
+        login_port:     "{{ sam_db_port }}"
+        login_user:     "{{ sam_db_user }}"
+        login_password: "{{ sam_db_password }}"
+        query: "SELECT {{ sam_client_schema }}.upsert_oracle_extended_discovery(%(payload)s::jsonb)"
+        named_args:
+          payload: "{{ sam_extended_payload | to_json }}"
+      delegate_to: localhost
+      ignore_errors: true
+
+    - name: Print discovery summary
+      ansible.builtin.debug:
+        msg: >
+          {{ inventory_hostname }} —
+          Sockets: {{ sam_cpu_sockets }},
+          Cores/socket: {{ sam_cpu_cores_per_socket }},
+          Total cores: {{ sam_total_physical_cores }},
+          CPU: {{ sam_cpu_model }},
+          Virt: {{ sam_virt_type }},
+          Oracle instances: {{ sam_oracle_instances | default([]) | length }}
