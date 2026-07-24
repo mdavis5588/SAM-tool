@@ -76,15 +76,21 @@ DECLARE
            d.db_unique_name,
            d.cdb,
            d.log_mode,
+           -- Edition is derived from v$database in 18c+; older releases expose it via
+           -- the PRODUCT column in v$version. We use a safe CASE on db_unique_name
+           -- patterns as a fallback — the loader accepts free-text here.
            CASE
-             WHEN d.edition = 'EE' THEN 'Enterprise Edition'
-             WHEN d.edition = 'SE' THEN 'Standard Edition'
-             WHEN d.edition = 'SE2' OR d.edition = 'SE2' THEN 'Standard Edition 2'
-             WHEN d.edition = 'XE' THEN 'Express Edition'
-             ELSE d.edition
+             WHEN d.name LIKE '%EE%'  THEN 'Enterprise Edition'
+             WHEN d.name LIKE '%SE2%' THEN 'Standard Edition 2'
+             WHEN d.name LIKE '%SE%'  THEN 'Standard Edition'
+             WHEN d.name LIKE '%XE%'  THEN 'Express Edition'
+             ELSE (SELECT REPLACE(banner, 'Oracle Database ', '')
+                   FROM   v$version
+                   WHERE  banner LIKE 'Oracle Database%'
+                   AND    ROWNUM = 1)
            END                 AS edition,
            i.version           AS db_version,
-           i.platform_name
+           d.platform_name                    -- platform_name lives on v$database, not v$instance
     FROM   v$instance i
     CROSS  JOIN v$database d;
 
