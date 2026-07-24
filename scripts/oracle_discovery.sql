@@ -68,29 +68,22 @@ DECLARE
   v_options_json    CLOB := '';
   v_opt_sep         VARCHAR2(1) := '';
 
+  -- Edition resolved separately in loop body to avoid bulk-bind truncation
+  -- (v$version.banner width varies by Oracle release)
+  v_edition         VARCHAR2(100);
+
   -- Cursors
+  -- Note: edition is NOT selected here — it is derived in the loop body
+  -- via v$version to avoid ORA-06502 bulk-bind truncation on wide banner columns.
   CURSOR c_instances IS
     SELECT i.instance_number,
            i.instance_name,
-           d.name              AS db_name,
+           d.name                        AS db_name,
            d.db_unique_name,
            d.cdb,
            d.log_mode,
-           -- Edition is derived from v$database in 18c+; older releases expose it via
-           -- the PRODUCT column in v$version. We use a safe CASE on db_unique_name
-           -- patterns as a fallback — the loader accepts free-text here.
-           CASE
-             WHEN d.name LIKE '%EE%'  THEN 'Enterprise Edition'
-             WHEN d.name LIKE '%SE2%' THEN 'Standard Edition 2'
-             WHEN d.name LIKE '%SE%'  THEN 'Standard Edition'
-             WHEN d.name LIKE '%XE%'  THEN 'Express Edition'
-             ELSE (SELECT REPLACE(banner, 'Oracle Database ', '')
-                   FROM   v$version
-                   WHERE  banner LIKE 'Oracle Database%'
-                   AND    ROWNUM = 1)
-           END                 AS edition,
-           i.version           AS db_version,
-           d.platform_name                    -- platform_name lives on v$database, not v$instance
+           SUBSTR(i.version, 1, 20)      AS db_version,
+           SUBSTR(d.platform_name, 1, 100) AS platform_name  -- on v$database, not v$instance
     FROM   v$instance i
     CROSS  JOIN v$database d;
 
@@ -204,15 +197,15 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN v_ram_mb := 0;
   END;
 
-  -- CPU model from v$parameter (best effort)
+  -- CPU model from v$parameter (best effort; SUBSTR guards against wide value columns)
   BEGIN
-    SELECT value INTO v_cpu_model FROM v$parameter WHERE name = 'processor_type';
+    SELECT SUBSTR(value, 1, 256) INTO v_cpu_model FROM v$parameter WHERE name = 'processor_type';
   EXCEPTION WHEN OTHERS THEN v_cpu_model := 'unknown';
   END;
 
   -- Architecture / virtualisation flags
   BEGIN
-    SELECT LOWER(value) INTO v_cpu_arch FROM v$parameter WHERE name = 'cpu_type';
+    SELECT SUBSTR(LOWER(value), 1, 64) INTO v_cpu_arch FROM v$parameter WHERE name = 'cpu_type';
   EXCEPTION WHEN OTHERS THEN v_cpu_arch := 'x86_64';
   END;
 
@@ -240,6 +233,25 @@ BEGIN
   -- Build instances JSON array
   -- --------------------------------------------------------
   FOR v_inst_rec IN c_instances LOOP
+    -- Derive edition safely — v$version.banner width varies by release,
+    -- so we read it here with SUBSTR rather than inside the cursor SELECT.
+    v_edition := 'Unknown';
+    BEGIN
+      SELECT SUBSTR(
+               CASE
+                 WHEN UPPER(banner) LIKE '%ENTERPRISE%' THEN 'Enterprise Edition'
+                 WHEN UPPER(banner) LIKE '%STANDARD EDITION 2%' THEN 'Standard Edition 2'
+                 WHEN UPPER(banner) LIKE '%STANDARD%' THEN 'Standard Edition'
+                 WHEN UPPER(banner) LIKE '%EXPRESS%' THEN 'Express Edition'
+                 ELSE banner
+               END, 1, 100)
+      INTO v_edition
+      FROM v$version
+      WHERE UPPER(banner) LIKE '%ORACLE DATABASE%'
+      AND   ROWNUM = 1;
+    EXCEPTION WHEN OTHERS THEN v_edition := 'Unknown';
+    END;
+
     -- Check CDB
     v_cdb_flag := v_inst_rec.cdb;
     v_is_cdb   := (v_cdb_flag = 'YES');
@@ -292,7 +304,7 @@ BEGIN
     v_instances_json := v_instances_json || v_inst_sep
       || '{"sid":"'           || j(v_inst_rec.instance_name)
       || '","db_name":"'      || j(v_inst_rec.db_name)
-      || '","edition":"'      || j(v_inst_rec.edition)
+      || '","edition":"'      || j(v_edition)
       || '","version":"'      || j(v_inst_rec.db_version)
       || '","platform_name":"'|| j(v_inst_rec.platform_name)
       || '","is_cdb":'        || CASE WHEN v_is_cdb THEN 'true' ELSE 'false' END
