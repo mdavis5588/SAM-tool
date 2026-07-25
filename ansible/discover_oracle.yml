@@ -17,6 +17,8 @@
 
   vars:
     sam_run_id: "{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}-{{ inventory_hostname | hash('md5') | truncate(6, true, '') }}"
+    sam_discovery_user: "sam_discovery"
+    sam_discovery_password: "{{ vault_sam_discovery_password }}"
     oracle_base_paths:
       - /u01/app/oracle
       - /oracle
@@ -146,7 +148,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s / as sysdba << 'EOF'
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SELECT
           '{"version":"'  || SUBSTR(i.version,1,20)                         || '",'  ||
@@ -171,8 +173,7 @@
       loop_control:
         label: "{{ item.sid }}"
       register: sqlplus_results
-      become: true
-      become_user: oracle
+      no_log: true
       ignore_errors: true
       changed_when: false
 
@@ -181,7 +182,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s / as sysdba << 'EOF'
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SELECT '{"option":"' || comp_name || '","version":"' || version || '","status":"' || status || '"}'
         FROM   dba_registry
@@ -193,8 +194,7 @@
       loop_control:
         label: "{{ item.sid }}"
       register: options_results
-      become: true
-      become_user: oracle
+      no_log: true
       ignore_errors: true
       changed_when: false
 
@@ -208,7 +208,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s / as sysdba << 'EOF'
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SELECT '{"feature_name":"' || REPLACE(REPLACE(name,'\','\\'),'"','\"') ||
                '","db_version":"'  || SUBSTR(version,1,20) ||
@@ -230,8 +230,7 @@
       loop_control:
         label: "{{ item.sid }}"
       register: feature_usage_results
-      become: true
-      become_user: oracle
+      no_log: true
       ignore_errors: true
       changed_when: false
 
@@ -240,7 +239,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s / as sysdba << 'EOF'
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SELECT
           '{"nup_total_users":' || COUNT(*) ||
@@ -263,8 +262,7 @@
       loop_control:
         label: "{{ item.sid }}"
       register: nup_results
-      become: true
-      become_user: oracle
+      no_log: true
       ignore_errors: true
       changed_when: false
 
@@ -273,7 +271,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s / as sysdba << 'EOF'
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         WHENEVER SQLERROR CONTINUE
         SELECT '{"pdb_name":"' || name || '","con_id":' || con_id ||
@@ -286,8 +284,7 @@
       loop_control:
         label: "{{ item.sid }}"
       register: pdb_results
-      become: true
-      become_user: oracle
+      no_log: true
       ignore_errors: true
       changed_when: false
 
@@ -296,7 +293,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s / as sysdba << 'EOF'
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         WHENEVER SQLERROR CONTINUE
         SELECT '{"node_name":"' || host_name || '","node_number":' || instance_number ||
@@ -309,8 +306,7 @@
       loop_control:
         label: "{{ item.sid }}"
       register: rac_results
-      become: true
-      become_user: oracle
+      no_log: true
       ignore_errors: true
       changed_when: false
 
