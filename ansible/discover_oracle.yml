@@ -149,13 +149,22 @@
         sqlplus -s / as sysdba << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SELECT
-          '{"version":"'     || version         || '",'  ||
-          '"edition":"'      || edition          || '",'  ||
-          '"db_name":"'      || name             || '",'  ||
-          '"platform_name":"'|| platform_name    || '",'  ||
-          '"created":"'      || TO_CHAR(created,'YYYY-MM-DD') || '"}'
-        FROM   v$instance  i
-        CROSS  JOIN v$database  d;
+          '{"version":"'  || SUBSTR(i.version,1,20)                         || '",'  ||
+          '"edition":"'   || SUBSTR(CASE
+                               WHEN UPPER(v.banner) LIKE '%ENTERPRISE%'          THEN 'Enterprise Edition'
+                               WHEN UPPER(v.banner) LIKE '%STANDARD EDITION 2%'  THEN 'Standard Edition 2'
+                               WHEN UPPER(v.banner) LIKE '%STANDARD%'            THEN 'Standard Edition'
+                               WHEN UPPER(v.banner) LIKE '%EXPRESS%'             THEN 'Express Edition'
+                               ELSE 'Unknown' END, 1, 60)                   || '",'  ||
+          '"db_name":"'   || SUBSTR(d.name,1,30)                             || '",'  ||
+          '"is_cdb":"'    || d.cdb                                           || '",'  ||
+          '"log_mode":"'  || d.log_mode                                      || '",'  ||
+          '"created":"'   || TO_CHAR(d.created,'YYYY-MM-DD')                 || '"}'
+        FROM   v$instance i
+        CROSS  JOIN v$database d
+        CROSS  JOIN (SELECT banner FROM v$version
+                     WHERE  UPPER(banner) LIKE '%ORACLE DATABASE%'
+                     AND    ROWNUM = 1) v;
         EXIT;
         EOF
       loop: "{{ sam_oracle_instances | default([]) }}"
@@ -314,7 +323,7 @@
                 nup_results.results | map(attribute='stdout') | map('trim') | list,
                 pdb_results.results | map(attribute='stdout') | map('trim') | list,
                 rac_results.results | map(attribute='stdout') | map('trim') | list,
-                voption_results.results | map(attribute='stdout') | map('trim') | list
+                feature_usage_results.results | map(attribute='stdout') | map('trim') | list
               )
             | list
           }}
@@ -331,7 +340,7 @@
               'nup_sample_users': (item.1 | from_json).nup_sample_users | default([]),
               'pdbs': item.2.split('\n') | reject('equalto','') | map('from_json') | list,
               'rac_nodes': item.3.split('\n') | reject('equalto','') | map('from_json') | list,
-              'v_options': item.4.split('\n') | reject('equalto','') | map('from_json') | list
+              'feature_usage': item.4.split('\n') | reject('equalto','') | map('from_json') | list
             }]
           }}
       loop: "{{ sam_extended_instances | default([]) }}"
