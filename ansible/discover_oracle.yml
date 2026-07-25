@@ -190,41 +190,39 @@
       changed_when: false
 
     # ------------------------------------------------------------------
-    # 5. EXTENDED DISCOVERY — v$option, NUP users, PDBs, RAC nodes
+    # 5. EXTENDED DISCOVERY — feature usage, NUP users, PDBs, RAC nodes
     #    These queries feed the extended upsert function for richer
     #    licence detection (Multitenant, Active Data Guard, RAC, NUP).
+    #    DBA_FEATURE_USAGE_STATISTICS replaces v$option — it records actual
+    #    detected usage counts and dates, not just what is installed.
     # ------------------------------------------------------------------
-    - name: Query v$option for all licensed features
+    - name: Query DBA_FEATURE_USAGE_STATISTICS for licence-relevant feature usage
       ansible.builtin.shell: |
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
         sqlplus -s / as sysdba << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
-        SELECT '{"option":"' || parameter || '","value":"' || value || '"}'
-        FROM   v$option
-        WHERE  value = 'TRUE'
-          AND  parameter IN (
-            'Real Application Clusters',
-            'Active Data Guard',
-            'Advanced Compression',
-            'Oracle Database Vault',
-            'Label Security',
-            'Advanced Security',
-            'Multitenant',
-            'Partitioning',
-            'OLAP',
-            'Spatial and Graph',
-            'Oracle Streams AQ',
-            'Data Mining'
-          )
-        ORDER BY parameter;
+        SELECT '{"feature_name":"' || REPLACE(REPLACE(name,'\','\\'),'"','\"') ||
+               '","db_version":"'  || SUBSTR(version,1,20) ||
+               '","detected_usages":' || NVL(detected_usages,0) ||
+               ',"total_samples":'    || NVL(total_samples,0) ||
+               ',"currently_used":'   || CASE WHEN currently_used = 'TRUE' THEN 'true' ELSE 'false' END ||
+               ',"first_usage_date":' || CASE WHEN first_usage_date IS NOT NULL
+                                              THEN '"' || TO_CHAR(first_usage_date,'YYYY-MM-DD') || '"'
+                                              ELSE 'null' END ||
+               ',"last_usage_date":'  || CASE WHEN last_usage_date IS NOT NULL
+                                              THEN '"' || TO_CHAR(last_usage_date,'YYYY-MM-DD') || '"'
+                                              ELSE 'null' END || '}'
+        FROM   dba_feature_usage_statistics
+        WHERE  detected_usages > 0
+        ORDER  BY name;
         EXIT;
         EOF
       loop: "{{ sam_oracle_instances | default([]) }}"
       loop_control:
         label: "{{ item.sid }}"
-      register: voption_results
+      register: feature_usage_results
       become: true
       become_user: oracle
       ignore_errors: true
@@ -318,7 +316,7 @@
                 nup_results.results | map(attribute='stdout') | map('trim') | list,
                 pdb_results.results | map(attribute='stdout') | map('trim') | list,
                 rac_results.results | map(attribute='stdout') | map('trim') | list,
-                voption_results.results | map(attribute='stdout') | map('trim') | list
+                feature_usage_results.results | map(attribute='stdout') | map('trim') | list
               )
             | list
           }}
@@ -335,7 +333,7 @@
               'nup_sample_users': (item.1 | from_json).nup_sample_users | default([]),
               'pdbs': item.2.split('\n') | reject('equalto','') | map('from_json') | list,
               'rac_nodes': item.3.split('\n') | reject('equalto','') | map('from_json') | list,
-              'v_options': item.4.split('\n') | reject('equalto','') | map('from_json') | list
+              'feature_usage': item.4.split('\n') | reject('equalto','') | map('from_json') | list
             }]
           }}
       loop: "{{ sam_extended_instances | default([]) }}"
