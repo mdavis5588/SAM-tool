@@ -104,6 +104,9 @@ DECLARE
   -- seen in use — these are the ones that matter for licence compliance.
   -- We include CURRENTLY_USED = FALSE rows too so auditors can see what was
   -- used historically but may have been turned off.
+  -- Features marked INVALID in MOS Doc ID 1317265.1 MAP CTE are excluded —
+  -- these are system-triggered or false-positive entries that do not indicate
+  -- customer licence use.
   CURSOR c_features IS
     SELECT SUBSTR(name, 1, 200)              AS feature_name,
            SUBSTR(version, 1, 20)            AS db_version,
@@ -116,6 +119,23 @@ DECLARE
            SUBSTR(NVL(description, ''), 1, 500) AS description
     FROM   dba_feature_usage_statistics
     WHERE  detected_usages > 0
+      AND  name NOT IN (
+               'ASO native encryption and checksumming',
+               'Automatic Maintenance - SQL Tuning Advisor',
+               'Automatic Maintenance - Space Advisor',
+               'Automatic Segment Advisor',
+               'Automatic SQL Tuning Advisor',
+               'EM Performance Page',
+               'File Mapping',
+               'Label Security',
+               'OLAP - Analytic Workspaces',
+               'Oracle Secure Backup',
+               'Real-Time SQL Monitoring',
+               'SQL Access Advisor',
+               'SQL Tuning Advisor',
+               'SQL Tuning Set (user)',
+               'Segment Advisor'
+           )
     ORDER  BY name;
 
   v_inst_rec      c_instances%ROWTYPE;
