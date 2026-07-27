@@ -223,6 +223,23 @@
                                               ELSE 'null' END || '}'
         FROM   dba_feature_usage_statistics
         WHERE  detected_usages > 0
+          AND  name NOT IN (
+               'ASO native encryption and checksumming',
+               'Automatic Maintenance - SQL Tuning Advisor',
+               'Automatic Maintenance - Space Advisor',
+               'Automatic Segment Advisor',
+               'Automatic SQL Tuning Advisor',
+               'EM Performance Page',
+               'File Mapping',
+               'Label Security',
+               'OLAP - Analytic Workspaces',
+               'Oracle Secure Backup',
+               'Real-Time SQL Monitoring',
+               'SQL Access Advisor',
+               'SQL Tuning Advisor',
+               'SQL Tuning Set (user)',
+               'Segment Advisor'
+               )
         ORDER  BY name;
         EXIT;
         EOF
