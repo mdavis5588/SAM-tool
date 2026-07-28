@@ -9,14 +9,15 @@
 --
 -- For CDB databases, connect to CDB$ROOT to capture all PDBs.
 --
--- Output files (all prefixed with hostname_date):
---   <host>_<date>_server.csv          — server, OS, CPU, RAM
---   <host>_<date>_instances.csv       — Oracle instances and editions
---   <host>_<date>_product_usage.csv   — licence obligation by product (PRIMARY OUTPUT)
---   <host>_<date>_feature_usage.csv   — feature-level detail with product mapping
---   <host>_<date>_users.csv           — Named User Plus counts
---   <host>_<date>_pdbs.csv            — PDB topology (CDB only)
---   <host>_<date>_rac_nodes.csv       — RAC cluster nodes (RAC only)
+-- Output files (all prefixed with hostname_dbname_date):
+--   <host>_<db>_<date>_server.csv          — server, OS, CPU, RAM, virt detection
+--   <host>_<db>_<date>_instances.csv       — Oracle instances and editions
+--   <host>_<db>_<date>_product_usage.csv   — licence obligation by product (PRIMARY OUTPUT)
+--   <host>_<db>_<date>_feature_usage.csv   — feature-level detail with product mapping
+--   <host>_<db>_<date>_users.csv           — Named User Plus counts
+--   <host>_<db>_<date>_pdbs.csv            — PDB topology with NUP counts and pack access
+--   <host>_<db>_<date>_rac_nodes.csv       — RAC cluster nodes (RAC only)
+--   <host>_<db>_<date>_mgmt_packs.csv      — management pack parameter settings per container
 --
 -- product_usage.csv is the primary licence review output:
 --   CURRENT_USAGE         — used in last sample period; licence required now
@@ -39,10 +40,13 @@ SET LINESIZE 4000
 SET COLSEP ','
 
 COLUMN sam_prefix NEW_VALUE sam_prefix NOPRINT
-SELECT LOWER(REPLACE(host_name, '.', '_'))
+SELECT LOWER(REPLACE(i.host_name, '.', '_'))
+       || '_'
+       || LOWER(d.db_unique_name)
        || '_'
        || TO_CHAR(SYSDATE, 'YYYYMMDD_HH24MISS') AS sam_prefix
-FROM   v$instance;
+FROM   v$instance i
+CROSS  JOIN v$database d;
 
 -- =============================================================================
 -- 1. SERVER — hardware, OS, virtualisation
@@ -72,7 +76,22 @@ SELECT
   (SELECT value FROM v$osstat WHERE stat_name = 'NUM_CPUS')              AS vcpu_count,
   ROUND((SELECT value FROM v$osstat WHERE stat_name = 'PHYSICAL_MEMORY_BYTES') / 1048576) AS ram_mb,
   NVL((SELECT SUBSTR(value,1,100) FROM v$parameter WHERE name = 'processor_type'), 'unknown') AS cpu_model,
-  'physical'                                                              AS virt_type,
+  CASE
+    WHEN UPPER(NVL((SELECT value FROM v$parameter WHERE name='db_block_checking'),  '')) LIKE '%VMWARE%'
+      OR UPPER(NVL((SELECT value FROM v$parameter WHERE name='vm_type'),            '')) LIKE '%VMWARE%'
+      OR LOWER(i.host_name) LIKE '%.vmware.%'
+      THEN 'vmware'
+    WHEN UPPER(NVL((SELECT value FROM v$parameter WHERE name='vm_type'), '')) = 'HVM'
+      OR  UPPER(NVL((SELECT value FROM v$parameter WHERE name='vm_type'), '')) LIKE '%ORACLE VM%'
+      THEN 'oracle_vm'
+    WHEN (SELECT COUNT(*) FROM v$option
+          WHERE  UPPER(parameter) = 'OVM' AND value = 'TRUE') > 0
+      THEN 'oracle_vm'
+    WHEN (SELECT COUNT(*) FROM v$option
+          WHERE  UPPER(parameter) LIKE '%VIRTUAL%' AND value = 'TRUE') > 0
+      THEN 'virtual'
+    ELSE 'physical'
+  END                                                                     AS virt_type,
   TO_CHAR(SYSDATE, 'YYYY-MM-DD HH24:MI:SS')                             AS generated_at
 FROM v$instance i
 CROSS JOIN v$database d;
@@ -573,24 +592,100 @@ SPOOL OFF
 
 -- =============================================================================
 -- 6. PDBs (only populated for CDB databases)
+--    Includes NUP user counts and management pack parameter per PDB.
 -- =============================================================================
 SPOOL &sam_prefix._pdbs.csv
 
-PROMPT pdb_name,con_id,open_mode,restricted
+PROMPT pdb_name,con_id,open_mode,restricted,nup_active_users,nup_total_users,mgmt_pack_access,ddl_logging
 
+WITH pdb_params AS (
+  SELECT
+    con_id,
+    MAX(CASE WHEN LOWER(name) = 'control_management_pack_access'
+             THEN UPPER(SUBSTR(value, 1, 64)) END) AS mgmt_pack,
+    MAX(CASE WHEN LOWER(name) = 'enable_ddl_logging'
+             THEN UPPER(SUBSTR(value, 1, 10)) END) AS ddl_log
+  FROM   gv$parameter
+  WHERE  LOWER(name) IN ('control_management_pack_access', 'enable_ddl_logging')
+    AND  inst_id = 1
+  GROUP  BY con_id
+),
+cdb_defaults AS (
+  SELECT
+    MAX(CASE WHEN LOWER(name) = 'control_management_pack_access'
+             THEN UPPER(SUBSTR(value, 1, 64)) END) AS mgmt_pack,
+    MAX(CASE WHEN LOWER(name) = 'enable_ddl_logging'
+             THEN UPPER(SUBSTR(value, 1, 10)) END) AS ddl_log
+  FROM   gv$parameter
+  WHERE  LOWER(name) IN ('control_management_pack_access', 'enable_ddl_logging')
+    AND  inst_id = 1
+    AND  con_id IN (0, 1)
+),
+pdb_nup AS (
+  SELECT
+    con_id,
+    SUM(CASE WHEN account_status = 'OPEN' AND oracle_maintained = 'N' THEN 1 ELSE 0 END) AS nup_active,
+    SUM(CASE WHEN oracle_maintained = 'N' THEN 1 ELSE 0 END)                              AS nup_total
+  FROM   cdb_users
+  GROUP  BY con_id
+)
 SELECT
-  name        AS pdb_name,
-  con_id,
-  open_mode,
-  NVL(restricted, 'NO') AS restricted
-FROM   v$pdbs
-WHERE  con_id > 0
-ORDER  BY con_id;
+  p.name                                                         AS pdb_name,
+  p.con_id,
+  p.open_mode,
+  NVL(p.restricted, 'NO')                                       AS restricted,
+  NVL(n.nup_active, 0)                                          AS nup_active_users,
+  NVL(n.nup_total,  0)                                          AS nup_total_users,
+  NVL(pp.mgmt_pack, cd.mgmt_pack)                               AS mgmt_pack_access,
+  NVL(pp.ddl_log,   cd.ddl_log)                                 AS ddl_logging
+FROM       v$pdbs         p
+CROSS JOIN cdb_defaults   cd
+LEFT JOIN  pdb_params     pp ON pp.con_id = p.con_id
+LEFT JOIN  pdb_nup        n  ON n.con_id  = p.con_id
+WHERE  p.con_id > 0
+ORDER  BY p.con_id;
 
 SPOOL OFF
 
 -- =============================================================================
--- 7. RAC nodes (only populated for RAC databases)
+-- 7. MANAGEMENT PACK PARAMETERS — GV$PARAMETER per container
+--    control_management_pack_access:
+--      NONE                  — no Diagnostics or Tuning Pack licensed
+--      DIAGNOSTIC            — Diagnostics Pack only
+--      DIAGNOSTIC+TUNING     — both Diagnostics and Tuning Pack licensed
+-- =============================================================================
+SPOOL &sam_prefix._mgmt_packs.csv
+
+PROMPT con_id,container_type,param_name,param_value,diagnostics_licensed,tuning_licensed
+
+WITH params AS (
+  SELECT
+    con_id,
+    LOWER(name)            AS param_name,
+    UPPER(SUBSTR(value,1,64)) AS param_value
+  FROM   gv$parameter
+  WHERE  LOWER(name) IN ('control_management_pack_access', 'enable_ddl_logging')
+    AND  inst_id = 1
+  ORDER  BY con_id, param_name
+)
+SELECT
+  p.con_id,
+  CASE WHEN p.con_id IN (0, 1) THEN 'CDB' ELSE 'PDB' END     AS container_type,
+  p.param_name,
+  p.param_value,
+  CASE WHEN p.param_name = 'control_management_pack_access'
+            AND p.param_value IN ('DIAGNOSTIC', 'DIAGNOSTIC+TUNING')
+       THEN 'YES' ELSE 'NO' END                                AS diagnostics_licensed,
+  CASE WHEN p.param_name = 'control_management_pack_access'
+            AND p.param_value = 'DIAGNOSTIC+TUNING'
+       THEN 'YES' ELSE 'NO' END                                AS tuning_licensed
+FROM params p
+ORDER BY p.con_id, p.param_name;
+
+SPOOL OFF
+
+-- =============================================================================
+-- 8. RAC nodes (only populated for RAC databases)
 -- =============================================================================
 SPOOL &sam_prefix._rac_nodes.csv
 
@@ -624,7 +719,8 @@ PROMPT    &sam_prefix._instances.csv
 PROMPT    &sam_prefix._product_usage.csv    (PRIMARY - licence by product)
 PROMPT    &sam_prefix._feature_usage.csv    (detail with product mapping)
 PROMPT    &sam_prefix._users.csv
-PROMPT    &sam_prefix._pdbs.csv             (CDB only)
+PROMPT    &sam_prefix._pdbs.csv             (CDB only; NUP counts + pack access)
+PROMPT    &sam_prefix._mgmt_packs.csv       (GV$PARAMETER pack settings per container)
 PROMPT    &sam_prefix._rac_nodes.csv        (RAC only)
 PROMPT
 PROMPT  MAP logic: MOS Doc ID 1317265.1 (Oct-2021 v21.0)
