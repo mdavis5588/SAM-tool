@@ -183,7 +183,7 @@ BEGIN
   -- Per-client-schema alerts
   -- -------------------------------------------------------------------------
 
-  FOR v_client IN SELECT schema_name, client_code, client_name FROM sam_admin.clients WHERE is_active LOOP
+  FOR v_client IN SELECT c.schema_name, c.client_code, c.client_name FROM sam_admin.clients c WHERE c.is_active LOOP
 
     -- Alert: servers with unrecognised CPU model
     BEGIN
