@@ -73,7 +73,7 @@ def load_json(path: str) -> dict:
 
 
 def validate(doc: dict) -> None:
-    required = {"_meta", "base", "extended", "options"}
+    required = {"_meta", "base", "extended", "options"}  # db_parameters is optional
     missing = required - doc.keys()
     if missing:
         sys.exit(f"Discovery file is missing top-level keys: {missing}")
@@ -130,6 +130,35 @@ def load_options(cur, schema: str, server_id: int, run_id: str,
         )
 
 
+DB_PARAM_UPSERT_SQL = """
+INSERT INTO {schema}.oracle_options
+    (server_id, option_name, is_active, discovery_run_id)
+VALUES
+    (%s, %s, %s, %s)
+ON CONFLICT (server_id, option_name) DO UPDATE SET
+    is_active        = EXCLUDED.is_active,
+    discovery_run_id = EXCLUDED.discovery_run_id,
+    updated_at       = NOW()
+"""
+
+_FALSY = {"none", "false", "0", "", "no"}
+
+def load_db_parameters(cur, schema: str, server_id: int, run_id: str,
+                       params: list, verbose: bool) -> None:
+    """Store raw GV$PARAMETER values in oracle_options under a 'param:' prefix."""
+    for p in params:
+        name    = p.get("name", "")
+        value   = p.get("value", "")
+        is_active = value.lower() not in _FALSY
+        opt_name  = f"param:{name}"
+        if verbose:
+            print(f"    db_parameter: {name} = {value!r} → is_active={is_active}")
+        cur.execute(
+            DB_PARAM_UPSERT_SQL.format(schema=schema),
+            (server_id, opt_name, is_active, run_id),
+        )
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -143,11 +172,12 @@ def main():
     doc = load_json(args.discovery_file)
     validate(doc)
 
-    base     = doc["base"]
-    extended = doc["extended"]
-    options  = doc.get("options", [])
-    hostname = base["hostname"]
-    run_id   = base["run_id"]
+    base        = doc["base"]
+    extended    = doc["extended"]
+    options     = doc.get("options", [])
+    db_params   = doc.get("db_parameters", [])
+    hostname    = base["hostname"]
+    run_id      = base["run_id"]
 
     print(f"Host   : {hostname}  (run_id={run_id})")
     print(f"Instances: {[i['sid'] for i in base.get('instances', [])]}")
@@ -170,10 +200,9 @@ def main():
                 call_upsert(cur, args.client, "upsert_oracle_extended_discovery",
                             extended, args.verbose)
 
-                # 3. Oracle options
-                if options:
-                    print(f"[3/3] Loading {len(options)} Oracle option flags …")
-                    # Resolve server_id so we can upsert options directly
+                # 3. Oracle options + db_parameters
+                if options or db_params:
+                    print(f"[3/3] Loading {len(options)} option flags + {len(db_params)} db_parameters …")
                     cur.execute(
                         f"SELECT server_id FROM {args.client}.oracle_servers "
                         f"WHERE hostname = %s",
@@ -181,12 +210,15 @@ def main():
                     )
                     row = cur.fetchone()
                     if row:
-                        load_options(cur, args.client, row["server_id"],
-                                     run_id, options, args.verbose)
+                        sid = row["server_id"]
+                        if options:
+                            load_options(cur, args.client, sid, run_id, options, args.verbose)
+                        if db_params:
+                            load_db_parameters(cur, args.client, sid, run_id, db_params, args.verbose)
                     else:
                         print("  WARNING: server not found after base upsert — skipping options")
                 else:
-                    print("[3/3] No options data to load.")
+                    print("[3/3] No options or db_parameters to load.")
 
         print("\nDone — all data committed.")
 

@@ -67,6 +67,14 @@ DECLARE
   v_ext_inst_sep    VARCHAR2(1) := '';
   v_options_json    CLOB := '';
   v_opt_sep         VARCHAR2(1) := '';
+  v_params_json     CLOB := '';
+  v_param_sep       VARCHAR2(1) := '';
+
+  -- Management-pack access parameters (from GV$PARAMETER)
+  v_mgmt_pack_access  VARCHAR2(64)  := 'NONE';
+  v_ddl_logging       VARCHAR2(10)  := 'FALSE';
+  v_diag_licensed     VARCHAR2(5)   := 'false';
+  v_tuning_licensed   VARCHAR2(5)   := 'false';
 
   -- Edition resolved separately in loop body to avoid bulk-bind truncation
   -- (v$version.banner width varies by Oracle release)
@@ -320,7 +328,49 @@ BEGIN
   END LOOP;
 
   -- --------------------------------------------------------
-  -- Build options JSON array
+  -- Management-pack access: GV$PARAMETER (RAC-aware, node 1 wins)
+  -- control_management_pack_access values:
+  --   NONE              = no packs licensed
+  --   DIAGNOSTIC        = Diagnostics Pack licensed
+  --   DIAGNOSTIC+TUNING = both packs licensed
+  -- --------------------------------------------------------
+  BEGIN
+    SELECT UPPER(SUBSTR(value, 1, 64))
+    INTO   v_mgmt_pack_access
+    FROM   gv$parameter
+    WHERE  LOWER(name) = 'control_management_pack_access'
+      AND  inst_id = 1;
+  EXCEPTION WHEN OTHERS THEN v_mgmt_pack_access := 'NONE';
+  END;
+  BEGIN
+    SELECT UPPER(SUBSTR(value, 1, 10))
+    INTO   v_ddl_logging
+    FROM   gv$parameter
+    WHERE  LOWER(name) = 'enable_ddl_logging'
+      AND  inst_id = 1;
+  EXCEPTION WHEN OTHERS THEN v_ddl_logging := 'FALSE';
+  END;
+
+  v_diag_licensed    := CASE WHEN v_mgmt_pack_access IN ('DIAGNOSTIC','DIAGNOSTIC+TUNING')
+                             THEN 'true' ELSE 'false' END;
+  v_tuning_licensed  := CASE WHEN v_mgmt_pack_access = 'DIAGNOSTIC+TUNING'
+                             THEN 'true' ELSE 'false' END;
+
+  -- Raw parameter array for the loader (preserves actual text value)
+  FOR v_p IN (
+    SELECT DISTINCT LOWER(name) AS pname, SUBSTR(value, 1, 256) AS pvalue
+    FROM   gv$parameter
+    WHERE  LOWER(name) IN ('control_management_pack_access', 'enable_ddl_logging')
+    ORDER  BY 1
+  ) LOOP
+    v_params_json := v_params_json || v_param_sep
+      || '{"name":"'  || j(v_p.pname)
+      || '","value":"'|| j(v_p.pvalue) || '"}';
+    v_param_sep := ',';
+  END LOOP;
+
+  -- --------------------------------------------------------
+  -- Build options JSON array (v$option flags + synthesized pack entries)
   -- --------------------------------------------------------
   FOR v_opt_rec IN (
     SELECT parameter AS option_name, value AS is_active
@@ -332,6 +382,16 @@ BEGIN
       || '}';
     v_opt_sep := ',';
   END LOOP;
+
+  -- Synthesized management-pack entries derived from control_management_pack_access
+  v_options_json := v_options_json || v_opt_sep
+    || '{"option_name":"Diagnostics Pack","is_active":' || v_diag_licensed   || '}';
+  v_opt_sep := ',';
+  v_options_json := v_options_json || v_opt_sep
+    || '{"option_name":"Tuning Pack","is_active":'      || v_tuning_licensed || '}';
+  v_options_json := v_options_json || v_opt_sep
+    || '{"option_name":"DDL Logging","is_active":'
+    || CASE WHEN v_ddl_logging = 'TRUE' THEN 'true' ELSE 'false' END || '}';
 
   -- --------------------------------------------------------
   -- Emit final JSON document
@@ -374,7 +434,10 @@ BEGIN
   DBMS_OUTPUT.PUT_LINE('},');
 
   -- OPTIONS payload
-  DBMS_OUTPUT.PUT_LINE('"options":['    || v_options_json || ']');
+  DBMS_OUTPUT.PUT_LINE('"options":['         || v_options_json || '],');
+
+  -- DB_PARAMETERS payload (raw GV$PARAMETER values for loader reference)
+  DBMS_OUTPUT.PUT_LINE('"db_parameters":['   || v_params_json  || ']');
   DBMS_OUTPUT.PUT_LINE('}');
 
 EXCEPTION
