@@ -493,6 +493,7 @@ BEGIN
   PERFORM sam_admin.install_changelog_objects(p_schema);
   PERFORM sam_admin.install_upsert_functions(p_schema);
   PERFORM sam_admin.install_extended_views(p_schema);
+  PERFORM sam_admin.install_feature_usage_table(p_schema);
 
 END;
 $$;
@@ -566,6 +567,17 @@ BEGIN
   ) THEN
     EXECUTE $f$
       CREATE FUNCTION sam_admin.install_extended_views(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
+
+  -- install_feature_usage_table
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_feature_usage_table'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_feature_usage_table(p_schema TEXT)
       RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
     $f$;
   END IF;
@@ -656,6 +668,257 @@ LEFT   JOIN sam_admin.vmware_vms vm ON vm.cluster_id = vc.cluster_id
 LEFT   JOIN sam_admin.clients    c  ON c.client_id   = vc.client_id
 GROUP  BY vc.cluster_id, vc.cluster_name, vc.vcenter_host, vc.datacenter,
           c.client_code, vc.last_seen;
+
+-- ---------------------------------------------------------------------------
+-- LICENCE SNAPSHOTS
+-- Point-in-time capture of the full licence position for a client.
+-- Manual snapshots: one per client per calendar month (enforced by partial index).
+-- Automatic snapshots: taken on feature activation or dormancy events; deduplicated
+-- by (client, month, type, feature) so rapid discovery runs don't create duplicates.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sam_admin.licence_snapshots (
+  snapshot_id     SERIAL PRIMARY KEY,
+  client_id       INTEGER NOT NULL REFERENCES sam_admin.clients (client_id) ON DELETE CASCADE,
+  snapshot_month  DATE NOT NULL,
+  taken_by        TEXT NOT NULL DEFAULT 'system',
+  note            TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  snapshot_type   TEXT NOT NULL DEFAULT 'manual'
+                    CHECK (snapshot_type IN ('manual','feature_activated','feature_dormant')),
+  trigger_feature TEXT
+);
+
+-- One manual snapshot per client per month
+CREATE UNIQUE INDEX IF NOT EXISTS uq_licence_snapshots_manual
+  ON sam_admin.licence_snapshots (client_id, snapshot_month)
+  WHERE snapshot_type = 'manual';
+
+-- Dedup auto-snapshots by (client, month, type, feature)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_licence_snapshots_auto
+  ON sam_admin.licence_snapshots (client_id, snapshot_month, snapshot_type, trigger_feature)
+  WHERE snapshot_type <> 'manual';
+
+CREATE INDEX IF NOT EXISTS idx_snaps_client  ON sam_admin.licence_snapshots (client_id);
+CREATE INDEX IF NOT EXISTS idx_snaps_month   ON sam_admin.licence_snapshots (snapshot_month DESC);
+
+CREATE TABLE IF NOT EXISTS sam_admin.licence_snapshot_lines (
+  line_id           SERIAL PRIMARY KEY,
+  snapshot_id       INTEGER NOT NULL REFERENCES sam_admin.licence_snapshots (snapshot_id) ON DELETE CASCADE,
+  hostname          TEXT,
+  environment       TEXT,
+  product_family    TEXT,
+  product_detail    TEXT,
+  licence_metric    TEXT,
+  licences_required NUMERIC(10,2),
+  licences_assigned NUMERIC(10,2),
+  surplus_deficit   NUMERIC(10,2),
+  compliance_status TEXT,
+  csi_number        TEXT,
+  contract_ref      TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_snap_lines_snap ON sam_admin.licence_snapshot_lines (snapshot_id);
+
+-- ---------------------------------------------------------------------------
+-- AUTOMATIC SNAPSHOT FUNCTIONS
+-- ---------------------------------------------------------------------------
+
+-- take_auto_snapshot(): insert a header + position lines for one client.
+-- Returns the new snapshot_id, or NULL if the dedup index blocked a duplicate.
+CREATE OR REPLACE FUNCTION sam_admin.take_auto_snapshot(
+  p_client_id       INTEGER,
+  p_snapshot_type   TEXT,
+  p_trigger_feature TEXT
+)
+RETURNS INTEGER LANGUAGE plpgsql AS $$
+DECLARE
+  v_schema  TEXT;
+  v_snap_id INTEGER;
+  v_month   DATE := DATE_TRUNC('month', NOW())::DATE;
+  v_note    TEXT;
+  rec       RECORD;
+BEGIN
+  SELECT schema_name INTO v_schema FROM sam_admin.clients WHERE client_id = p_client_id;
+  IF v_schema IS NULL THEN
+    RAISE WARNING 'take_auto_snapshot: client_id % not found', p_client_id;
+    RETURN NULL;
+  END IF;
+
+  v_note := CASE p_snapshot_type
+    WHEN 'feature_activated' THEN 'Auto-snapshot: feature newly active — ' || COALESCE(p_trigger_feature, 'unknown')
+    WHEN 'feature_dormant'   THEN 'Auto-snapshot: feature inactive >1 year — ' || COALESCE(p_trigger_feature, 'unknown')
+    ELSE 'Auto-snapshot: ' || p_snapshot_type
+  END;
+
+  BEGIN
+    INSERT INTO sam_admin.licence_snapshots
+      (client_id, snapshot_month, taken_by, note, snapshot_type, trigger_feature)
+    VALUES
+      (p_client_id, v_month, 'system', v_note, p_snapshot_type, p_trigger_feature)
+    RETURNING snapshot_id INTO v_snap_id;
+  EXCEPTION WHEN unique_violation THEN
+    RETURN NULL;
+  END;
+
+  FOR rec IN EXECUTE format(
+    'SELECT hostname, environment, product_family, product_detail,
+            licence_metric, licences_required, licences_assigned,
+            surplus_deficit, compliance_status, csi_number, contract_ref
+     FROM   %I.license_position',
+    v_schema
+  ) LOOP
+    INSERT INTO sam_admin.licence_snapshot_lines
+      (snapshot_id, hostname, environment, product_family, product_detail,
+       licence_metric, licences_required, licences_assigned,
+       surplus_deficit, compliance_status, csi_number, contract_ref)
+    VALUES
+      (v_snap_id, rec.hostname, rec.environment, rec.product_family, rec.product_detail,
+       rec.licence_metric, rec.licences_required, rec.licences_assigned,
+       rec.surplus_deficit, rec.compliance_status, rec.csi_number, rec.contract_ref);
+  END LOOP;
+
+  RETURN v_snap_id;
+END;
+$$;
+
+-- check_feature_dormancy(): scan all client schemas for options inactive >1 year.
+-- Call daily from the dispatch-alerts endpoint or a pg_cron job.
+CREATE OR REPLACE FUNCTION sam_admin.check_feature_dormancy()
+RETURNS TABLE (client_id INTEGER, feature TEXT, last_active TIMESTAMPTZ, snapshot_id INTEGER)
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_client  RECORD;
+  v_opt     RECORD;
+  v_snap_id INTEGER;
+BEGIN
+  FOR v_client IN SELECT c.client_id, c.schema_name FROM sam_admin.clients c ORDER BY c.client_id
+  LOOP
+    BEGIN
+      FOR v_opt IN EXECUTE format(
+        'SELECT DISTINCT ON (o.option_name) o.option_name, o.recorded_at
+         FROM   %I.oracle_options o
+         WHERE  o.status = ''TRUE''
+           AND  o.recorded_at < NOW() - INTERVAL ''1 year''
+           AND  NOT EXISTS (
+                  SELECT 1 FROM %I.oracle_options o2
+                  WHERE  o2.option_name = o.option_name
+                    AND  o2.status = ''TRUE''
+                    AND  o2.recorded_at >= NOW() - INTERVAL ''1 year''
+                )
+         ORDER  BY o.option_name, o.recorded_at DESC',
+        v_client.schema_name, v_client.schema_name
+      ) LOOP
+        v_snap_id := sam_admin.take_auto_snapshot(v_client.client_id, 'feature_dormant', v_opt.option_name);
+        client_id   := v_client.client_id;
+        feature     := v_opt.option_name;
+        last_active := v_opt.recorded_at;
+        snapshot_id := v_snap_id;
+        RETURN NEXT;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'check_feature_dormancy: error on schema %: %', v_client.schema_name, SQLERRM;
+    END;
+  END LOOP;
+END;
+$$;
+
+-- notify_feature_activated(): called by per-schema trigger to take a snapshot
+-- when an Oracle option status transitions to active.
+CREATE OR REPLACE FUNCTION sam_admin.notify_feature_activated(
+  p_schema      TEXT,
+  p_option_name TEXT,
+  p_old_status  TEXT,
+  p_new_status  TEXT
+)
+RETURNS VOID LANGUAGE plpgsql AS $$
+DECLARE v_client_id INTEGER;
+BEGIN
+  IF p_new_status <> 'TRUE' THEN RETURN; END IF;
+  IF p_old_status = 'TRUE'  THEN RETURN; END IF;
+  SELECT client_id INTO v_client_id FROM sam_admin.clients WHERE schema_name = p_schema;
+  IF v_client_id IS NULL THEN RETURN; END IF;
+  PERFORM sam_admin.take_auto_snapshot(v_client_id, 'feature_activated', p_option_name);
+END;
+$$;
+
+-- install_feature_activation_trigger(): installs a second AFTER trigger on
+-- oracle_options that calls notify_feature_activated() when status → TRUE.
+CREATE OR REPLACE FUNCTION sam_admin.install_feature_activation_trigger(p_schema TEXT)
+RETURNS VOID LANGUAGE plpgsql AS $$
+BEGIN
+  EXECUTE format($fn$
+    CREATE OR REPLACE FUNCTION %I.snapshot_on_feature_activation()
+    RETURNS TRIGGER LANGUAGE plpgsql AS $body$
+    BEGIN
+      PERFORM sam_admin.notify_feature_activated(
+        %L, NEW.option_name,
+        CASE WHEN TG_OP = 'UPDATE' THEN OLD.status ELSE NULL END,
+        NEW.status
+      );
+      RETURN NEW;
+    END;
+    $body$;
+  $fn$, p_schema, p_schema);
+
+  EXECUTE format('DROP TRIGGER IF EXISTS trg_snapshot_on_feature_activation ON %I.oracle_options', p_schema);
+  EXECUTE format(
+    'CREATE TRIGGER trg_snapshot_on_feature_activation
+       AFTER INSERT OR UPDATE ON %I.oracle_options
+       FOR EACH ROW EXECUTE FUNCTION %I.snapshot_on_feature_activation()',
+    p_schema, p_schema
+  );
+END;
+$$;
+
+-- install_feature_usage_table(): creates the oracle_feature_usage table in a
+-- client schema to persist DBA_FEATURE_USAGE_STATISTICS data.
+CREATE OR REPLACE FUNCTION sam_admin.install_feature_usage_table(p_schema TEXT)
+RETURNS VOID LANGUAGE plpgsql AS $$
+BEGIN
+  EXECUTE format($ddl$
+    CREATE TABLE IF NOT EXISTS %I.oracle_feature_usage (
+      feature_id        SERIAL PRIMARY KEY,
+      instance_id       INTEGER NOT NULL
+                          REFERENCES %I.oracle_instances(instance_id) ON DELETE CASCADE,
+      feature_name      TEXT    NOT NULL,
+      db_version        TEXT,
+      detected_usages   INTEGER NOT NULL DEFAULT 0,
+      total_samples     INTEGER NOT NULL DEFAULT 0,
+      currently_used    BOOLEAN NOT NULL DEFAULT FALSE,
+      first_usage_date  DATE,
+      last_usage_date   DATE,
+      last_sample_date  DATE,
+      discovery_run_id  TEXT,
+      UNIQUE (instance_id, feature_name)
+    )
+  $ddl$, p_schema, p_schema);
+
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS idx_%s_feat_usage_inst ON %I.oracle_feature_usage (instance_id)',
+    p_schema, p_schema
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS idx_%s_feat_usage_last ON %I.oracle_feature_usage (last_usage_date)',
+    p_schema, p_schema
+  );
+END;
+$$;
+
+-- install_feature_usage_upsert(): stub referenced by install_extended_views.
+-- The real implementation is in 03_client_template_functions.sql.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_feature_usage_upsert'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_feature_usage_upsert(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
+END;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- ALERT CHANNELS

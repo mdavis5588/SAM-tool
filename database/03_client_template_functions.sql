@@ -1614,8 +1614,8 @@ BEGIN
 
   -- -------------------------------------------------------------------------
   -- UPSERT_ORACLE_EXTENDED_DISCOVERY
-  -- Called after upsert_oracle_discovery to load RAC nodes, PDBs, and
-  -- NUP user counts discovered in the extended playbook queries.
+  -- Called after upsert_oracle_discovery to load RAC nodes, PDBs, NUP user
+  -- counts, and DBA_FEATURE_USAGE_STATISTICS discovered in extended queries.
   -- -------------------------------------------------------------------------
   EXECUTE format($fn$
     CREATE OR REPLACE FUNCTION %I.upsert_oracle_extended_discovery(p_payload JSONB)
@@ -1626,6 +1626,7 @@ BEGIN
       v_inst        JSONB;
       v_node        JSONB;
       v_pdb         JSONB;
+      v_feat        JSONB;
       v_pdb_count   INTEGER;
     BEGIN
       SELECT server_id INTO v_server_id
@@ -1667,15 +1668,10 @@ BEGIN
         END LOOP;
 
         -- Upsert PDB records
+        v_pdb_count := 0;
         FOR v_pdb IN SELECT * FROM jsonb_array_elements(COALESCE(v_inst->'pdbs', '[]'::jsonb))
         LOOP
-          -- Count user PDBs to determine Multitenant licence requirement
-          SELECT COUNT(*) INTO v_pdb_count
-          FROM   %I.oracle_pdbs
-          WHERE  instance_id = v_instance_id
-            AND  NOT is_cdb_root
-            AND  pdb_name <> (v_pdb->>'pdb_name');
-
+          v_pdb_count := v_pdb_count + 1;
           INSERT INTO %I.oracle_pdbs
             (instance_id, pdb_name, pdb_con_id, open_mode, restricted,
              is_cdb_root, requires_multitenant_licence,
@@ -1717,13 +1713,53 @@ BEGIN
           );
         END IF;
 
+        -- Upsert feature usage rows from DBA_FEATURE_USAGE_STATISTICS
+        FOR v_feat IN SELECT * FROM jsonb_array_elements(COALESCE(v_inst->'feature_usage', '[]'::jsonb))
+        LOOP
+          INSERT INTO %I.oracle_feature_usage
+            (instance_id, feature_name, db_version,
+             detected_usages, total_samples, currently_used,
+             first_usage_date, last_usage_date, last_sample_date,
+             discovery_run_id)
+          VALUES (
+            v_instance_id,
+            v_feat->>'feature_name',
+            v_feat->>'db_version',
+            COALESCE((v_feat->>'detected_usages')::INTEGER, 0),
+            COALESCE((v_feat->>'total_samples')::INTEGER,   0),
+            COALESCE((v_feat->>'currently_used')::BOOLEAN,  FALSE),
+            CASE WHEN v_feat->>'first_usage_date' IS NOT NULL
+                 THEN (v_feat->>'first_usage_date')::DATE END,
+            CASE WHEN v_feat->>'last_usage_date'  IS NOT NULL
+                 THEN (v_feat->>'last_usage_date')::DATE  END,
+            CURRENT_DATE,
+            p_payload->>'run_id'
+          )
+          ON CONFLICT (instance_id, feature_name) DO UPDATE SET
+            db_version       = EXCLUDED.db_version,
+            detected_usages  = EXCLUDED.detected_usages,
+            total_samples    = EXCLUDED.total_samples,
+            currently_used   = EXCLUDED.currently_used,
+            first_usage_date = COALESCE(EXCLUDED.first_usage_date,
+                                        %I.oracle_feature_usage.first_usage_date),
+            last_usage_date  = CASE
+              WHEN EXCLUDED.last_usage_date IS NOT NULL
+               AND EXCLUDED.last_usage_date > COALESCE(%I.oracle_feature_usage.last_usage_date, '1900-01-01'::DATE)
+              THEN EXCLUDED.last_usage_date
+              ELSE %I.oracle_feature_usage.last_usage_date
+            END,
+            last_sample_date = CURRENT_DATE,
+            discovery_run_id = EXCLUDED.discovery_run_id;
+        END LOOP;
+
       END LOOP;
     END;
     $body$;
   $fn$,
   p_schema, p_schema, p_schema,
   p_schema, p_schema, p_schema,
-  p_schema, p_schema);
+  p_schema, p_schema, p_schema,
+  p_schema, p_schema, p_schema);
 
   -- -------------------------------------------------------------------------
   -- UPSERT_JAVA_DISCOVERY
@@ -2029,8 +2065,37 @@ BEGIN
   $view$,
   p_schema, p_schema, p_schema);
 
+  -- -------------------------------------------------------------------------
+  -- FEATURE USAGE TABLE (migration 19)
+  -- Ensures oracle_feature_usage exists before upsert_oracle_extended_discovery
+  -- tries to INSERT into it.  The upsert function itself is created above.
+  -- -------------------------------------------------------------------------
+  PERFORM sam_admin.install_feature_usage_table(p_schema);
+
 END;
 $$;
+
+
+-- ---------------------------------------------------------------------------
+-- INSTALL_FEATURE_USAGE_UPSERT
+-- Standalone wrapper so migration scripts and manual refresh can call it
+-- without re-running the full install_extended_views.  The real implementation
+-- lives inside install_extended_views above; this function is a thin re-caller.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION sam_admin.install_feature_usage_upsert(p_schema TEXT)
+RETURNS VOID LANGUAGE plpgsql AS $$
+BEGIN
+  -- install_extended_views already creates the full upsert_oracle_extended_discovery
+  -- with feature_usage persistence baked in.  We call install_extended_views to
+  -- keep the function in sync; if only the upsert needs refreshing, call:
+  --   SELECT sam_admin.install_extended_views('<schema>');
+  --
+  -- This standalone function exists so migration 19's DO blocks can call it
+  -- by name without reprinting install_extended_views.
+  PERFORM sam_admin.install_extended_views(p_schema);
+END;
+$$;
+
 
 CREATE OR REPLACE FUNCTION sam_admin.migrate_all_clients()
 RETURNS TABLE (client_code TEXT, result TEXT) LANGUAGE plpgsql AS $$

@@ -485,11 +485,9 @@ ORDER BY
 
 -- ---------------------------------------------------------------------------
 -- CROSS-CLIENT COMPLIANCE ALERTS
--- Returns all actionable alerts across every client:
---   - CSI contracts expiring within 90 days
---   - ULA contracts expiring within 180 days
---   - Unacknowledged HIGH severity changelog entries older than 7 days
---   - CSI contracts with no policy or client assignment
+-- Returns all actionable alerts across every client.
+-- All blocks are guarded with BEGIN...EXCEPTION WHEN OTHERS THEN NULL; END;
+-- so a missing optional view/table in any deployment does not crash the function.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION shared.get_compliance_alerts()
 RETURNS TABLE (
@@ -501,116 +499,372 @@ RETURNS TABLE (
   description   TEXT,
   days_until    INTEGER,
   action_needed TEXT
-) LANGUAGE plpgsql AS $$
+)
+LANGUAGE plpgsql STABLE
+AS $$
 DECLARE
   v_client RECORD;
-  v_sql    TEXT;
   v_row    RECORD;
+  v_sql    TEXT;
 BEGIN
 
-  -- Alert: CSI support contracts expiring within 90 days
-  FOR v_row IN
-    SELECT cs.csi_number, cs.contract_name,
-           c.client_code, c.client_name,
-           (cs.support_expiry - CURRENT_DATE)::INTEGER AS days_left,
-           cs.support_expiry
-    FROM   shared.csi_contracts   cs
-    JOIN   shared.csi_client_map  m  ON m.csi_id    = cs.csi_id
-    JOIN   sam_admin.clients      c  ON c.client_id = m.client_id
-    WHERE  cs.support_expiry IS NOT NULL
-      AND  cs.support_expiry >= CURRENT_DATE
-      AND  cs.support_expiry <  CURRENT_DATE + INTERVAL '90 days'
-      AND  cs.status = 'active'
-  LOOP
-    alert_type    := 'CSI_EXPIRING';
-    severity      := CASE WHEN v_row.days_left <= 30 THEN 'HIGH' ELSE 'MEDIUM' END;
-    client_code   := v_row.client_code;
-    client_name   := v_row.client_name;
-    object_name   := v_row.csi_number || ' — ' || v_row.contract_name;
-    description   := 'Support contract expires in ' || v_row.days_left
-                     || ' days (' || v_row.support_expiry || ')';
-    days_until    := v_row.days_left;
-    action_needed := 'Initiate renewal with Oracle LMS / reseller before expiry';
-    RETURN NEXT;
-  END LOOP;
+  -- -------------------------------------------------------------------------
+  -- Per-contract / shared alerts (each block guarded independently)
+  -- -------------------------------------------------------------------------
 
-  -- Alert: ULA contracts expiring within 180 days
-  FOR v_row IN
-    SELECT cs.csi_number, cs.contract_name,
-           c.client_code, c.client_name,
-           cs.ula_expiry,
-           (cs.ula_expiry - CURRENT_DATE)::INTEGER AS days_left
-    FROM   shared.csi_contracts   cs
-    JOIN   shared.csi_client_map  m  ON m.csi_id    = cs.csi_id
-    JOIN   sam_admin.clients      c  ON c.client_id = m.client_id
-    WHERE  cs.is_ula = TRUE
-      AND  cs.ula_expiry IS NOT NULL
-      AND  cs.ula_expiry >= CURRENT_DATE
-      AND  cs.ula_expiry <  CURRENT_DATE + INTERVAL '180 days'
-  LOOP
-    alert_type    := 'ULA_EXPIRING';
-    severity      := CASE WHEN v_row.days_left <= 60 THEN 'HIGH' ELSE 'MEDIUM' END;
-    client_code   := v_row.client_code;
-    client_name   := v_row.client_name;
-    object_name   := v_row.csi_number || ' — ' || v_row.contract_name;
-    description   := 'ULA expires in ' || v_row.days_left
-                     || ' days. Certification must be completed before '
-                     || v_row.ula_expiry;
-    days_until    := v_row.days_left;
-    action_needed := 'Run full deployment count and initiate ULA certification with Oracle';
-    RETURN NEXT;
-  END LOOP;
+  BEGIN
+    FOR v_row IN
+      SELECT csi_number, contract_name, support_expiry,
+             (support_expiry - CURRENT_DATE) AS days_left,
+             owning_client, owning_client_name
+      FROM   shared.csi_contract_summary
+      WHERE  support_status = 'expiring_soon'
+    LOOP
+      alert_type    := 'SUPPORT_EXPIRING';
+      severity      := CASE WHEN v_row.days_left <= 30 THEN 'HIGH' ELSE 'MEDIUM' END;
+      client_code   := v_row.owning_client;
+      client_name   := v_row.owning_client_name;
+      object_name   := v_row.csi_number || ' — ' || v_row.contract_name;
+      description   := 'Support expires on ' || v_row.support_expiry::TEXT
+                       || ' (' || v_row.days_left || ' days)';
+      days_until    := v_row.days_left;
+      action_needed := 'Renew support or begin decommission planning';
+      RETURN NEXT;
+    END LOOP;
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
 
-  -- Alert: unacknowledged HIGH severity changelog entries older than 7 days
+  BEGIN
+    FOR v_row IN
+      SELECT csi_number, contract_name, support_expiry,
+             (CURRENT_DATE - support_expiry) AS days_ago,
+             owning_client, owning_client_name
+      FROM   shared.csi_contract_summary
+      WHERE  support_status = 'expired'
+    LOOP
+      alert_type    := 'SUPPORT_EXPIRED';
+      severity      := 'HIGH';
+      client_code   := v_row.owning_client;
+      client_name   := v_row.owning_client_name;
+      object_name   := v_row.csi_number || ' — ' || v_row.contract_name;
+      description   := 'Support expired on ' || v_row.support_expiry::TEXT
+                       || ' (' || v_row.days_ago || ' days ago)';
+      days_until    := -v_row.days_ago;
+      action_needed := 'Renew or remove servers from support coverage';
+      RETURN NEXT;
+    END LOOP;
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+
+  BEGIN
+    FOR v_row IN
+      SELECT csi_number, contract_name, ula_expiry,
+             (ula_expiry - CURRENT_DATE) AS days_left,
+             owning_client, owning_client_name
+      FROM   shared.csi_contract_summary
+      WHERE  ula_status = 'ula_expiring'
+    LOOP
+      alert_type    := 'ULA_EXPIRING';
+      severity      := CASE WHEN v_row.days_left <= 60 THEN 'HIGH' ELSE 'MEDIUM' END;
+      client_code   := v_row.owning_client;
+      client_name   := v_row.owning_client_name;
+      object_name   := v_row.csi_number || ' — ' || v_row.contract_name;
+      description   := 'ULA expires on ' || v_row.ula_expiry::TEXT
+                       || ' (' || v_row.days_left || ' days). Certification must be completed before expiry.';
+      days_until    := v_row.days_left;
+      action_needed := 'Begin ULA certification process or negotiate renewal';
+      RETURN NEXT;
+    END LOOP;
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+
+  BEGIN
+    FOR v_row IN
+      SELECT csi_number, contract_name, ula_expiry,
+             (CURRENT_DATE - ula_expiry) AS days_ago,
+             owning_client, owning_client_name
+      FROM   shared.csi_contract_summary
+      WHERE  ula_status = 'ula_expired'
+    LOOP
+      alert_type    := 'ULA_EXPIRED';
+      severity      := 'CRITICAL';
+      client_code   := v_row.owning_client;
+      client_name   := v_row.owning_client_name;
+      object_name   := v_row.csi_number || ' — ' || v_row.contract_name;
+      description   := 'ULA expired on ' || v_row.ula_expiry::TEXT
+                       || ' (' || v_row.days_ago || ' days ago) without certification.';
+      days_until    := -v_row.days_ago;
+      action_needed := 'Certify immediately or revert to named-user/processor licensing';
+      RETURN NEXT;
+    END LOOP;
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+
+  BEGIN
+    FOR v_row IN
+      SELECT csi_number, contract_name, allocation_status, product_families
+      FROM   shared.unassigned_licences
+    LOOP
+      alert_type    := 'UNASSIGNED_LICENCE';
+      severity      := 'MEDIUM';
+      client_code   := NULL;
+      client_name   := NULL;
+      object_name   := v_row.csi_number || ' — ' || v_row.contract_name;
+      description   := v_row.allocation_status || ': '
+                       || COALESCE(v_row.product_families, 'unknown product');
+      days_until    := NULL;
+      action_needed := CASE v_row.allocation_status
+        WHEN 'NEEDS POLICY'     THEN 'Set sharing_policy via shared.set_csi_owner() or shared.assign_csi_to_client()'
+        WHEN 'NEEDS ASSIGNMENT' THEN 'Assign this CSI to a client via shared.assign_csi_to_client()'
+        ELSE 'Review and assign'
+      END;
+      RETURN NEXT;
+    END LOOP;
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+
+  BEGIN
+    FOR v_row IN
+      SELECT cluster_name, vcenter_host, client_code,
+             host_count, total_sockets, total_physical_cores,
+             oracle_db_vm_count, oracle_wls_vm_count
+      FROM   sam_admin.vmware_licence_exposure
+      WHERE  has_oracle_workloads = TRUE
+    LOOP
+      alert_type    := 'VMWARE_CLUSTER_EXPOSURE';
+      severity      := 'HIGH';
+      client_code   := v_row.client_code;
+      client_name   := NULL;
+      object_name   := v_row.cluster_name || ' @ ' || v_row.vcenter_host;
+      description   := 'VMware cluster has ' || v_row.oracle_db_vm_count
+                       || ' Oracle DB VM(s) and ' || v_row.oracle_wls_vm_count
+                       || ' WLS VM(s) across ' || v_row.host_count || ' hosts ('
+                       || v_row.total_sockets || ' sockets / '
+                       || v_row.total_physical_cores || ' cores total). '
+                       || 'Oracle requires the entire cluster to be licensed.';
+      days_until    := NULL;
+      action_needed := 'Verify licences cover all ' || v_row.total_physical_cores
+                       || ' physical cores in this vSphere cluster, or implement Oracle-approved hard partitioning';
+      RETURN NEXT;
+    END LOOP;
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+
+  -- -------------------------------------------------------------------------
+  -- Per-client-schema alerts
+  -- -------------------------------------------------------------------------
+
   FOR v_client IN
-    SELECT client_code, schema_name FROM sam_admin.clients WHERE is_active = TRUE
+    SELECT c.schema_name, c.client_code, c.client_name
+    FROM   sam_admin.clients c
+    WHERE  c.is_active
   LOOP
+
+    -- Unrecognised CPU model (no matching core factor entry)
     BEGIN
       v_sql := format(
-        $q$SELECT hostname, change_category, object_name, detected_at,
-                  EXTRACT(EPOCH FROM (NOW() - detected_at)) / 86400 AS days_old
-           FROM %I.discovery_changelog
-           WHERE severity = 'HIGH' AND NOT acknowledged
-             AND detected_at < NOW() - INTERVAL '7 days'$q$,
-        v_client.schema_name
+        $q$SELECT s.hostname, p.cpu_model
+           FROM   %I.oracle_servers s
+           JOIN   LATERAL (
+             SELECT cpu_model FROM %I.oracle_processors
+             WHERE  server_id = s.server_id
+             ORDER  BY recorded_at DESC LIMIT 1
+           ) p ON TRUE
+           WHERE  s.is_active
+             AND  p.cpu_model IS NOT NULL
+             AND  shared.cpu_core_factor_lookup(p.cpu_model) IS NULL$q$,
+        v_client.schema_name, v_client.schema_name
       );
       FOR v_row IN EXECUTE v_sql LOOP
-        alert_type    := 'STALE_HIGH_CHANGE';
-        severity      := 'HIGH';
+        alert_type    := 'UNRECOGNISED_CPU';
+        severity      := 'MEDIUM';
         client_code   := v_client.client_code;
-        client_name   := (SELECT c.client_name FROM sam_admin.clients c
-                          WHERE  c.client_code = v_client.client_code);
-        object_name   := v_row.hostname || ': ' || v_row.object_name;
-        description   := 'Unacknowledged HIGH severity change ('
-                         || v_row.change_category || ') detected '
-                         || ROUND(v_row.days_old) || ' days ago';
+        client_name   := v_client.client_name;
+        object_name   := v_row.hostname;
+        description   := 'CPU model "' || v_row.cpu_model
+                         || '" does not match any entry in the Oracle Processor Core Factor Table';
         days_until    := NULL;
-        action_needed := 'Acknowledge in discovery_changelog; update server_csi_map if licence impact is confirmed';
+        action_needed := 'Verify correct core factor at oracle.com/assets/processor-core-factor-table-070634.pdf and add to shared.core_factor_table';
         RETURN NEXT;
       END LOOP;
     EXCEPTION WHEN OTHERS THEN NULL;
     END;
-  END LOOP;
 
-  -- Alert: licences with no policy or no client assignment
-  FOR v_row IN
-    SELECT csi_number, contract_name, allocation_status, product_families
-    FROM   shared.unassigned_licences
-  LOOP
-    alert_type    := 'UNASSIGNED_LICENCE';
-    severity      := 'MEDIUM';
-    client_code   := NULL;
-    client_name   := NULL;
-    object_name   := v_row.csi_number || ' — ' || v_row.contract_name;
-    description   := v_row.allocation_status || ': '
-                     || COALESCE(v_row.product_families, 'unknown product');
-    days_until    := NULL;
-    action_needed := CASE v_row.allocation_status
-      WHEN 'NEEDS POLICY'     THEN 'Set sharing_policy via shared.set_csi_owner() or shared.assign_csi_to_client()'
-      WHEN 'NEEDS ASSIGNMENT' THEN 'Assign this CSI to a client via shared.assign_csi_to_client()'
-      ELSE 'Review and assign'
+    -- New server detected in the last 7 days
+    BEGIN
+      v_sql := format(
+        $q$SELECT hostname, first_seen FROM %I.oracle_servers
+           WHERE is_active AND first_seen >= NOW() - INTERVAL '7 days'$q$,
+        v_client.schema_name
+      );
+      FOR v_row IN EXECUTE v_sql LOOP
+        alert_type    := 'NEW_SERVER_DETECTED';
+        severity      := 'MEDIUM';
+        client_code   := v_client.client_code;
+        client_name   := v_client.client_name;
+        object_name   := v_row.hostname;
+        description   := 'New server first detected on ' || v_row.first_seen::DATE::TEXT;
+        days_until    := NULL;
+        action_needed := 'Verify server is known, assign to a contract, and confirm licensing coverage';
+        RETURN NEXT;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN NULL;
     END;
-    RETURN NEXT;
+
+    -- VMware-hosted Oracle servers with no ULA assignment
+    BEGIN
+      v_sql := format(
+        $q$SELECT s.hostname
+           FROM   %I.oracle_servers s
+           WHERE  s.is_active
+             AND  (s.virtualization_type ILIKE '%%vmware%%'
+                   OR s.virtualization_type ILIKE '%%vsphere%%'
+                   OR s.virtualization_type ILIKE '%%esxi%%')
+             AND  NOT EXISTS (
+               SELECT 1 FROM %I.server_csi_map m
+               JOIN shared.csi_contracts c ON c.csi_id = m.csi_id
+               WHERE m.server_id = s.server_id AND c.is_ula = TRUE
+             )$q$,
+        v_client.schema_name, v_client.schema_name
+      );
+      FOR v_row IN EXECUTE v_sql LOOP
+        alert_type    := 'VMWARE_SERVER_NO_ULA';
+        severity      := 'HIGH';
+        client_code   := v_client.client_code;
+        client_name   := v_client.client_name;
+        object_name   := v_row.hostname;
+        description   := 'VMware-hosted Oracle server has no ULA licence assignment';
+        days_until    := NULL;
+        action_needed := 'Assign a ULA contract or verify Oracle-approved hard partitioning is in place';
+        RETURN NEXT;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    -- Hardware increases (unacknowledged, last 30 days)
+    BEGIN
+      v_sql := format(
+        $q$SELECT cl.server_id, s.hostname, cl.field_changed, cl.old_value, cl.new_value, cl.detected_at
+           FROM   %I.discovery_changelog cl
+           JOIN   %I.oracle_servers s ON s.server_id = cl.server_id
+           WHERE  cl.change_category = 'hardware'
+             AND  cl.field_changed IN ('cpu_cores','total_cores','cpu_sockets','physical_cores')
+             AND  cl.new_value::NUMERIC > cl.old_value::NUMERIC
+             AND  COALESCE(cl.acknowledged, FALSE) = FALSE
+             AND  cl.detected_at >= NOW() - INTERVAL '30 days'$q$,
+        v_client.schema_name, v_client.schema_name
+      );
+      FOR v_row IN EXECUTE v_sql LOOP
+        alert_type    := 'HARDWARE_INCREASE';
+        severity      := 'HIGH';
+        client_code   := v_client.client_code;
+        client_name   := v_client.client_name;
+        object_name   := v_row.hostname;
+        description   := v_row.field_changed || ' increased from ' || v_row.old_value
+                         || ' to ' || v_row.new_value
+                         || ' (detected ' || v_row.detected_at::DATE::TEXT || ')';
+        days_until    := NULL;
+        action_needed := 'Review licence coverage for increased compute capacity and acknowledge change';
+        RETURN NEXT;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    -- Hardware decreases (unacknowledged, last 30 days)
+    BEGIN
+      v_sql := format(
+        $q$SELECT cl.server_id, s.hostname, cl.field_changed, cl.old_value, cl.new_value, cl.detected_at
+           FROM   %I.discovery_changelog cl
+           JOIN   %I.oracle_servers s ON s.server_id = cl.server_id
+           WHERE  cl.change_category = 'hardware'
+             AND  cl.field_changed IN ('cpu_cores','total_cores','cpu_sockets','physical_cores')
+             AND  cl.new_value::NUMERIC < cl.old_value::NUMERIC
+             AND  COALESCE(cl.acknowledged, FALSE) = FALSE
+             AND  cl.detected_at >= NOW() - INTERVAL '30 days'$q$,
+        v_client.schema_name, v_client.schema_name
+      );
+      FOR v_row IN EXECUTE v_sql LOOP
+        alert_type    := 'HARDWARE_DECREASE';
+        severity      := 'MEDIUM';
+        client_code   := v_client.client_code;
+        client_name   := v_client.client_name;
+        object_name   := v_row.hostname;
+        description   := v_row.field_changed || ' decreased from ' || v_row.old_value
+                         || ' to ' || v_row.new_value
+                         || ' (detected ' || v_row.detected_at::DATE::TEXT || ')';
+        days_until    := NULL;
+        action_needed := 'Confirm change is intentional and acknowledge — may allow licence reductions';
+        RETURN NEXT;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    -- New Oracle options/features enabled (unacknowledged, last 30 days)
+    BEGIN
+      v_sql := format(
+        $q$SELECT cl.server_id, s.hostname, cl.object_name AS feature_name, cl.new_value, cl.detected_at
+           FROM   %I.discovery_changelog cl
+           JOIN   %I.oracle_servers s ON s.server_id = cl.server_id
+           WHERE  cl.change_category IN ('option','feature','oracle_option')
+             AND  cl.change_type IN ('NEW','ADDED','ENABLED')
+             AND  COALESCE(cl.acknowledged, FALSE) = FALSE
+             AND  cl.detected_at >= NOW() - INTERVAL '30 days'$q$,
+        v_client.schema_name, v_client.schema_name
+      );
+      FOR v_row IN EXECUTE v_sql LOOP
+        alert_type    := 'NEW_OPTION_ENABLED';
+        severity      := 'HIGH';
+        client_code   := v_client.client_code;
+        client_name   := v_client.client_name;
+        object_name   := v_row.hostname;
+        description   := 'Oracle option/feature "' || COALESCE(v_row.feature_name, v_row.new_value)
+                         || '" newly enabled (detected ' || v_row.detected_at::DATE::TEXT || ')';
+        days_until    := NULL;
+        action_needed := 'Verify this option is licenced or disable it immediately';
+        RETURN NEXT;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    -- Feature dormant: present in DBA_FEATURE_USAGE_STATISTICS with detected usage
+    -- but last_usage_date is more than 6 months ago — potential licence reclaim.
+    BEGIN
+      v_sql := format(
+        $q$SELECT DISTINCT ON (f.feature_name)
+                  s.hostname,
+                  i.oracle_sid,
+                  f.feature_name,
+                  f.last_usage_date,
+                  f.first_usage_date,
+                  (CURRENT_DATE - f.last_usage_date) AS days_since_use
+           FROM   %I.oracle_feature_usage f
+           JOIN   %I.oracle_instances i ON i.instance_id = f.instance_id
+           JOIN   %I.oracle_servers   s ON s.server_id   = i.server_id
+           WHERE  f.detected_usages > 0
+             AND  f.last_usage_date IS NOT NULL
+             AND  f.last_usage_date < CURRENT_DATE - INTERVAL '6 months'
+             AND  s.is_active = TRUE
+           ORDER  BY f.feature_name, f.last_usage_date DESC$q$,
+        v_client.schema_name, v_client.schema_name, v_client.schema_name
+      );
+      FOR v_row IN EXECUTE v_sql LOOP
+        alert_type    := 'FEATURE_DORMANT';
+        severity      := 'MEDIUM';
+        client_code   := v_client.client_code;
+        client_name   := v_client.client_name;
+        object_name   := v_row.hostname || ' / ' || v_row.oracle_sid;
+        description   := '"' || v_row.feature_name || '" last used '
+                         || v_row.last_usage_date::TEXT
+                         || ' (' || v_row.days_since_use || ' days ago).'
+                         || ' First used ' || v_row.first_usage_date::TEXT || '.';
+        days_until    := NULL;
+        action_needed := 'Confirm feature is still required. If unused, disable it to '
+                         || 'reduce licence exposure or reclaim the entitlement.';
+        RETURN NEXT;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
   END LOOP;
 
 END;
