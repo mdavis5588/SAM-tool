@@ -7,9 +7,10 @@
   <h4 class="mb-0">Licence Options Analysis</h4>
 </div>
 <p class="text-muted small mb-4">
-  Compare the total cost of an existing ULA against procuring individual licences from the shared pool
-  plus newly purchased entitlements. Year&nbsp;1 is always the most expensive year for the alternative
-  (purchase&nbsp;+&nbsp;support); Year&nbsp;2&nbsp;+ is support-only on newly procured licences.
+  Compare the total cost of a ULA against procuring individual licences from the shared pool
+  plus newly purchased entitlements. Both the ULA and the alternative follow the same cost model:
+  <strong>Year&nbsp;1&nbsp;=&nbsp;purchase&nbsp;price&nbsp;+&nbsp;first-year support</strong>,
+  <strong>Year&nbsp;2+&nbsp;=&nbsp;ongoing support only</strong> (% of purchase price).
 </p>
 
 <!-- ================================================================
@@ -33,27 +34,29 @@
           </select>
         </div>
         <div class="col-md-3">
-          <label class="form-label fw-semibold">ULA Annual Cost (USD)</label>
+          <label class="form-label fw-semibold">ULA Initial Purchase Price</label>
           <div class="input-group">
             <span class="input-group-text">$</span>
-            <input type="number" name="ula_annual_cost" class="form-control" min="0" step="1000"
-                   value="{{ form_vals.ula_annual_cost }}" placeholder="e.g. 4000000" required>
+            <input type="number" name="ula_purchase_price" class="form-control" min="0" step="1000"
+                   value="{{ form_vals.ula_purchase_price }}" placeholder="e.g. 4000000" required>
           </div>
+          <div class="form-text">One-time licence purchase cost</div>
         </div>
         <div class="col-md-2">
-          <label class="form-label fw-semibold">Support Rate %</label>
+          <label class="form-label fw-semibold">Annual Support Rate</label>
           <div class="input-group">
             <input type="number" name="support_rate" class="form-control" min="1" max="99" step="0.5"
                    value="{{ form_vals.support_rate or '22' }}">
             <span class="input-group-text">%</span>
           </div>
+          <div class="form-text">Applied to both ULA and alternatives</div>
         </div>
         <div class="col-md-2">
           <label class="form-label fw-semibold">Horizon (years)</label>
           <input type="number" name="horizon_years" class="form-control" min="1" max="20"
                  value="{{ form_vals.horizon_years or '5' }}">
         </div>
-        <div class="col-md-2">
+        <div class="col-md-2 d-flex flex-column justify-content-end">
           <button type="submit" class="btn btn-primary w-100">
             <i class="bi bi-play-fill me-1"></i> Run Analysis
           </button>
@@ -71,14 +74,38 @@
     <div class="alert alert-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i> {{ result.error }}</div>
   {% else %}
 
+    <!-- ULA cost model explanation -->
+    <div class="card border-0 bg-light mb-4">
+      <div class="card-body py-2">
+        <div class="row text-center g-0">
+          <div class="col border-end">
+            <div class="text-muted small">ULA Purchase Price</div>
+            <div class="fw-bold">${{ "{:,.0f}".format(result.ula_purchase) }}</div>
+          </div>
+          <div class="col border-end">
+            <div class="text-muted small">ULA Year 1 Support ({{ result.support_rate_pct|int }}%)</div>
+            <div class="fw-bold">${{ "{:,.0f}".format(result.ula_yr1_support) }}</div>
+          </div>
+          <div class="col border-end">
+            <div class="text-muted small">ULA Year 1 Total</div>
+            <div class="fw-bold text-danger">${{ "{:,.0f}".format(result.ula_yr1) }}</div>
+          </div>
+          <div class="col">
+            <div class="text-muted small">ULA Year 2+ Annual (support only)</div>
+            <div class="fw-bold text-danger">${{ "{:,.0f}".format(result.ula_yr2_annual) }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Summary cards -->
     <div class="row g-3 mb-4">
       <div class="col-md-3">
         <div class="card border-0 shadow-sm h-100">
           <div class="card-body text-center">
-            <div class="text-muted small mb-1">ULA — Annual Cost</div>
-            <div class="fs-4 fw-bold text-danger">${{ "{:,.0f}".format(result.ula_annual) }}</div>
-            <div class="text-muted small">every year</div>
+            <div class="text-muted small mb-1">Alternative — New Licence Cost</div>
+            <div class="fs-4 fw-bold">${{ "{:,.0f}".format(result.total_new_cost) }}</div>
+            <div class="text-muted small">gap × list price (one-time)</div>
           </div>
         </div>
       </div>
@@ -86,7 +113,7 @@
         <div class="card border-0 shadow-sm h-100">
           <div class="card-body text-center">
             <div class="text-muted small mb-1">Alternative — Year 1 Total</div>
-            <div class="fs-4 fw-bold {% if result.yr1_alt < result.ula_annual %}text-success{% else %}text-warning{% endif %}">
+            <div class="fs-4 fw-bold {% if result.yr1_alt < result.ula_yr1 %}text-success{% else %}text-warning{% endif %}">
               ${{ "{:,.0f}".format(result.yr1_alt) }}
             </div>
             <div class="text-muted small">purchase + {{ result.support_rate_pct|int }}% support</div>
@@ -97,10 +124,10 @@
         <div class="card border-0 shadow-sm h-100">
           <div class="card-body text-center">
             <div class="text-muted small mb-1">Alternative — Year 2+ Annual</div>
-            <div class="fs-4 fw-bold {% if result.yr2_alt < result.ula_annual %}text-success{% else %}text-warning{% endif %}">
+            <div class="fs-4 fw-bold {% if result.yr2_alt < result.ula_yr2_annual %}text-success{% else %}text-warning{% endif %}">
               ${{ "{:,.0f}".format(result.yr2_alt) }}
             </div>
-            <div class="text-muted small">support only</div>
+            <div class="text-muted small">support only on new licences</div>
           </div>
         </div>
       </div>
@@ -111,12 +138,9 @@
             {% if result.break_even %}
               <div class="fs-4 fw-bold text-success">Year {{ result.break_even }}</div>
               <div class="text-muted small">alternative cheaper from here</div>
-            {% elif result.yr2_alt >= result.ula_annual %}
-              <div class="fs-4 fw-bold text-secondary">Never</div>
-              <div class="text-muted small">ULA cheaper on Year 2+ basis</div>
             {% else %}
-              <div class="fs-4 fw-bold text-secondary">&gt; {{ result.horizon }}yr horizon</div>
-              <div class="text-muted small">extend horizon to see</div>
+              <div class="fs-4 fw-bold text-secondary">&gt; {{ result.horizon }}yr</div>
+              <div class="text-muted small">extend horizon or ULA is cheaper</div>
             {% endif %}
           </div>
         </div>
@@ -261,9 +285,9 @@
             <thead class="table-light">
               <tr>
                 <th>Year</th>
-                <th class="text-end">ULA Annual</th>
+                <th class="text-end">ULA Annual Cost</th>
                 <th class="text-end">ULA Cumulative</th>
-                <th class="text-end">Alt. Annual</th>
+                <th class="text-end">Alt. Annual Cost</th>
                 <th class="text-end">Alt. Cumulative</th>
                 <th class="text-end">Saving vs ULA</th>
               </tr>
@@ -271,12 +295,13 @@
             <tbody>
               {% for row in result.yearly %}
               <tr {% if row.saving > 0 %}class="table-success"{% elif row.saving < 0 %}class="table-danger"{% endif %}>
-                <td class="fw-semibold">Year {{ row.year }}</td>
-                <td class="text-end">${{ "{:,.0f}".format(result.ula_annual) }}</td>
-                <td class="text-end">${{ "{:,.0f}".format(row.ula_cum) }}</td>
-                <td class="text-end">
-                  ${{ "{:,.0f}".format(result.yr1_alt if loop.first else result.yr2_alt) }}
+                <td class="fw-semibold">
+                  Year {{ row.year }}
+                  {% if loop.first %}<span class="badge bg-secondary ms-1 fw-normal">purchase + support</span>{% endif %}
                 </td>
+                <td class="text-end">${{ "{:,.0f}".format(row.ula_annual_this) }}</td>
+                <td class="text-end">${{ "{:,.0f}".format(row.ula_cum) }}</td>
+                <td class="text-end">${{ "{:,.0f}".format(row.alt_annual_this) }}</td>
                 <td class="text-end">${{ "{:,.0f}".format(row.alt_cum) }}</td>
                 <td class="text-end fw-semibold">
                   {% if row.saving > 0 %}

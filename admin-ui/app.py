@@ -4416,18 +4416,24 @@ def licence_analysis():
     # Run analysis if GET params supplied
     result = None
     form_vals = {
-        "client_id":       request.args.get("client_id", ""),
-        "ula_annual_cost": request.args.get("ula_annual_cost", ""),
-        "support_rate":    request.args.get("support_rate", "22"),
-        "horizon_years":   request.args.get("horizon_years", "5"),
+        "client_id":          request.args.get("client_id", ""),
+        "ula_purchase_price": request.args.get("ula_purchase_price", ""),
+        "support_rate":       request.args.get("support_rate", "22"),
+        "horizon_years":      request.args.get("horizon_years", "5"),
     }
 
-    if form_vals["client_id"] and form_vals["ula_annual_cost"]:
+    if form_vals["client_id"] and form_vals["ula_purchase_price"]:
         try:
             client_id      = int(form_vals["client_id"])
-            ula_annual     = float(form_vals["ula_annual_cost"])
+            ula_purchase   = float(form_vals["ula_purchase_price"])
             support_rate   = float(form_vals["support_rate"]) / 100.0
             horizon        = min(max(int(form_vals["horizon_years"]), 1), 20)
+
+            # ULA cost model: Year 1 = purchase + first-year support
+            #                 Year 2+ = ongoing support only (% of purchase price)
+            ula_yr1_support = round(ula_purchase * support_rate, 2)
+            ula_yr1         = round(ula_purchase + ula_yr1_support, 2)
+            ula_yr2_annual  = ula_yr1_support   # same rate, support-only from year 2
 
             client = query(
                 "SELECT schema_name, client_name, client_code "
@@ -4561,44 +4567,52 @@ def licence_analysis():
             # Year-by-year cumulative table
             yearly = []
             for y in range(1, horizon + 1):
-                ula_cum = round(ula_annual * y, 2)
+                # ULA: year 1 = purchase + support; year 2+ = support only
                 if y == 1:
+                    ula_annual_this = ula_yr1
+                    ula_cum = ula_yr1
+                else:
+                    ula_annual_this = ula_yr2_annual
+                    ula_cum = round(ula_yr1 + (y - 1) * ula_yr2_annual, 2)
+                # Alternative: year 1 = new licence cost + support; year 2+ = support only
+                if y == 1:
+                    alt_annual_this = yr1_alt
                     alt_cum = yr1_alt
                 else:
+                    alt_annual_this = yr2_alt
                     alt_cum = round(yr1_alt + (y - 1) * yr2_alt, 2)
                 yearly.append({
-                    "year":    y,
-                    "ula_cum": ula_cum,
-                    "alt_cum": alt_cum,
-                    "saving":  round(ula_cum - alt_cum, 2),
+                    "year":            y,
+                    "ula_annual_this": ula_annual_this,
+                    "ula_cum":         ula_cum,
+                    "alt_annual_this": alt_annual_this,
+                    "alt_cum":         alt_cum,
+                    "saving":          round(ula_cum - alt_cum, 2),
                 })
 
-            # Break-even year
+            # Break-even: first year where alternative cumulative < ULA cumulative
             break_even = None
-            if yr2_alt < ula_annual:
-                # Alternative becomes cheaper: find first year where alt < ula cumulative
-                for row in yearly:
-                    if row["alt_cum"] < row["ula_cum"]:
-                        break_even = row["year"]
-                        break
-                if break_even is None and yr1_alt < ula_annual:
-                    break_even = 1
-            elif yr1_alt <= ula_annual:
-                break_even = 1
+            for row in yearly:
+                if row["alt_cum"] < row["ula_cum"]:
+                    break_even = row["year"]
+                    break
 
             any_missing_price = any(l["price_missing"] for l in lines)
 
             result = {
-                "client":          client,
-                "lines":           lines,
-                "ula_annual":      ula_annual,
+                "client":           client,
+                "lines":            lines,
+                "ula_purchase":     ula_purchase,
+                "ula_yr1":          ula_yr1,
+                "ula_yr1_support":  ula_yr1_support,
+                "ula_yr2_annual":   ula_yr2_annual,
                 "support_rate_pct": float(form_vals["support_rate"]),
-                "total_new_cost":  round(total_new_cost, 2),
-                "yr1_alt":         yr1_alt,
-                "yr2_alt":         yr2_alt,
-                "yearly":          yearly,
-                "break_even":      break_even,
-                "horizon":         horizon,
+                "total_new_cost":   round(total_new_cost, 2),
+                "yr1_alt":          yr1_alt,
+                "yr2_alt":          yr2_alt,
+                "yearly":           yearly,
+                "break_even":       break_even,
+                "horizon":          horizon,
                 "any_missing_price": any_missing_price,
             }
         except Exception as e:
