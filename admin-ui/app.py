@@ -158,6 +158,44 @@ def _is_compatible_product(family, product_detail, line_family, line_product_nam
     return product_detail.lower() in (line_product_name or "").lower()
 
 
+def _check_ula_coverage(csi_id, server_id, schema):
+    """Check whether every product the server requires is covered by the ULA.
+
+    Returns:
+      None   — ULA has no covered_products rows configured; caller should warn.
+      []     — All products are covered (or server has no specific product_detail).
+      [str]  — List of product_detail strings that are NOT covered by the ULA.
+    """
+    covered_rows = query(
+        "SELECT product_name FROM shared.ula_covered_products WHERE csi_id = %s",
+        (csi_id,)
+    )
+    if not covered_rows:
+        return None  # No coverage defined — can't validate
+
+    covered_lower = [r["product_name"].lower() for r in covered_rows]
+
+    # Pull every distinct product_detail the server requires
+    lp_details = query(
+        f"SELECT DISTINCT product_detail "
+        f"FROM {schema}.license_position "
+        f"WHERE server_id = %s AND licences_required > 0 AND product_detail IS NOT NULL",
+        (server_id,)
+    )
+
+    uncovered = []
+    for row in lp_details:
+        detail = (row["product_detail"] or "").strip()
+        if not detail:
+            continue
+        detail_lower = detail.lower()
+        # A product is covered if any ULA product name contains it or vice-versa
+        if not any(cl in detail_lower or detail_lower in cl for cl in covered_lower):
+            uncovered.append(detail)
+
+    return uncovered
+
+
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # Auth & RBAC
@@ -1043,6 +1081,36 @@ def assignment_propose():
         except ValueError:
             flash("Licences consumed must be a number.", "danger")
             return redirect(request.referrer or url_for("edit_server", server_id=server_id))
+
+    # If the target CSI is a ULA, validate product coverage before queuing
+    if csi_id and req_type != "remove":
+        is_ula_row = query(
+            "SELECT is_ula FROM shared.csi_contracts WHERE csi_id = %s",
+            (csi_id,), fetchall=False
+        )
+        if is_ula_row and is_ula_row["is_ula"]:
+            # product_detail from the form is the one being proposed
+            if product_detail:
+                covered_rows = query(
+                    "SELECT product_name FROM shared.ula_covered_products WHERE csi_id = %s",
+                    (csi_id,)
+                )
+                if covered_rows:
+                    covered_lower = [r["product_name"].lower() for r in covered_rows]
+                    detail_lower  = product_detail.lower()
+                    if not any(cl in detail_lower or detail_lower in cl for cl in covered_lower):
+                        flash(
+                            f'Cannot propose assignment: "{product_detail}" is not covered by '
+                            f'ULA {csi_number}. Add this product to the ULA contract first.',
+                            "danger"
+                        )
+                        return redirect(request.referrer or url_for("edit_server", server_id=server_id))
+                else:
+                    flash(
+                        f"Warning: ULA {csi_number} has no covered products configured — "
+                        "coverage cannot be validated. Add products to the contract to enable checks.",
+                        "warning"
+                    )
 
     execute(
         """INSERT INTO sam_admin.assignment_requests
@@ -2391,6 +2459,30 @@ def edit_server(server_id):
                     or ula_row["client_code"] != server_code):
                 flash("Invalid ULA selection.", "danger")
                 return redirect(url_for("edit_server", server_id=server_id))
+
+            # --- ULA coverage check ---
+            # Verify every product the server requires is listed in the ULA's
+            # covered products.  If ula_covered_products has no rows we warn
+            # (the ULA has no scope defined) but still allow assignment so
+            # legacy contracts without a product list aren't hard-blocked.
+            uncovered = _check_ula_coverage(csi_id, server_id, schema)
+            if uncovered is None:
+                # No covered-products configured — warn but don't block
+                flash(
+                    "Warning: this ULA has no covered products configured. "
+                    "Add products via the contract page to enable coverage validation.",
+                    "warning"
+                )
+            elif uncovered:
+                flash(
+                    "Cannot assign to this ULA — the following products are required "
+                    "on this server but are not listed in the ULA's covered products: "
+                    + ", ".join(f'"{p}"' for p in uncovered)
+                    + ". Add the missing products to the ULA contract first.",
+                    "danger"
+                )
+                return redirect(url_for("edit_server", server_id=server_id))
+
             # Get all product families present on this server
             lp_rows = query(
                 f"SELECT DISTINCT product_family::TEXT FROM {schema}.license_position "
