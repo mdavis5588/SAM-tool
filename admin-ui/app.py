@@ -4415,23 +4415,25 @@ def licence_analysis():
 
     # Run analysis if GET params supplied
     result = None
+    SUPPORT_RATE = 0.22  # locked — Oracle standard annual support rate
+
     form_vals = {
-        "client_id":          request.args.get("client_id", ""),
-        "ula_purchase_price": request.args.get("ula_purchase_price", ""),
-        "support_rate":       request.args.get("support_rate", "22"),
-        "horizon_years":      request.args.get("horizon_years", "5"),
+        "client_id":       request.args.get("client_id", ""),
+        "ula_support_cost": request.args.get("ula_support_cost", ""),
+        "horizon_years":   request.args.get("horizon_years", "5"),
     }
 
-    if form_vals["client_id"] and form_vals["ula_purchase_price"]:
+    if form_vals["client_id"] and form_vals["ula_support_cost"]:
         try:
             client_id      = int(form_vals["client_id"])
-            ula_purchase   = float(form_vals["ula_purchase_price"])
-            support_rate   = float(form_vals["support_rate"]) / 100.0
+            ula_support    = float(form_vals["ula_support_cost"])
+            ula_purchase   = round(ula_support / SUPPORT_RATE, 2)
+            support_rate   = SUPPORT_RATE
             horizon        = min(max(int(form_vals["horizon_years"]), 1), 20)
 
             # ULA cost model: Year 1 = purchase + first-year support
-            #                 Year 2+ = ongoing support only (% of purchase price)
-            ula_yr1_support = round(ula_purchase * support_rate, 2)
+            #                 Year 2+ = ongoing support only (22% of purchase price)
+            ula_yr1_support = round(ula_purchase * SUPPORT_RATE, 2)
             ula_yr1         = round(ula_purchase + ula_yr1_support, 2)
             ula_yr2_annual  = ula_yr1_support   # same rate, support-only from year 2
 
@@ -4535,7 +4537,7 @@ def licence_analysis():
                 gap = max(units_req - pool_used, 0)
                 unit_price = find_price(req["product_label"], req["metric"])
                 new_cost   = round(gap * unit_price, 2) if unit_price is not None else None
-                yr1_sup    = round(new_cost * support_rate, 2) if new_cost is not None else None
+                yr1_sup    = round(new_cost * SUPPORT_RATE, 2) if new_cost is not None else None
                 yr1_total  = round(new_cost + yr1_sup, 2) if new_cost is not None else None
                 yr2_ann    = yr1_sup  # same as yr1 support; support on newly purchased licences
 
@@ -4602,11 +4604,12 @@ def licence_analysis():
             result = {
                 "client":           client,
                 "lines":            lines,
+                "ula_support":      ula_support,
                 "ula_purchase":     ula_purchase,
                 "ula_yr1":          ula_yr1,
                 "ula_yr1_support":  ula_yr1_support,
                 "ula_yr2_annual":   ula_yr2_annual,
-                "support_rate_pct": float(form_vals["support_rate"]),
+                "support_rate_pct": 22,
                 "total_new_cost":   round(total_new_cost, 2),
                 "yr1_alt":          yr1_alt,
                 "yr2_alt":          yr2_alt,
