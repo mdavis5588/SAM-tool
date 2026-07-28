@@ -127,6 +127,16 @@
               <span class="badge" style="background:rgba(109,164,236,.15);color:#1a60b0;font-weight:600">
                 <i class="bi bi-people-fill me-1"></i>Shared Pool
               </span>
+              {% elif s.get('snapshot_type') == 'feature_activated' %}
+              <span class="badge" style="background:rgba(22,163,74,.12);color:#15803d;font-weight:600"
+                    title="{{ s.trigger_feature or '' }}">
+                <i class="bi bi-lightning-charge-fill me-1"></i>Auto — Feature On
+              </span>
+              {% elif s.get('snapshot_type') == 'feature_dormant' %}
+              <span class="badge" style="background:rgba(234,179,8,.12);color:#a16207;font-weight:600"
+                    title="{{ s.trigger_feature or '' }}">
+                <i class="bi bi-clock-history me-1"></i>Auto — Feature Dormant
+              </span>
               {% else %}
               <span class="badge" style="background:rgba(109,40,217,.1);color:#6d28d9;font-weight:600">
                 <i class="bi bi-server me-1"></i>Licence Position
@@ -136,7 +146,14 @@
             <td>{{ s.line_count }}</td>
             <td>{{ s.taken_by }}</td>
             <td class="text-muted small">{{ s.taken_at.strftime('%Y-%m-%d %H:%M') }}</td>
-            <td class="text-muted small">{{ s.note or '' }}</td>
+            <td class="text-muted small">
+              {% if s.get('trigger_feature') %}
+              <span class="fw-medium">{{ s.trigger_feature }}</span>
+              {% if s.note %}<br><span class="text-muted">{{ s.note }}</span>{% endif %}
+              {% else %}
+              {{ s.note or '' }}
+              {% endif %}
+            </td>
             <td class="text-end">
               {% if s.snap_type != 'shared_pool' %}
               <a href="{{ url_for('admin_snapshot_view', snapshot_id=s.snapshot_id) }}"

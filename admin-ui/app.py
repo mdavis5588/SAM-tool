@@ -561,11 +561,13 @@ def admin_audit():
         snapshots = query("""
             SELECT s.snapshot_id, s.snapshot_month, s.taken_at, s.taken_by, s.note,
                    c.client_name, c.client_code, 'licence_position' AS snap_type,
+                   COALESCE(s.snapshot_type, 'manual') AS snapshot_type,
+                   s.trigger_feature,
                    (SELECT COUNT(*) FROM sam_admin.licence_snapshot_lines l
                     WHERE l.snapshot_id = s.snapshot_id) AS line_count
             FROM sam_admin.licence_snapshots s
             JOIN sam_admin.clients c ON c.client_id = s.client_id
-            ORDER BY s.snapshot_month DESC, c.client_name
+            ORDER BY s.snapshot_month DESC, s.taken_at DESC, c.client_name
         """)
     except Exception:
         snapshots = []
@@ -791,6 +793,8 @@ def admin_pool_snapshot_take():
 def admin_snapshot_view(snapshot_id):
     snap = query("""
         SELECT s.snapshot_id, s.snapshot_month, s.taken_at, s.taken_by, s.note,
+               COALESCE(s.snapshot_type, 'manual') AS snapshot_type,
+               s.trigger_feature,
                c.client_name, c.client_code
         FROM sam_admin.licence_snapshots s
         JOIN sam_admin.clients c ON c.client_id = s.client_id

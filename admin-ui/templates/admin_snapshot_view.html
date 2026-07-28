@@ -21,6 +21,28 @@
     <small class="text-muted d-block">{{ t('snapshot_view.taken_at') }}</small>
     <strong>{{ snap.taken_at.strftime('%Y-%m-%d %H:%M') }}</strong>
   </div>
+  <div class="col-auto">
+    <small class="text-muted d-block">Trigger</small>
+    {% if snap.snapshot_type == 'feature_activated' %}
+    <span class="badge" style="background:rgba(22,163,74,.12);color:#15803d;font-weight:600">
+      <i class="bi bi-lightning-charge-fill me-1"></i>Feature newly active
+    </span>
+    {% elif snap.snapshot_type == 'feature_dormant' %}
+    <span class="badge" style="background:rgba(234,179,8,.12);color:#a16207;font-weight:600">
+      <i class="bi bi-clock-history me-1"></i>Feature dormant &gt;1 year
+    </span>
+    {% else %}
+    <span class="badge" style="background:rgba(109,40,217,.1);color:#6d28d9;font-weight:600">
+      <i class="bi bi-person me-1"></i>Manual
+    </span>
+    {% endif %}
+  </div>
+  {% if snap.trigger_feature %}
+  <div class="col-auto">
+    <small class="text-muted d-block">Feature</small>
+    <strong>{{ snap.trigger_feature }}</strong>
+  </div>
+  {% endif %}
   {% if snap.note %}
   <div class="col-auto">
     <small class="text-muted d-block">{{ t('label.notes') }}</small>
