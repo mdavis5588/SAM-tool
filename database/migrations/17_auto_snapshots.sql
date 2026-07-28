@@ -211,10 +211,11 @@ $$;
 --    must reference the client schema name, we recreate the whole
 --    install_changelog_objects function here with the activation hook added.
 --
---    Existing client schemas must have their trigger refreshed by calling:
---      SELECT sam_admin.install_changelog_objects('<schema>');
---    for each client, or via:
---      SELECT sam_admin.refresh_all_client_functions();
+--    Existing client schemas must have their trigger refreshed by re-running
+--    migration 11 after this migration:
+--      psql $DSN -f database/migrations/11_refresh_client_functions.sql
+--    Or install it on a single schema:
+--      SELECT sam_admin.install_feature_activation_trigger('client_acme');
 -- -------------------------------------------------------------------------
 
 -- Retrieve the current function body so we can surgically insert the snapshot
