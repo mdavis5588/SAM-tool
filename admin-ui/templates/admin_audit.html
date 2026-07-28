@@ -3,12 +3,14 @@
 {% block content %}
 <div class="d-flex align-items-center justify-content-between mb-3">
   <h4 class="mb-0"><i class="bi bi-journal-text me-2"></i>{{ t('admin_audit.title') }}</h4>
+  {% if is_superadmin %}
   <form method="post" action="{{ url_for('admin_audit_purge') }}"
         onsubmit="return confirm('{{ t('admin_audit.purge_confirm') }}')">
     <button class="btn btn-sm btn-outline-secondary">
       <i class="bi bi-trash me-1"></i>{{ t('admin_audit.btn_purge') }}
     </button>
   </form>
+  {% endif %}
 </div>
 
 <!-- Tabs -->
@@ -19,12 +21,14 @@
       <span class="badge bg-secondary ms-1">{{ snapshots|length }}</span>
     </button>
   </li>
+  {% if is_superadmin %}
   <li class="nav-item">
     <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-activity">
       <i class="bi bi-clock-history me-1"></i>{{ t('admin_audit.tab_activity') }}
       <span class="badge bg-secondary ms-1">{{ audit_rows|length }}</span>
     </button>
   </li>
+  {% endif %}
 </ul>
 
 <div class="tab-content">
@@ -32,6 +36,7 @@
   <!-- ===== Snapshots Tab ===== -->
   <div class="tab-pane fade show active" id="tab-snapshots">
 
+    {% if current_role in ('superadmin', 'dba', 'contracting') %}
     <div class="row g-4 mb-4">
 
       <!-- Licence Position snapshot form -->
@@ -99,6 +104,7 @@
       </div>
 
     </div>
+    {% endif %}
 
     <!-- Combined snapshot list -->
     {% set all_snaps = (snapshots + pool_snapshots) | sort(attribute='snapshot_month', reverse=true) %}
@@ -161,6 +167,7 @@
                 <i class="bi bi-eye"></i>
               </a>
               {% endif %}
+              {% if current_role in ('superadmin', 'dba', 'contracting') %}
               {% if s.snap_type == 'shared_pool' %}
               <form method="post"
                     action="{{ url_for('admin_pool_snapshot_delete', snapshot_id=s.snapshot_id) }}"
@@ -175,6 +182,7 @@
                     onsubmit="return confirm('{{ t('admin_audit.confirm_delete_snap') }}')">
                 <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
               </form>
+              {% endif %}
               {% endif %}
             </td>
           </tr>

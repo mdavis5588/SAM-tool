@@ -545,20 +545,51 @@ def _audit(action, entity_type=None, entity_id=None, entity_name=None,
 
 
 # ---------------------------------------------------------------------------
-# Audit & Snapshots  (superadmin only)
+# Audit & Snapshots
+# Superadmin / DBA / contracting: see all clients (filtered to selected client).
+# Client users: read-only, own client snapshots only. No audit log access.
 # ---------------------------------------------------------------------------
+def _snapshot_client_filter():
+    """Return (WHERE clause fragment, params) to scope snapshots by role.
+
+    Privileged roles filter by the currently selected client schema if one is
+    active; otherwise they see all clients.  Client-role users are always
+    restricted to their own client_id.
+    """
+    role = current_role()
+    u    = current_user()
+
+    if role == "client":
+        # Hard-scoped to the user's own client_id
+        client_id = u.get("client_id")
+        return "AND s.client_id = %s", (client_id,)
+
+    # Privileged roles: filter by the currently selected schema if set
+    schema = session.get("client_schema")
+    if schema:
+        return "AND c.schema_name = %s", (schema,)
+
+    return "", ()
+
+
 @app.route("/admin/audit")
-@superadmin_required
+@roles_required("superadmin", "dba", "contracting", "client")
 def admin_audit():
-    # All clients for the snapshot tab
-    all_clients = query(
-        "SELECT client_id, client_code, client_name, schema_name "
-        "FROM sam_admin.clients WHERE is_active ORDER BY client_name"
-    )
+    role   = current_role()
+    u      = current_user()
+    where, params = _snapshot_client_filter()
+
+    # All clients for the snapshot take-form (privileged roles only)
+    all_clients = []
+    if role in ("superadmin", "dba", "contracting"):
+        all_clients = query(
+            "SELECT client_id, client_code, client_name, schema_name "
+            "FROM sam_admin.clients WHERE is_active ORDER BY client_name"
+        )
 
     # Licence position snapshots
     try:
-        snapshots = query("""
+        snapshots = query(f"""
             SELECT s.snapshot_id, s.snapshot_month, s.taken_at, s.taken_by, s.note,
                    c.client_name, c.client_code, 'licence_position' AS snap_type,
                    COALESCE(s.snapshot_type, 'manual') AS snapshot_type,
@@ -567,38 +598,44 @@ def admin_audit():
                     WHERE l.snapshot_id = s.snapshot_id) AS line_count
             FROM sam_admin.licence_snapshots s
             JOIN sam_admin.clients c ON c.client_id = s.client_id
+            WHERE TRUE {where}
             ORDER BY s.snapshot_month DESC, s.taken_at DESC, c.client_name
-        """)
+        """, params)
     except Exception:
         snapshots = []
 
-    # Client shared pool snapshots
-    try:
-        pool_snapshots = query("""
-            SELECT s.snapshot_id, s.snapshot_month, s.taken_at, s.taken_by, s.note,
-                   c.client_name, c.client_code, 'shared_pool' AS snap_type,
-                   (SELECT COUNT(*) FROM sam_admin.client_pool_snapshot_lines l
-                    WHERE l.snapshot_id = s.snapshot_id) AS line_count
-            FROM sam_admin.client_pool_snapshots s
-            JOIN sam_admin.clients c ON c.client_id = s.client_id
-            ORDER BY s.snapshot_month DESC, c.client_name
-        """)
-    except Exception:
-        pool_snapshots = []
+    # Client shared pool snapshots (not shown to client-role users)
+    pool_snapshots = []
+    if role in ("superadmin", "dba", "contracting"):
+        try:
+            pool_snapshots = query(f"""
+                SELECT s.snapshot_id, s.snapshot_month, s.taken_at, s.taken_by, s.note,
+                       c.client_name, c.client_code, 'shared_pool' AS snap_type,
+                       (SELECT COUNT(*) FROM sam_admin.client_pool_snapshot_lines l
+                        WHERE l.snapshot_id = s.snapshot_id) AS line_count
+                FROM sam_admin.client_pool_snapshots s
+                JOIN sam_admin.clients c ON c.client_id = s.client_id
+                WHERE TRUE {where}
+                ORDER BY s.snapshot_month DESC, c.client_name
+            """, params)
+        except Exception:
+            pool_snapshots = []
 
-    # Audit log — most recent 500 rows
-    try:
-        audit_rows = query("""
-            SELECT audit_id, username, user_role, action, entity_type,
-                   entity_id, entity_name, client_schema,
-                   old_values, new_values, ip_address,
-                   created_at
-            FROM sam_admin.audit_log
-            ORDER BY created_at DESC
-            LIMIT 500
-        """)
-    except Exception:
-        audit_rows = []
+    # Audit log — superadmin only
+    audit_rows = []
+    if role == "superadmin":
+        try:
+            audit_rows = query("""
+                SELECT audit_id, username, user_role, action, entity_type,
+                       entity_id, entity_name, client_schema,
+                       old_values, new_values, ip_address,
+                       created_at
+                FROM sam_admin.audit_log
+                ORDER BY created_at DESC
+                LIMIT 500
+            """)
+        except Exception:
+            pass
 
     return render_template("admin_audit.html",
                            all_clients=all_clients,
@@ -789,17 +826,31 @@ def admin_pool_snapshot_take():
 
 
 @app.route("/admin/snapshot/<int:snapshot_id>")
-@superadmin_required
+@roles_required("superadmin", "dba", "contracting", "client")
 def admin_snapshot_view(snapshot_id):
-    snap = query("""
-        SELECT s.snapshot_id, s.snapshot_month, s.taken_at, s.taken_by, s.note,
-               COALESCE(s.snapshot_type, 'manual') AS snapshot_type,
-               s.trigger_feature,
-               c.client_name, c.client_code
-        FROM sam_admin.licence_snapshots s
-        JOIN sam_admin.clients c ON c.client_id = s.client_id
-        WHERE s.snapshot_id = %s
-    """, (snapshot_id,), fetchall=False)
+    # Client-role users may only view snapshots belonging to their own client
+    u    = current_user()
+    role = current_role()
+    if role == "client":
+        snap = query("""
+            SELECT s.snapshot_id, s.snapshot_month, s.taken_at, s.taken_by, s.note,
+                   COALESCE(s.snapshot_type, 'manual') AS snapshot_type,
+                   s.trigger_feature,
+                   c.client_name, c.client_code
+            FROM sam_admin.licence_snapshots s
+            JOIN sam_admin.clients c ON c.client_id = s.client_id
+            WHERE s.snapshot_id = %s AND s.client_id = %s
+        """, (snapshot_id, u.get("client_id")), fetchall=False)
+    else:
+        snap = query("""
+            SELECT s.snapshot_id, s.snapshot_month, s.taken_at, s.taken_by, s.note,
+                   COALESCE(s.snapshot_type, 'manual') AS snapshot_type,
+                   s.trigger_feature,
+                   c.client_name, c.client_code
+            FROM sam_admin.licence_snapshots s
+            JOIN sam_admin.clients c ON c.client_id = s.client_id
+            WHERE s.snapshot_id = %s
+        """, (snapshot_id,), fetchall=False)
 
     if not snap:
         flash("Snapshot not found.", "danger")
