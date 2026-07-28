@@ -61,7 +61,6 @@ def load_json(path: str) -> dict:
     start = content.find("{")
     if start == -1:
         sys.exit(f"No JSON object found in {path}")
-    # Similarly, find the last '}' in case there is trailing output
     end = content.rfind("}")
     if end == -1:
         sys.exit("JSON object is not terminated — file may be truncated")
@@ -73,7 +72,7 @@ def load_json(path: str) -> dict:
 
 
 def validate(doc: dict) -> None:
-    required = {"_meta", "base", "extended", "options"}  # db_parameters is optional
+    required = {"_meta", "base", "extended", "feature_usage"}
     missing = required - doc.keys()
     if missing:
         sys.exit(f"Discovery file is missing top-level keys: {missing}")
@@ -84,6 +83,14 @@ def validate(doc: dict) -> None:
         sys.exit("'hostname' is missing from the base payload")
     if not base.get("instances"):
         print("WARNING: No Oracle instances found in discovery output.", file=sys.stderr)
+
+    version = doc.get("_meta", {}).get("script_version", "0")
+    if version < "2.1":
+        print(
+            f"WARNING: discovery file was produced by script version {version}; "
+            "expected 2.1+. Re-run oracle_discovery.sql on the target server.",
+            file=sys.stderr,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -105,62 +112,63 @@ def call_upsert(cur, schema: str, func: str, payload: dict, verbose: bool) -> No
 
 
 # ---------------------------------------------------------------------------
-# Options upsert (oracle_options table)
+# Feature usage upsert (oracle_feature_usage table via upsert function)
 # ---------------------------------------------------------------------------
 
-OPTION_UPSERT_SQL = """
-INSERT INTO {schema}.oracle_options
-    (server_id, option_name, is_active, discovery_run_id)
-VALUES
-    (%s, %s, %s, %s)
-ON CONFLICT (server_id, option_name) DO UPDATE SET
-    is_active        = EXCLUDED.is_active,
-    discovery_run_id = EXCLUDED.discovery_run_id,
-    updated_at       = NOW()
-"""
+def load_feature_usage(cur, schema: str, hostname: str,
+                       features: list, run_id: str, verbose: bool) -> None:
+    """
+    Upserts DBA_FEATURE_USAGE_STATISTICS rows via the per-client function
+    upsert_oracle_feature_usage, which is installed by install_extended_views().
+    Each row is keyed on (instance_id, feature_name); oldest first_usage_date
+    and latest last_usage_date are preserved on conflict.
+    """
+    if not features:
+        return
+    payload = {"hostname": hostname, "run_id": run_id, "features": features}
+    call_upsert(cur, schema, "upsert_oracle_feature_usage", payload, verbose)
 
-def load_options(cur, schema: str, server_id: int, run_id: str,
-                 options: list, verbose: bool) -> None:
-    for opt in options:
-        if verbose:
-            print(f"    option: {opt['option_name']} = {opt['is_active']}")
-        cur.execute(
-            OPTION_UPSERT_SQL.format(schema=schema),
-            (server_id, opt["option_name"], opt["is_active"], run_id),
-        )
 
+# ---------------------------------------------------------------------------
+# DB parameters upsert (oracle_options table, param: prefix)
+# ---------------------------------------------------------------------------
 
 DB_PARAM_UPSERT_SQL = """
 INSERT INTO {schema}.oracle_options
     (server_id, option_name, is_active, discovery_run_id)
-VALUES
-    (%s, %s, %s, %s)
+SELECT s.server_id,
+       CASE WHEN %(con_id)s <= 1
+            THEN 'param:' || %(name)s
+            ELSE 'param:pdb' || %(con_id)s || ':' || %(name)s
+       END,
+       LOWER(%(value)s) NOT IN ('none','false','0','','no'),
+       %(run_id)s
+FROM   {schema}.oracle_servers s
+WHERE  s.hostname = %(hostname)s
 ON CONFLICT (server_id, option_name) DO UPDATE SET
     is_active        = EXCLUDED.is_active,
     discovery_run_id = EXCLUDED.discovery_run_id,
     updated_at       = NOW()
 """
 
-_FALSY = {"none", "false", "0", "", "no"}
-
-def load_db_parameters(cur, schema: str, server_id: int, run_id: str,
+def load_db_parameters(cur, schema: str, hostname: str, run_id: str,
                        params: list, verbose: bool) -> None:
-    """Store raw GV$PARAMETER values in oracle_options.
-
+    """
+    Store raw GV$PARAMETER values in oracle_options.
     CDB-root entries (con_id 0 or 1) → 'param:<name>'
     PDB overrides (con_id > 1)        → 'param:pdb<con_id>:<name>'
     """
     for p in params:
-        con_id  = p.get("con_id", 0)
-        name    = p.get("name", "")
-        value   = p.get("value", "")
-        is_active = value.lower() not in _FALSY
-        opt_name  = f"param:{name}" if con_id <= 1 else f"param:pdb{con_id}:{name}"
+        con_id = p.get("con_id", 0)
+        name   = p.get("name", "")
+        value  = p.get("value", "")
         if verbose:
-            print(f"    db_parameter [con_id={con_id}]: {name} = {value!r} → is_active={is_active}")
+            label = f"con_id={con_id}"
+            print(f"    db_parameter [{label}]: {name} = {value!r}")
         cur.execute(
             DB_PARAM_UPSERT_SQL.format(schema=schema),
-            (server_id, opt_name, is_active, run_id),
+            {"con_id": con_id, "name": name, "value": value,
+             "run_id": run_id, "hostname": hostname},
         )
 
 
@@ -177,14 +185,17 @@ def main():
     doc = load_json(args.discovery_file)
     validate(doc)
 
-    base        = doc["base"]
-    extended    = doc["extended"]
-    options     = doc.get("options", [])
-    db_params   = doc.get("db_parameters", [])
-    hostname    = base["hostname"]
-    run_id      = base["run_id"]
+    base          = doc["base"]
+    extended      = doc["extended"]
+    feature_usage = doc.get("feature_usage", [])
+    db_params     = doc.get("db_parameters", [])
+    hostname      = base["hostname"]
+    run_id        = base["run_id"]
 
+    meta = doc.get("_meta", {})
     print(f"Host   : {hostname}  (run_id={run_id})")
+    print(f"DB     : {meta.get('db_unique_name', 'unknown')}")
+    print(f"Script : v{meta.get('script_version', '?')}  generated {meta.get('generated', '?')}")
     print(f"Instances: {[i['sid'] for i in base.get('instances', [])]}")
 
     if args.dry_run:
@@ -197,33 +208,29 @@ def main():
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
 
                 # 1. Base Oracle discovery (server + processor + instances)
-                print("\n[1/3] Calling upsert_oracle_discovery …")
+                print("\n[1/4] Calling upsert_oracle_discovery …")
                 call_upsert(cur, args.client, "upsert_oracle_discovery", base, args.verbose)
 
                 # 2. Extended discovery (RAC nodes, PDBs, NUP users)
-                print("[2/3] Calling upsert_oracle_extended_discovery …")
+                print("[2/4] Calling upsert_oracle_extended_discovery …")
                 call_upsert(cur, args.client, "upsert_oracle_extended_discovery",
                             extended, args.verbose)
 
-                # 3. Oracle options + db_parameters
-                if options or db_params:
-                    print(f"[3/3] Loading {len(options)} option flags + {len(db_params)} db_parameters …")
-                    cur.execute(
-                        f"SELECT server_id FROM {args.client}.oracle_servers "
-                        f"WHERE hostname = %s",
-                        (hostname,),
-                    )
-                    row = cur.fetchone()
-                    if row:
-                        sid = row["server_id"]
-                        if options:
-                            load_options(cur, args.client, sid, run_id, options, args.verbose)
-                        if db_params:
-                            load_db_parameters(cur, args.client, sid, run_id, db_params, args.verbose)
-                    else:
-                        print("  WARNING: server not found after base upsert — skipping options")
+                # 3. Feature usage (DBA_FEATURE_USAGE_STATISTICS)
+                print(f"[3/4] Loading {len(feature_usage)} feature usage rows …")
+                if feature_usage:
+                    load_feature_usage(cur, args.client, hostname,
+                                       feature_usage, run_id, args.verbose)
                 else:
-                    print("[3/3] No options or db_parameters to load.")
+                    print("  No feature_usage rows — skipping.")
+
+                # 4. DB parameters (GV$PARAMETER — management pack access etc.)
+                print(f"[4/4] Loading {len(db_params)} db_parameters …")
+                if db_params:
+                    load_db_parameters(cur, args.client, hostname,
+                                       run_id, db_params, args.verbose)
+                else:
+                    print("  No db_parameters — skipping.")
 
         print("\nDone — all data committed.")
 
