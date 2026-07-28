@@ -5762,6 +5762,9 @@ def compliance_client(client_code):
 @app.route("/alerts")
 @login_required
 def alerts():
+    role = current_role()
+    u    = current_user()
+
     try:
         rows = query(
             "SELECT * FROM shared.compliance_alerts ORDER BY "
@@ -5771,6 +5774,24 @@ def alerts():
     except Exception as e:
         flash(f"Could not load alerts: {e}", "danger")
         rows = []
+
+    # Client users are hard-scoped to their own client — enforce server-side
+    if role == "client":
+        user_client_code = (query(
+            "SELECT client_code FROM sam_admin.clients WHERE client_id = %s",
+            (u.get("client_id"),), fetchall=False
+        ) or {}).get("client_code")
+        rows = [r for r in (rows or []) if r.get("client_code") == user_client_code]
+        all_clients = []
+        client_filter = user_client_code
+    else:
+        all_clients = query(
+            "SELECT client_code, client_name FROM sam_admin.clients "
+            "WHERE is_active ORDER BY client_name"
+        ) or []
+        client_filter = request.args.get("client", "ALL")
+        if client_filter != "ALL":
+            rows = [r for r in (rows or []) if r.get("client_code") == client_filter]
 
     severity_filter = request.args.get("severity", "ALL")
     type_filter     = request.args.get("type", "ALL")
@@ -5789,6 +5810,8 @@ def alerts():
                            alert_types=alert_types,
                            severity_filter=severity_filter,
                            type_filter=type_filter,
+                           client_filter=client_filter,
+                           all_clients=all_clients,
                            high_count=high_count,
                            medium_count=medium_count)
 

@@ -24,27 +24,42 @@
 <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
   <!-- Severity filter -->
   <div class="btn-group btn-group-sm" role="group">
-    <a href="{{ url_for('alerts', severity='ALL', type=type_filter) }}"
+    <a href="{{ url_for('alerts', severity='ALL', type=type_filter, client=client_filter) }}"
        class="btn {% if severity_filter == 'ALL' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
       All Severities
     </a>
-    <a href="{{ url_for('alerts', severity='HIGH', type=type_filter) }}"
+    <a href="{{ url_for('alerts', severity='HIGH', type=type_filter, client=client_filter) }}"
        class="btn {% if severity_filter == 'HIGH' %}btn-danger{% else %}btn-outline-danger{% endif %}">
       HIGH
     </a>
-    <a href="{{ url_for('alerts', severity='MEDIUM', type=type_filter) }}"
+    <a href="{{ url_for('alerts', severity='MEDIUM', type=type_filter, client=client_filter) }}"
        class="btn {% if severity_filter == 'MEDIUM' %}btn-warning text-dark{% else %}btn-outline-warning{% endif %}">
       MEDIUM
     </a>
   </div>
 
+  <!-- Client filter (hidden for client-role users) -->
+  {% if all_clients %}
+  <select class="form-select form-select-sm" style="width:auto;min-width:180px"
+          onchange="window.location=this.value">
+    <option value="{{ url_for('alerts', severity=severity_filter, type=type_filter, client='ALL') }}"
+            {% if client_filter == 'ALL' %}selected{% endif %}>All Clients</option>
+    {% for c in all_clients %}
+    <option value="{{ url_for('alerts', severity=severity_filter, type=type_filter, client=c.client_code) }}"
+            {% if client_filter == c.client_code %}selected{% endif %}>
+      {{ c.client_name }}
+    </option>
+    {% endfor %}
+  </select>
+  {% endif %}
+
   <!-- Type filter -->
   <select class="form-select form-select-sm" style="width:auto;min-width:200px"
           onchange="window.location=this.value">
-    <option value="{{ url_for('alerts', severity=severity_filter, type='ALL') }}"
+    <option value="{{ url_for('alerts', severity=severity_filter, type='ALL', client=client_filter) }}"
             {% if type_filter == 'ALL' %}selected{% endif %}>All Types</option>
     {% for atype in alert_types %}
-    <option value="{{ url_for('alerts', severity=severity_filter, type=atype) }}"
+    <option value="{{ url_for('alerts', severity=severity_filter, type=atype, client=client_filter) }}"
             {% if type_filter == atype %}selected{% endif %}>
       {{ atype | replace('_', ' ') | title }}
     </option>
