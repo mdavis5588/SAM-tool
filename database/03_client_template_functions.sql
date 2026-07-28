@@ -1308,6 +1308,18 @@ BEGIN
       detected_at DESC
   $view$, p_schema, p_schema);
 
+  -- Install the auto-snapshot trigger for feature activation events.
+  -- Defined in migration 17_auto_snapshots.sql; guard against running before
+  -- that migration has been applied.
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin'
+      AND p.proname = 'install_feature_activation_trigger'
+  ) THEN
+    PERFORM sam_admin.install_feature_activation_trigger(p_schema);
+  END IF;
+
 END;
 $$;
 -- ---------------------------------------------------------------------------

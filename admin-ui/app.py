@@ -6155,6 +6155,22 @@ def dispatch_alerts():
     if DISPATCH_KEY and request.args.get("key", "") != DISPATCH_KEY:
         return jsonify({"error": "unauthorized"}), 401
 
+    # Check all client schemas for Oracle features inactive > 1 year and
+    # take automatic licence-position snapshots where found.
+    dormancy_results = []
+    try:
+        rows = query("SELECT client_id, feature, last_active, snapshot_id"
+                     "  FROM sam_admin.check_feature_dormancy()")
+        for row in (rows or []):
+            if row.get("snapshot_id"):
+                dormancy_results.append({
+                    "client_id": row["client_id"],
+                    "feature":   row["feature"],
+                    "snapshot_id": row["snapshot_id"],
+                })
+    except Exception as exc:
+        dormancy_results = [{"error": str(exc)}]
+
     alerts_data = query(
         "SELECT * FROM shared.compliance_alerts ORDER BY severity, days_until NULLS LAST"
     )
@@ -6181,7 +6197,8 @@ def dispatch_alerts():
         results.append({"channel": ch["channel_name"], "ok": ok, "error": err,
                         "alert_count": len(filtered)})
 
-    return jsonify({"status": "ok", "channels": results})
+    return jsonify({"status": "ok", "channels": results,
+                    "dormancy_snapshots": dormancy_results})
 
 
 def _send_to_channel(channel, alerts):
