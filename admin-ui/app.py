@@ -282,13 +282,25 @@ def _inject_user():
             pending_count = (row or {}).get("n", 0)
         except Exception:
             pass
+    active_alerts_count = 0
+    if u:
+        try:
+            row = query(
+                "SELECT COUNT(*) AS n FROM shared.compliance_alerts WHERE severity = 'HIGH'",
+                fetchall=False
+            )
+            active_alerts_count = (row or {}).get("n", 0)
+        except Exception:
+            pass
+
     return {
-        "current_user":             u,
-        "current_role":             role,
-        "can_write_contracts":      can_write_contracts(),
-        "can_write_licences":       can_write_licences(),
-        "is_superadmin":            is_superadmin(),
+        "current_user":              u,
+        "current_role":              role,
+        "can_write_contracts":       can_write_contracts(),
+        "can_write_licences":        can_write_licences(),
+        "is_superadmin":             is_superadmin(),
         "pending_assignments_count": pending_count,
+        "active_alerts_count":       active_alerts_count,
     }
 
 with app.app_context():
@@ -5752,12 +5764,33 @@ def compliance_client(client_code):
 def alerts():
     try:
         rows = query(
-            "SELECT * FROM shared.compliance_alerts ORDER BY severity, days_until NULLS LAST"
+            "SELECT * FROM shared.compliance_alerts ORDER BY "
+            "CASE severity WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END, "
+            "days_until NULLS LAST, client_name, object_name"
         )
     except Exception as e:
         flash(f"Could not load alerts: {e}", "danger")
         rows = []
-    return render_template("alerts.html", alerts=rows)
+
+    severity_filter = request.args.get("severity", "ALL")
+    type_filter     = request.args.get("type", "ALL")
+
+    alert_types = sorted({r["alert_type"] for r in (rows or [])})
+
+    if severity_filter != "ALL":
+        rows = [r for r in rows if r["severity"] == severity_filter]
+    if type_filter != "ALL":
+        rows = [r for r in rows if r["alert_type"] == type_filter]
+
+    high_count   = sum(1 for r in (rows or []) if r["severity"] == "HIGH")
+    medium_count = sum(1 for r in (rows or []) if r["severity"] == "MEDIUM")
+
+    return render_template("alerts.html", alerts=rows,
+                           alert_types=alert_types,
+                           severity_filter=severity_filter,
+                           type_filter=type_filter,
+                           high_count=high_count,
+                           medium_count=medium_count)
 
 
 # ---------------------------------------------------------------------------
