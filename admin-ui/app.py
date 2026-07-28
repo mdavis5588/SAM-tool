@@ -4256,6 +4256,271 @@ def cost_optimisation():
                            total_unused_licences=total_unused_licences)
 
 
+@app.route("/licence-analysis", methods=["GET", "POST"])
+@login_required
+def licence_analysis():
+    role = current_role()
+    if role not in ("superadmin", "contracting", "dba"):
+        return abort(403)
+
+    clients = query(
+        "SELECT client_id, client_code, client_name FROM sam_admin.clients "
+        "WHERE is_active ORDER BY client_name"
+    )
+    prices = query(
+        "SELECT price_id, product_name, metric, list_price, currency, "
+        "       effective_date, is_current, notes "
+        "FROM shared.oracle_product_list_prices "
+        "ORDER BY product_name, metric, effective_date DESC"
+    )
+
+    # Price management (POST actions that don't run analysis)
+    if request.method == "POST":
+        action = request.form.get("action", "")
+
+        if action == "save_price":
+            pid   = request.form.get("price_id")
+            pname = request.form.get("product_name", "").strip()
+            metric = request.form.get("metric", "").strip()
+            lprice = request.form.get("list_price", "").strip()
+            currency = request.form.get("currency", "USD").strip().upper() or "USD"
+            eff_date = request.form.get("effective_date") or None
+            notes = request.form.get("notes", "").strip() or None
+            is_current = request.form.get("is_current") == "1"
+            if pname and metric and lprice:
+                if pid:
+                    execute(
+                        "UPDATE shared.oracle_product_list_prices "
+                        "SET product_name=%s, metric=%s, list_price=%s, currency=%s, "
+                        "    effective_date=COALESCE(%s::DATE, CURRENT_DATE), is_current=%s, "
+                        "    notes=%s, updated_by=%s "
+                        "WHERE price_id=%s",
+                        (pname, metric, float(lprice), currency,
+                         eff_date, is_current, notes,
+                         session.get("username", "system"), int(pid))
+                    )
+                else:
+                    execute(
+                        "INSERT INTO shared.oracle_product_list_prices "
+                        "(product_name, metric, list_price, currency, effective_date, is_current, notes, updated_by) "
+                        "VALUES (%s,%s,%s,%s,COALESCE(%s::DATE,CURRENT_DATE),%s,%s,%s) "
+                        "ON CONFLICT (product_name, metric, effective_date) DO UPDATE SET "
+                        "  list_price=EXCLUDED.list_price, is_current=EXCLUDED.is_current, "
+                        "  notes=EXCLUDED.notes, updated_by=EXCLUDED.updated_by",
+                        (pname, metric, float(lprice), currency,
+                         eff_date, is_current, notes,
+                         session.get("username", "system"))
+                    )
+            from flask import redirect
+            return redirect(url_for("licence_analysis") + "#pricing")
+
+        if action == "delete_price":
+            pid = request.form.get("price_id")
+            if pid:
+                execute("DELETE FROM shared.oracle_product_list_prices WHERE price_id=%s", (int(pid),))
+            from flask import redirect
+            return redirect(url_for("licence_analysis") + "#pricing")
+
+    # Run analysis if GET params supplied
+    result = None
+    form_vals = {
+        "client_id":       request.args.get("client_id", ""),
+        "ula_annual_cost": request.args.get("ula_annual_cost", ""),
+        "support_rate":    request.args.get("support_rate", "22"),
+        "horizon_years":   request.args.get("horizon_years", "5"),
+    }
+
+    if form_vals["client_id"] and form_vals["ula_annual_cost"]:
+        try:
+            client_id      = int(form_vals["client_id"])
+            ula_annual     = float(form_vals["ula_annual_cost"])
+            support_rate   = float(form_vals["support_rate"]) / 100.0
+            horizon        = min(max(int(form_vals["horizon_years"]), 1), 20)
+
+            client = query(
+                "SELECT schema_name, client_name, client_code "
+                "FROM sam_admin.clients WHERE client_id=%s",
+                (client_id,), fetchall=False
+            )
+            if not client:
+                raise ValueError("Client not found")
+            schema = client["schema_name"]
+
+            # --- 1. Licence requirements for this client ---
+            reqs = query(f"""
+                SELECT product_family::TEXT                          AS product_family,
+                       COALESCE(product_detail, product_family::TEXT) AS product_label,
+                       licence_metric::TEXT                          AS metric,
+                       CEIL(SUM(licences_required))::NUMERIC        AS units_required
+                FROM   {schema}.license_position
+                WHERE  licences_required > 0
+                GROUP  BY product_family, product_detail, licence_metric
+                ORDER  BY product_family, product_detail, licence_metric
+            """)
+
+            # --- 2. Shared pool entitlement (shareable CSIs, active) ---
+            pool_lines = query("""
+                SELECT l.csi_id,
+                       l.product_name,
+                       l.product_family::TEXT  AS product_family,
+                       l.license_metric::TEXT  AS metric,
+                       l.quantity
+                FROM   shared.license_entitlement_lines l
+                JOIN   shared.csi_contracts cs ON cs.csi_id = l.csi_id
+                WHERE  cs.sharing_policy = 'shareable'
+                  AND  cs.status = 'active'
+                  AND  l.is_active
+            """)
+
+            # Consumed per CSI across all client schemas
+            all_schemas = [
+                r["schema_name"] for r in query(
+                    "SELECT schema_name FROM sam_admin.clients WHERE is_active ORDER BY schema_name"
+                )
+            ]
+            consumed_by_csi: dict = {}
+            if all_schemas:
+                union_parts = " UNION ALL ".join(
+                    f"SELECT csi_id, COALESCE(SUM(licences_consumed),0) AS c "
+                    f"FROM {s}.server_csi_map GROUP BY csi_id"
+                    for s in all_schemas
+                )
+                for r in query(
+                    f"SELECT csi_id, SUM(c) AS total FROM ({union_parts}) t GROUP BY csi_id"
+                ):
+                    consumed_by_csi[r["csi_id"]] = float(r["total"] or 0)
+
+            # Available per (product_family, metric) from shareable pool
+            pool_available: dict = {}  # (product_family, metric) -> float
+            for pl in pool_lines:
+                consumed = consumed_by_csi.get(pl["csi_id"], 0)
+                available = max(float(pl["quantity"] or 0) - consumed, 0)
+                key = (pl["product_family"], pl["metric"])
+                pool_available[key] = pool_available.get(key, 0) + available
+
+            # --- 3. Price lookup ---
+            price_map: dict = {}  # (product_name_lower, metric) -> float
+            for p in prices:
+                if p["is_current"]:
+                    price_map[(p["product_name"].lower(), p["metric"])] = float(p["list_price"])
+
+            def find_price(product_label, metric):
+                pl_lower = (product_label or "").lower()
+                # Exact match
+                if (pl_lower, metric) in price_map:
+                    return price_map[(pl_lower, metric)]
+                # Substring match
+                for (pn, m), price in price_map.items():
+                    if m == metric and (pn in pl_lower or pl_lower in pn):
+                        return price
+                return None
+
+            # --- 4. Build analysis lines ---
+            lines = []
+            total_new_cost = 0.0
+            total_yr1_support = 0.0
+            total_yr2_annual = 0.0
+            pool_units_used = {}  # track pool consumption per key
+
+            for req in reqs:
+                key = (req["product_family"], req["metric"])
+                units_req  = float(req["units_required"] or 0)
+                pool_avail = pool_available.get(key, 0)
+                # Don't use more pool than required
+                pool_used  = min(pool_avail, units_req)
+                # Track pool usage so multiple requirements don't double-dip
+                already_used = pool_units_used.get(key, 0)
+                pool_remaining = max(pool_avail - already_used, 0)
+                pool_used = min(pool_remaining, units_req)
+                pool_units_used[key] = already_used + pool_used
+
+                gap = max(units_req - pool_used, 0)
+                unit_price = find_price(req["product_label"], req["metric"])
+                new_cost   = round(gap * unit_price, 2) if unit_price is not None else None
+                yr1_sup    = round(new_cost * support_rate, 2) if new_cost is not None else None
+                yr1_total  = round(new_cost + yr1_sup, 2) if new_cost is not None else None
+                yr2_ann    = yr1_sup  # same as yr1 support; support on newly purchased licences
+
+                if new_cost is not None:
+                    total_new_cost   += new_cost
+                    total_yr1_support += yr1_sup
+                    total_yr2_annual  += yr2_ann
+
+                lines.append({
+                    "product_label": req["product_label"],
+                    "product_family": req["product_family"],
+                    "metric":         req["metric"],
+                    "units_required": units_req,
+                    "pool_available": round(pool_used, 2),
+                    "gap":            round(gap, 2),
+                    "unit_price":     unit_price,
+                    "new_cost":       new_cost,
+                    "yr1_support":    yr1_sup,
+                    "yr1_total":      yr1_total,
+                    "yr2_annual":     yr2_ann,
+                    "price_missing":  unit_price is None and gap > 0,
+                })
+
+            # Year 1 total alternative = new licence purchases + first-year support
+            yr1_alt = round(total_new_cost + total_yr1_support, 2)
+            # Year 2+ annual = support on new licences only
+            yr2_alt = round(total_yr2_annual, 2)
+
+            # Year-by-year cumulative table
+            yearly = []
+            for y in range(1, horizon + 1):
+                ula_cum = round(ula_annual * y, 2)
+                if y == 1:
+                    alt_cum = yr1_alt
+                else:
+                    alt_cum = round(yr1_alt + (y - 1) * yr2_alt, 2)
+                yearly.append({
+                    "year":    y,
+                    "ula_cum": ula_cum,
+                    "alt_cum": alt_cum,
+                    "saving":  round(ula_cum - alt_cum, 2),
+                })
+
+            # Break-even year
+            break_even = None
+            if yr2_alt < ula_annual:
+                # Alternative becomes cheaper: find first year where alt < ula cumulative
+                for row in yearly:
+                    if row["alt_cum"] < row["ula_cum"]:
+                        break_even = row["year"]
+                        break
+                if break_even is None and yr1_alt < ula_annual:
+                    break_even = 1
+            elif yr1_alt <= ula_annual:
+                break_even = 1
+
+            any_missing_price = any(l["price_missing"] for l in lines)
+
+            result = {
+                "client":          client,
+                "lines":           lines,
+                "ula_annual":      ula_annual,
+                "support_rate_pct": float(form_vals["support_rate"]),
+                "total_new_cost":  round(total_new_cost, 2),
+                "yr1_alt":         yr1_alt,
+                "yr2_alt":         yr2_alt,
+                "yearly":          yearly,
+                "break_even":      break_even,
+                "horizon":         horizon,
+                "any_missing_price": any_missing_price,
+            }
+        except Exception as e:
+            result = {"error": str(e)}
+
+    return render_template(
+        "licence_analysis.html",
+        clients=clients,
+        prices=prices,
+        form_vals=form_vals,
+        result=result,
+    )
+
+
 @app.route("/contracts")
 @login_required
 def contracts():
