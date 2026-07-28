@@ -145,14 +145,19 @@ _FALSY = {"none", "false", "0", "", "no"}
 
 def load_db_parameters(cur, schema: str, server_id: int, run_id: str,
                        params: list, verbose: bool) -> None:
-    """Store raw GV$PARAMETER values in oracle_options under a 'param:' prefix."""
+    """Store raw GV$PARAMETER values in oracle_options.
+
+    CDB-root entries (con_id 0 or 1) → 'param:<name>'
+    PDB overrides (con_id > 1)        → 'param:pdb<con_id>:<name>'
+    """
     for p in params:
+        con_id  = p.get("con_id", 0)
         name    = p.get("name", "")
         value   = p.get("value", "")
         is_active = value.lower() not in _FALSY
-        opt_name  = f"param:{name}"
+        opt_name  = f"param:{name}" if con_id <= 1 else f"param:pdb{con_id}:{name}"
         if verbose:
-            print(f"    db_parameter: {name} = {value!r} → is_active={is_active}")
+            print(f"    db_parameter [con_id={con_id}]: {name} = {value!r} → is_active={is_active}")
         cur.execute(
             DB_PARAM_UPSERT_SQL.format(schema=schema),
             (server_id, opt_name, is_active, run_id),

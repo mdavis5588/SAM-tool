@@ -23,11 +23,14 @@ SET TERMOUT OFF
 -- Derive output filename from hostname + date
 COLUMN sam_outfile NEW_VALUE sam_outfile NOPRINT
 SELECT 'oracle_discovery_'
-       || LOWER(REPLACE(host_name, '.', '_'))
+       || LOWER(REPLACE(i.host_name, '.', '_'))
+       || '_'
+       || LOWER(d.db_unique_name)
        || '_'
        || TO_CHAR(SYSDATE, 'YYYYMMDD_HH24MISS')
        || '.json'  AS sam_outfile
-FROM   v$instance;
+FROM   v$instance i
+CROSS  JOIN v$database d;
 
 SPOOL &sam_outfile
 
@@ -120,21 +123,26 @@ DECLARE
     FROM   v$option
     ORDER  BY parameter;
 
-  v_inst_rec      c_instances%ROWTYPE;
-  v_node_rec      c_rac_nodes%ROWTYPE;
-  v_pdb_rec       c_pdbs%ROWTYPE;
-  v_nup_active    NUMBER := 0;
-  v_nup_total     NUMBER := 0;
-  v_nup_locked    NUMBER := 0;
-  v_rac_node_sep  VARCHAR2(1) := '';
-  v_pdb_sep       VARCHAR2(1) := '';
+  v_inst_rec       c_instances%ROWTYPE;
+  v_node_rec       c_rac_nodes%ROWTYPE;
+  v_pdb_rec        c_pdbs%ROWTYPE;
+  v_nup_active     NUMBER := 0;
+  v_nup_total      NUMBER := 0;
+  v_nup_locked     NUMBER := 0;
+  v_pdb_nup_active NUMBER := 0;
+  v_pdb_nup_total  NUMBER := 0;
+  v_pdb_mgmt_pack  VARCHAR2(64)  := '';
+  v_pdb_ddl_log    VARCHAR2(10)  := '';
+  v_rac_node_sep   VARCHAR2(1) := '';
+  v_pdb_sep        VARCHAR2(1) := '';
   v_rac_nodes_json CLOB := '';
-  v_pdbs_json     CLOB := '';
-  v_is_rac        BOOLEAN := FALSE;
-  v_is_cdb        BOOLEAN := FALSE;
-  v_node_count    NUMBER := 0;
-  v_pdb_count     NUMBER := 0;
-  v_cdb_flag      VARCHAR2(3);
+  v_pdbs_json      CLOB := '';
+  v_is_rac         BOOLEAN := FALSE;
+  v_is_cdb         BOOLEAN := FALSE;
+  v_node_count     NUMBER := 0;
+  v_pdb_count      NUMBER := 0;
+  v_cdb_flag       VARCHAR2(3);
+  v_db_unique_name VARCHAR2(64)  := '';
 
   -- Escape helper
   FUNCTION j(p IN VARCHAR2) RETURN VARCHAR2 IS
@@ -156,6 +164,10 @@ BEGIN
     INTO   v_hostname, v_os_dist
     FROM   v$instance;
   EXCEPTION WHEN OTHERS THEN v_hostname := 'unknown'; v_os_dist := '';
+  END;
+  BEGIN
+    SELECT LOWER(db_unique_name) INTO v_db_unique_name FROM v$database;
+  EXCEPTION WHEN OTHERS THEN v_db_unique_name := 'unknown';
   END;
 
   v_fqdn   := v_hostname;   -- Fallback — update if DNS FQDN is known
@@ -284,12 +296,56 @@ BEGIN
     v_pdb_count  := 0;
     IF v_is_cdb THEN
       FOR v_pdb_rec IN c_pdbs LOOP
+        -- NUP user counts per PDB via CDB_USERS (requires CDB$ROOT connection)
+        v_pdb_nup_active := 0;
+        v_pdb_nup_total  := 0;
+        BEGIN
+          SELECT COUNT(*) INTO v_pdb_nup_active
+          FROM   cdb_users
+          WHERE  oracle_maintained = 'N'
+            AND  account_status    = 'OPEN'
+            AND  con_id            = v_pdb_rec.con_id;
+          SELECT COUNT(*) INTO v_pdb_nup_total
+          FROM   cdb_users
+          WHERE  oracle_maintained = 'N'
+            AND  con_id            = v_pdb_rec.con_id;
+        EXCEPTION WHEN OTHERS THEN NULL;
+        END;
+
+        -- Management-pack parameter for this PDB (may differ from CDB if PDB overrides it)
+        v_pdb_mgmt_pack := v_mgmt_pack_access;  -- default: inherit CDB value
+        v_pdb_ddl_log   := v_ddl_logging;
+        BEGIN
+          SELECT UPPER(SUBSTR(value, 1, 64))
+          INTO   v_pdb_mgmt_pack
+          FROM   gv$parameter
+          WHERE  LOWER(name) = 'control_management_pack_access'
+            AND  inst_id     = 1
+            AND  con_id      = v_pdb_rec.con_id;
+        EXCEPTION WHEN OTHERS THEN NULL;
+        END;
+        BEGIN
+          SELECT UPPER(SUBSTR(value, 1, 10))
+          INTO   v_pdb_ddl_log
+          FROM   gv$parameter
+          WHERE  LOWER(name) = 'enable_ddl_logging'
+            AND  inst_id     = 1
+            AND  con_id      = v_pdb_rec.con_id;
+        EXCEPTION WHEN OTHERS THEN NULL;
+        END;
+
         v_pdbs_json := v_pdbs_json || v_pdb_sep
-          || '{"pdb_name":"' || j(v_pdb_rec.pdb_name)
-          || '","con_id":'   || v_pdb_rec.con_id
-          || ',"open_mode":"' || j(v_pdb_rec.open_mode)
-          || '","restricted":"' || j(NVL(v_pdb_rec.restricted,'NO'))
-          || '"}';
+          || '{"pdb_name":"'              || j(v_pdb_rec.pdb_name)
+          || '","con_id":'                || v_pdb_rec.con_id
+          || ',"open_mode":"'             || j(v_pdb_rec.open_mode)
+          || '","restricted":"'           || j(NVL(v_pdb_rec.restricted,'NO'))
+          || '","nup_active_users":'      || v_pdb_nup_active
+          || ',"nup_total_users":'        || v_pdb_nup_total
+          || ',"mgmt_pack_access":"'      || j(v_pdb_mgmt_pack)
+          || '","diagnostics_licensed":'  || CASE WHEN v_pdb_mgmt_pack IN ('DIAGNOSTIC','DIAGNOSTIC+TUNING') THEN 'true' ELSE 'false' END
+          || ',"tuning_licensed":'        || CASE WHEN v_pdb_mgmt_pack = 'DIAGNOSTIC+TUNING' THEN 'true' ELSE 'false' END
+          || ',"ddl_logging":'            || CASE WHEN v_pdb_ddl_log = 'TRUE' THEN 'true' ELSE 'false' END
+          || '}';
         v_pdb_sep   := ',';
         v_pdb_count := v_pdb_count + 1;
       END LOOP;
@@ -356,16 +412,19 @@ BEGIN
   v_tuning_licensed  := CASE WHEN v_mgmt_pack_access = 'DIAGNOSTIC+TUNING'
                              THEN 'true' ELSE 'false' END;
 
-  -- Raw parameter array for the loader (preserves actual text value)
+  -- Raw parameter array — one entry per container (con_id=1 is CDB$ROOT, >1 are PDBs)
+  -- con_id=0 means the value is inherited across all containers (no PDB override set)
   FOR v_p IN (
-    SELECT DISTINCT LOWER(name) AS pname, SUBSTR(value, 1, 256) AS pvalue
+    SELECT DISTINCT con_id, LOWER(name) AS pname, SUBSTR(value, 1, 256) AS pvalue
     FROM   gv$parameter
     WHERE  LOWER(name) IN ('control_management_pack_access', 'enable_ddl_logging')
-    ORDER  BY 1
+      AND  inst_id = 1
+    ORDER  BY con_id, pname
   ) LOOP
     v_params_json := v_params_json || v_param_sep
-      || '{"name":"'  || j(v_p.pname)
-      || '","value":"'|| j(v_p.pvalue) || '"}';
+      || '{"con_id":'  || v_p.con_id
+      || ',"name":"'   || j(v_p.pname)
+      || '","value":"' || j(v_p.pvalue) || '"}';
     v_param_sep := ',';
   END LOOP;
 
@@ -400,7 +459,7 @@ BEGIN
   -- upsert_oracle_extended_discovery with the same hostname.
   -- --------------------------------------------------------
   DBMS_OUTPUT.PUT_LINE('{');
-  DBMS_OUTPUT.PUT_LINE('"_meta":{"script_version":"1.0","generated":"' || TO_CHAR(SYSDATE,'YYYY-MM-DD"T"HH24:MI:SS') || '"},');
+  DBMS_OUTPUT.PUT_LINE('"_meta":{"script_version":"1.1","generated":"' || TO_CHAR(SYSDATE,'YYYY-MM-DD"T"HH24:MI:SS') || '","hostname":"' || j(v_hostname) || '","db_unique_name":"' || j(v_db_unique_name) || '"},');
 
   -- BASE payload
   DBMS_OUTPUT.PUT_LINE('"base":{');
