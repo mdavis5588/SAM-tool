@@ -7,6 +7,16 @@
 -- Apply:
 --   psql $DSN -f database/migrations/20_licence_options_analysis.sql
 
+-- Ensure the shared trigger helper exists (defined in 02_shared_schema.sql;
+-- re-declared here so the migration is self-contained when run standalone).
+CREATE OR REPLACE FUNCTION shared.touch_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at := NOW();
+  RETURN NEW;
+END;
+$$;
+
 CREATE TABLE IF NOT EXISTS shared.oracle_product_list_prices (
   price_id        SERIAL PRIMARY KEY,
   product_name    TEXT    NOT NULL,
