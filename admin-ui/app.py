@@ -4781,9 +4781,21 @@ def licence_analysis():
             total_yr1_support   = 0.0
             total_yr2_annual    = 0.0
 
+            # Build a quick lookup: product_family -> unit_price from assigned CSIs
+            assignment_prices: dict = {}
+            for a in assignments:
+                pf = a.get("product_family")
+                up = a.get("list_price_per_unit")
+                if pf and up is not None and pf not in assignment_prices:
+                    assignment_prices[pf] = float(up)
+
             for req in reqs:
                 units_req  = float(req["units_required"] or 0)
-                unit_price = find_price(req["product_label"], req["metric"])
+                # Prefer unit price from assigned CSI lines; fall back to catalogue
+                unit_price = (
+                    assignment_prices.get(req["product_family"])
+                    or find_price(req["product_label"], req["metric"])
+                )
                 licence_cost = round(units_req * unit_price, 2) if unit_price is not None else None
                 yr1_sup      = round(licence_cost * SUPPORT_RATE, 2) if licence_cost is not None else None
                 yr1_total    = round(licence_cost + yr1_sup, 2) if licence_cost is not None else None
