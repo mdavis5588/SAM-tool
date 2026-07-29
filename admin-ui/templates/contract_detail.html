@@ -199,7 +199,7 @@
               {% set qty = l.quantity or 0 %}
               {% set available = [qty - consumed, 0] | max %}
               {% set ann_support = l.annual_support_cost | float if l.annual_support_cost else (l.total_price | float * 0.22 if l.total_price else none) %}
-              {% set support_per_unit = (l.annual_support_cost | float / qty) if (l.annual_support_cost and qty) else (l.unit_price | float * 0.22 if l.unit_price else none) %}
+              {% set support_per_unit = (l.annual_support_cost | float / (qty | float)) if (l.annual_support_cost and qty) else (l.unit_price | float * 0.22 if l.unit_price else none) %}
               <tr data-line-id="{{ l.line_id }}" data-csi-id="{{ contract.csi_id }}">
                 <td>{{ l.line_number }}</td>
                 <td>{{ l.product_name }}</td>

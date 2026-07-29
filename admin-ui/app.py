@@ -7131,10 +7131,5 @@ def forbidden(e):
 
 
 
-@app.errorhandler(500)
-def _debug_500(e):
-    import traceback
-    return f"<pre>{traceback.format_exc()}</pre>", 500
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
