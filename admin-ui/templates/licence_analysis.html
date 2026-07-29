@@ -214,7 +214,6 @@
                 <td class="py-2 text-end pe-3 text-primary fw-bold">
                   {% if l.metric in ('processor', 'processor_perpetual') %}
                     {{ "{:,.0f}".format(l.units_required * 2) }} OCPUs
-                    <span class="text-muted fw-normal small">(×2)</span>
                   {% else %}
                     <span class="text-muted">N/A</span>
                   {% endif %}
@@ -222,12 +221,6 @@
               </tr>
               {% endfor %}
             </tbody>
-            <tfoot class="table-light">
-              <tr class="fw-semibold">
-                <td class="ps-3 py-2" colspan="3">Total OCPUs required in OCI</td>
-                <td class="py-2 text-end pe-3 text-primary">{{ "{:,.0f}".format(result.ocpus) }} OCPUs</td>
-              </tr>
-            </tfoot>
           </table>
         </div>
       </div>
