@@ -4684,7 +4684,7 @@ def licence_analysis():
                 # Server hardware
                 server = query(f"""
                     SELECT sv.server_id, sv.hostname, sv.environment::TEXT AS environment,
-                           sv.os_platform, sv.db_version,
+                           sv.platform_name, sv.db_version,
                            COALESCE(op.cpu_sockets, 1)           AS cpu_sockets,
                            COALESCE(op.cores_per_socket, 1)      AS cores_per_socket,
                            COALESCE(op.total_physical_cores,
