@@ -4731,6 +4731,16 @@ def licence_analysis():
                     ORDER  BY m.product_family, m.product_detail
                 """, (server_id_int,))
 
+                # Compute assigned_cost per assignment row for the template
+                assignments = [
+                    {**dict(a), "assigned_cost": (
+                        round(float(a["licences_consumed"] or 0)
+                              * float(a["list_price_per_unit"]), 2)
+                        if a.get("list_price_per_unit") is not None else None
+                    )}
+                    for a in assignments
+                ]
+
                 input_label   = server["hostname"]
                 input_env     = server["environment"] or ""
                 input_sockets = int(server["cpu_sockets"] or 1)
@@ -4783,18 +4793,6 @@ def licence_analysis():
                     total_yr1_support  += yr1_sup
                     total_yr2_annual   += yr1_sup
 
-                # Current assigned cost (server mode only)
-                assigned_cost = None
-                if ready_server:
-                    for a in assignments:
-                        if (a["product_family"] == req["product_family"]
-                                and a.get("list_price_per_unit") is not None):
-                            assigned_cost = round(
-                                float(a["licences_consumed"] or 0)
-                                * float(a["list_price_per_unit"]), 2
-                            )
-                            break
-
                 lines.append({
                     "product_label":  req["product_label"],
                     "product_family": req["product_family"],
@@ -4805,7 +4803,6 @@ def licence_analysis():
                     "yr1_support":    yr1_sup,
                     "yr1_total":      yr1_total,
                     "yr2_annual":     yr1_sup,
-                    "assigned_cost":  assigned_cost,
                     "price_missing":  unit_price is None,
                 })
 
@@ -7052,10 +7049,6 @@ def forbidden(e):
     return render_template("403.html"), 403
 
 
-@app.errorhandler(500)
-def internal_error(e):
-    import traceback
-    return f"<pre>{traceback.format_exc()}</pre>", 500
 
 
 if __name__ == "__main__":
