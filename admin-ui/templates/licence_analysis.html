@@ -132,7 +132,7 @@
      RESULTS
      ================================================================ -->
 {% if result %}
-  {% if result.error is defined %}
+  {% if result.get('error') %}
     <div class="alert alert-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i> {{ result.error }}</div>
   {% else %}
 
@@ -432,11 +432,10 @@
               <tbody>
                 {% for yr in result.yearly_onprem %}
                 {% set oci_yr = oci.yearly[loop.index0] %}
-                {% set cheapest = [] %}
-                {% if oci.byol_sku %}{% set _ = cheapest.append(oci_yr.byol_cum) %}{% endif %}
-                {% if oci.li_sku  %}{% set _ = cheapest.append(oci_yr.li_cum) %}{% endif %}
-                {% set best_cloud = cheapest|min if cheapest else None %}
-                <tr {% if best_cloud is not none and best_cloud < yr.cum %}class="table-success"{% endif %}>
+                {% set byol_cum = oci_yr.byol_cum if oci.byol_sku else none %}
+                {% set li_cum   = oci_yr.li_cum   if oci.li_sku   else none %}
+                {% set cloud_cheaper = (byol_cum is not none and byol_cum < yr.cum) or (li_cum is not none and li_cum < yr.cum) %}
+                <tr {% if cloud_cheaper %}class="table-success"{% endif %}>
                   <td class="fw-semibold">
                     Year {{ yr.year }}
                     {% if loop.first %}<span class="badge bg-secondary fw-normal ms-1">purchase + support</span>{% endif %}
