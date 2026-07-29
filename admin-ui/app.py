@@ -89,9 +89,12 @@ _OCI_STATIC_SKUS = [
 ]
 
 
+_NO_PROXY = {"http": None, "https": None}  # bypass any HTTPS_PROXY env var
+
+
 def _fetch_oci_raw() -> list:
     """Download all items from the OCI public pricing API."""
-    resp = requests.get(OCI_PRICING_URL, timeout=15)
+    resp = requests.get(OCI_PRICING_URL, timeout=15, proxies=_NO_PROXY)
     resp.raise_for_status()
     return resp.json().get("items", [])
 
@@ -191,7 +194,7 @@ _AZURE_STATIC_SKUS = [
 
 
 def _fetch_azure_raw() -> list:
-    resp = requests.get(_AZURE_PRICING_URL, timeout=15)
+    resp = requests.get(_AZURE_PRICING_URL, timeout=15, proxies=_NO_PROXY)
     resp.raise_for_status()
     return resp.json().get("Items", [])
 
