@@ -5102,6 +5102,56 @@ def contract_detail(csi_id):
                            ula_assigned_server_ids=ula_assigned_server_ids)
 
 
+@app.route("/contracts/<int:csi_id>/lines/<int:line_id>/edit", methods=["POST"])
+@login_required
+def edit_entitlement_line(csi_id, line_id):
+    """Update unit_price and/or annual_support_cost on a single entitlement line."""
+    data = request.get_json(force=True, silent=True) or {}
+    updates = {}
+    errors = {}
+
+    for field in ("unit_price", "annual_support_cost"):
+        if field in data:
+            raw = data[field]
+            if raw == "" or raw is None:
+                updates[field] = None
+            else:
+                try:
+                    updates[field] = float(raw)
+                    if updates[field] < 0:
+                        raise ValueError
+                except (ValueError, TypeError):
+                    errors[field] = f"Invalid value for {field}"
+
+    if errors:
+        return jsonify({"ok": False, "errors": errors}), 400
+
+    if not updates:
+        return jsonify({"ok": True, "message": "Nothing to update"})
+
+    set_clause = ", ".join(f"{k} = %s" for k in updates)
+    values = list(updates.values()) + [line_id, csi_id]
+    execute(
+        f"UPDATE shared.license_entitlement_lines SET {set_clause} "
+        f"WHERE line_id = %s AND csi_id = %s",
+        values
+    )
+
+    # Return the refreshed row so the UI can update derived fields
+    row = query(
+        "SELECT line_id, unit_price, total_price, annual_support_cost, quantity "
+        "FROM shared.license_entitlement_lines WHERE line_id = %s",
+        (line_id,), fetchall=False
+    )
+    return jsonify({
+        "ok": True,
+        "unit_price":          float(row["unit_price"]) if row["unit_price"] is not None else None,
+        "total_price":         float(row["total_price"]) if row["total_price"] is not None else None,
+        "annual_support_cost": float(row["annual_support_cost"]) if row["annual_support_cost"] is not None else None,
+        "quantity":            float(row["quantity"]) if row["quantity"] else None,
+    })
+
+
 @app.route("/contracts/<int:csi_id>/delete", methods=["POST"])
 @login_required
 def delete_contract(csi_id):

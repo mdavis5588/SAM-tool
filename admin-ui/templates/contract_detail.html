@@ -172,8 +172,9 @@
               {% if not contract.is_ula %}
               <th>Unit Price</th>
               <th>Total Price</th>
-              <th>Annual Support <span class="text-muted fw-normal">(22%)</span></th>
+              <th>Annual Support</th>
               <th>Support / Unit</th>
+              <th></th>
               {% endif %}
             </tr>
 
@@ -197,9 +198,9 @@
               {% set consumed = consumed_by_line.get(l.product_family, 0) %}
               {% set qty = l.quantity or 0 %}
               {% set available = [qty - consumed, 0] | max %}
-              {% set ann_support = (l.total_price | float * 0.22) if l.total_price is not none and l.total_price else none %}
-              {% set support_per_unit = (l.unit_price | float * 0.22) if l.unit_price is not none and l.unit_price else none %}
-              <tr>
+              {% set ann_support = l.annual_support_cost | float if l.annual_support_cost else (l.total_price | float * 0.22 if l.total_price else none) %}
+              {% set support_per_unit = (l.annual_support_cost | float / qty) if (l.annual_support_cost and qty) else (l.unit_price | float * 0.22 if l.unit_price else none) %}
+              <tr data-line-id="{{ l.line_id }}" data-csi-id="{{ contract.csi_id }}">
                 <td>{{ l.line_number }}</td>
                 <td>{{ l.product_name }}</td>
                 <td>{{ l.license_metric | replace('_',' ') | title }}</td>
@@ -222,13 +223,28 @@
                     {% endif %}
                   {% else %}—{% endif %}
                 </td>
-                <td>{% if l.unit_price %}{{ '{:,.2f}'.format(l.unit_price) }}{% else %}—{% endif %}</td>
-                <td>{% if l.total_price %}{{ '{:,.2f}'.format(l.total_price) }}{% else %}—{% endif %}</td>
-                <td>{% if ann_support %}{{ '{:,.2f}'.format(ann_support) }}{% else %}—{% endif %}</td>
-                <td>{% if support_per_unit %}{{ '{:,.2f}'.format(support_per_unit) }}{% else %}—{% endif %}</td>
+                <td class="price-cell" data-field="unit_price" data-raw="{{ l.unit_price | float if l.unit_price else '' }}">
+                  <span class="price-display">{% if l.unit_price %}{{ '{:,.2f}'.format(l.unit_price) }}{% else %}<span class="text-muted">—</span>{% endif %}</span>
+                </td>
+                <td class="price-display-only" data-derived="total_price">
+                  {% if l.total_price %}<span class="total-price-val">{{ '{:,.2f}'.format(l.total_price) }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="price-cell" data-field="annual_support_cost" data-raw="{{ l.annual_support_cost | float if l.annual_support_cost else '' }}">
+                  <span class="price-display">
+                    {% if ann_support %}{{ '{:,.2f}'.format(ann_support) }}{% if not l.annual_support_cost %}<span class="text-muted small ms-1" title="Estimated at 22%">est.</span>{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}
+                  </span>
+                </td>
+                <td data-derived="support_per_unit">
+                  {% if support_per_unit %}<span class="support-unit-val">{{ '{:,.2f}'.format(support_per_unit) }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="text-end">
+                  <button class="btn btn-sm btn-outline-secondary edit-line-btn py-0 px-2" title="Edit prices">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                </td>
               </tr>
               {% else %}
-              <tr><td colspan="10" class="text-muted text-center">No lines found.</td></tr>
+              <tr><td colspan="11" class="text-muted text-center">No lines found.</td></tr>
               {% endfor %}
             {% endif %}
           </tbody>
@@ -277,5 +293,135 @@
 
   </div>
 </div>
+
+<!-- Edit line prices modal -->
+<div class="modal fade" id="editLineModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title"><i class="bi bi-pencil me-1"></i> Edit Line Pricing</h6>
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold mb-1">Unit Price</label>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text">$</span>
+            <input type="number" id="editUnitPrice" class="form-control" step="0.01" min="0" placeholder="e.g. 47500.00">
+          </div>
+          <div class="form-text">Total Price updates automatically (unit price × quantity).</div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label small fw-semibold mb-1">Annual Support Cost</label>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text">$</span>
+            <input type="number" id="editAnnualSupport" class="form-control" step="0.01" min="0" placeholder="Leave blank for 22% estimate">
+          </div>
+          <div class="form-text">Leave blank to show the 22% estimate. Support / Unit = this ÷ quantity.</div>
+        </div>
+        <div id="editLineError" class="alert alert-danger py-1 small d-none mt-2"></div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="saveLineBtn">
+          <span id="saveBtnSpinner" class="spinner-border spinner-border-sm d-none me-1"></span>
+          Save
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  let activeRow = null;
+
+  document.querySelectorAll('.edit-line-btn').forEach(btn => {
+    btn.addEventListener('click', function () {
+      activeRow = this.closest('tr');
+      const upCell  = activeRow.querySelector('[data-field="unit_price"]');
+      const ascCell = activeRow.querySelector('[data-field="annual_support_cost"]');
+      document.getElementById('editUnitPrice').value     = upCell  ? (upCell.dataset.raw  || '') : '';
+      document.getElementById('editAnnualSupport').value = ascCell ? (ascCell.dataset.raw || '') : '';
+      document.getElementById('editLineError').classList.add('d-none');
+      new bootstrap.Modal(document.getElementById('editLineModal')).show();
+    });
+  });
+
+  document.getElementById('saveLineBtn').addEventListener('click', async function () {
+    if (!activeRow) return;
+    const lineId   = activeRow.dataset.lineId;
+    const csiId    = activeRow.dataset.csiId;
+    const unitPrice  = document.getElementById('editUnitPrice').value.trim();
+    const annSupport = document.getElementById('editAnnualSupport').value.trim();
+    const errDiv     = document.getElementById('editLineError');
+    const spinner    = document.getElementById('saveBtnSpinner');
+
+    errDiv.classList.add('d-none');
+    spinner.classList.remove('d-none');
+    this.disabled = true;
+
+    try {
+      const resp = await fetch(`/contracts/${csiId}/lines/${lineId}/edit`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          unit_price:          unitPrice  === '' ? null : unitPrice,
+          annual_support_cost: annSupport === '' ? null : annSupport,
+        })
+      });
+      const data = await resp.json();
+
+      if (!data.ok) {
+        errDiv.textContent = Object.values(data.errors || {}).join(' ');
+        errDiv.classList.remove('d-none');
+        return;
+      }
+
+      const fmt = v => v != null
+        ? v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})
+        : '—';
+
+      const upCell  = activeRow.querySelector('[data-field="unit_price"]');
+      const ascCell = activeRow.querySelector('[data-field="annual_support_cost"]');
+
+      if (upCell) {
+        upCell.dataset.raw = data.unit_price != null ? data.unit_price : '';
+        upCell.querySelector('.price-display').textContent = fmt(data.unit_price);
+      }
+
+      const totEl = activeRow.querySelector('[data-derived="total_price"]');
+      if (totEl) totEl.textContent = fmt(data.total_price);
+
+      if (ascCell) {
+        const dispSupport = data.annual_support_cost != null
+          ? data.annual_support_cost
+          : (data.total_price != null ? data.total_price * 0.22 : null);
+        const isEstimate = data.annual_support_cost == null && dispSupport != null;
+        ascCell.dataset.raw = data.annual_support_cost != null ? data.annual_support_cost : '';
+        ascCell.querySelector('.price-display').innerHTML = dispSupport != null
+          ? fmt(dispSupport) + (isEstimate ? ' <span class="text-muted small ms-1" title="Estimated at 22%">est.</span>' : '')
+          : '—';
+      }
+
+      const qty = data.quantity;
+      const annSuppVal = data.annual_support_cost != null
+        ? data.annual_support_cost
+        : (data.total_price != null ? data.total_price * 0.22 : null);
+      const supPerUnit = (annSuppVal != null && qty) ? annSuppVal / qty : null;
+      const spuEl = activeRow.querySelector('[data-derived="support_per_unit"]');
+      if (spuEl) spuEl.textContent = fmt(supPerUnit);
+
+      bootstrap.Modal.getInstance(document.getElementById('editLineModal')).hide();
+    } catch (e) {
+      errDiv.textContent = 'Save failed — please try again.';
+      errDiv.classList.remove('d-none');
+    } finally {
+      spinner.classList.add('d-none');
+      this.disabled = false;
+    }
+  });
+})();
+</script>
 
 {% endblock %}
