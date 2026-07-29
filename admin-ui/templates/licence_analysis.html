@@ -530,6 +530,168 @@
       </div>
     </div>
 
+    <!-- ============================================================
+         SECTION 4 — AZURE COMPARISON
+         ============================================================ -->
+    <div class="card shadow-sm mb-4" id="azure-comparison">
+      <div class="card-header fw-semibold d-flex align-items-center gap-2">
+        <i class="bi bi-microsoft me-1"></i> Azure Equivalent
+        <span class="ms-2 text-muted fw-normal small">
+          {{ "{:,.0f}".format(result.physical_cores) }} physical cores
+          → <strong class="text-info">{{ "{:,.0f}".format(result.physical_cores * 2) }} vCPUs</strong>
+          <span class="text-muted small">(Oracle@Azure: {{ "{:,.0f}".format(result.ocpus) }} OCPUs)</span>
+        </span>
+        {% if result.azure and result.azure.get('prices_static') %}
+        <span class="badge bg-warning text-dark fw-normal ms-auto" title="Azure API unreachable — using published list prices">published list prices · 24×7×365</span>
+        {% else %}
+        <span class="badge bg-secondary fw-normal ms-auto">indicative list price · 24×7×365</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        {% if result.azure %}
+          {% set az = result.azure %}
+          <div class="row g-3 mb-4">
+
+            <!-- On-prem reference -->
+            <div class="col-md-4">
+              <div class="card border-secondary h-100">
+                <div class="card-body">
+                  <h6 class="fw-semibold text-secondary mb-1">On-Premises (perpetual)</h6>
+                  <div class="text-muted small mb-3">Licence purchase + ongoing 22% support</div>
+                  <div class="row g-1 text-center">
+                    <div class="col-6 border-end">
+                      <div class="text-muted small">Licence cost</div>
+                      <div class="fw-bold">${{ "{:,.0f}".format(result.total_licence_cost) }}</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-muted small">Year 2+ annual</div>
+                      <div class="fw-bold">${{ "{:,.0f}".format(result.onprem_yr2) }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Azure VM BYOL -->
+            {% if az.byol_sku %}
+            <div class="col-md-4">
+              <div class="card border-info h-100">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-start mb-1">
+                    <h6 class="fw-semibold text-info mb-0">Azure VM — BYOL</h6>
+                    <span class="badge bg-info text-dark small">{{ az.byol_sku.sku_name }}</span>
+                  </div>
+                  <div class="text-muted small mb-1">{{ az.byol_sku.name }}</div>
+                  <div class="text-muted small mb-3">Bring existing licences — pay compute only</div>
+                  <div class="row g-1 text-center">
+                    <div class="col-6 border-end">
+                      <div class="text-muted small">Per vCPU/hr</div>
+                      <div class="fw-bold">${{ "{:,.4f}".format(az.byol_sku.unit_price) }}</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-muted small">Annual ({{ "{:,.0f}".format(az.vcpus) }} vCPUs)</div>
+                      <div class="fw-bold text-info">${{ "{:,.0f}".format(az.byol_annual) }}</div>
+                    </div>
+                  </div>
+                  <div class="alert alert-info py-1 px-2 mt-2 small mb-0">
+                    {{ az.byol_sku.note }}
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            <!-- Oracle@Azure Licence Included -->
+            {% if az.li_sku %}
+            <div class="col-md-4">
+              <div class="card border-primary h-100">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-start mb-1">
+                    <h6 class="fw-semibold text-primary mb-0">Oracle@Azure</h6>
+                    <span class="badge bg-primary small">Exadata X9M</span>
+                  </div>
+                  <div class="text-muted small mb-1">{{ az.li_sku.name }}</div>
+                  <div class="text-muted small mb-3">Licence included — Oracle Exadata on Azure infra</div>
+                  <div class="row g-1 text-center">
+                    <div class="col-6 border-end">
+                      <div class="text-muted small">Per OCPU/hr</div>
+                      <div class="fw-bold">${{ "{:,.4f}".format(az.li_sku.unit_price) }}</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-muted small">Annual ({{ "{:,.0f}".format(az.ocpus) }} OCPUs)</div>
+                      <div class="fw-bold text-primary">${{ "{:,.0f}".format(az.li_annual) }}</div>
+                    </div>
+                  </div>
+                  <div class="alert alert-primary py-1 px-2 mt-2 small mb-0">
+                    {{ az.li_sku.note }}
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- Year-by-year table -->
+          <h6 class="fw-semibold mb-2">Cumulative Cost Comparison — {{ result.horizon }}-Year Horizon</h6>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle mb-2">
+              <thead class="table-light">
+                <tr>
+                  <th>Year</th>
+                  <th class="text-end">On-Prem Annual</th>
+                  <th class="text-end">On-Prem Cumulative</th>
+                  {% if az.byol_sku %}
+                  <th class="text-end text-info">Azure BYOL Annual</th>
+                  <th class="text-end text-info">Azure BYOL Cumulative</th>
+                  {% endif %}
+                  {% if az.li_sku %}
+                  <th class="text-end text-primary">Oracle@Azure Annual</th>
+                  <th class="text-end text-primary">Oracle@Azure Cumulative</th>
+                  {% endif %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for yr in result.yearly_onprem %}
+                {% set az_yr = az.yearly[loop.index0] %}
+                {% set byol_cum = az_yr.byol_cum if az.byol_sku else none %}
+                {% set li_cum   = az_yr.li_cum   if az.li_sku   else none %}
+                {% set cloud_cheaper = (byol_cum is not none and byol_cum < yr.cum) or (li_cum is not none and li_cum < yr.cum) %}
+                <tr {% if cloud_cheaper %}class="table-success"{% endif %}>
+                  <td class="fw-semibold">
+                    Year {{ yr.year }}
+                    {% if loop.first %}<span class="badge bg-secondary fw-normal ms-1">purchase + support</span>{% endif %}
+                  </td>
+                  <td class="text-end">${{ "{:,.0f}".format(yr.annual) }}</td>
+                  <td class="text-end fw-semibold">${{ "{:,.0f}".format(yr.cum) }}</td>
+                  {% if az.byol_sku %}
+                  <td class="text-end text-info">${{ "{:,.0f}".format(az.byol_annual) }}</td>
+                  <td class="text-end text-info fw-semibold">${{ "{:,.0f}".format(az_yr.byol_cum) }}</td>
+                  {% endif %}
+                  {% if az.li_sku %}
+                  <td class="text-end text-primary">${{ "{:,.0f}".format(az.li_annual) }}</td>
+                  <td class="text-end text-primary fw-semibold">${{ "{:,.0f}".format(az_yr.li_cum) }}</td>
+                  {% endif %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="alert alert-warning py-2 small mb-0">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            Azure costs are indicative (PAYG list price, East US, compute only, Linux).
+            Azure BYOL uses E-series v5 VMs (Intel, memory-optimised). Actual costs depend on region, reserved pricing, storage, and networking.
+            Oracle@Azure (Exadata X9M) is a managed Exadata service — minimum shape costs apply regardless of utilisation.
+          </div>
+
+        {% else %}
+          <div class="alert alert-secondary mb-0">
+            <i class="bi bi-info-circle me-1"></i>
+            Azure pricing comparison is unavailable — no physical cores specified or pricing could not be loaded.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
   {% endif %}
 {% endif %}
 

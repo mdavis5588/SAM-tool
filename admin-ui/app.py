@@ -147,6 +147,143 @@ def get_oci_prices() -> list:
     return _OCI_STATIC_SKUS
 
 
+# ---------------------------------------------------------------------------
+# Azure pricing — static fallback (Azure Retail Prices API often unreachable)
+# Source: Azure pricing calculator / retail prices, East US, Linux, PAYG, 2024
+# ---------------------------------------------------------------------------
+_AZURE_PRICING_URL = (
+    "https://prices.azure.com/api/retail/prices"
+    "?api-version=2023-01-01-preview"
+    "&$filter=serviceName+eq+'Virtual+Machines'"
+    "+and+armRegionName+eq+'eastus'"
+    "+and+priceType+eq+'Consumption'"
+    "+and+contains(skuName,'Esv5')"
+    "+and+not+contains(skuName,'Windows')"
+    "+and+not+contains(skuName,'Spot')"
+)
+
+# Oracle on Azure: E-series v5 (Intel Xeon, memory-optimised, common for Oracle DB)
+# Per-vCPU price is consistent across E-series v5 sizes at ~$0.063/hr (Linux, PAYG, East US)
+# Oracle on Azure: core factor = 0.5 → processor licences = vCPUs × 0.5
+# So vCPUs needed = physical_cores × 2  (same net licence count as on-prem x86)
+_AZURE_STATIC_SKUS = [
+    {
+        "name":        "Azure VM — Standard Esv5 series (Linux, PAYG, East US)",
+        "sku_name":    "Standard_E-series v5",
+        "metric":      "vCPU per hour",
+        "unit_price":  0.0630,   # per vCPU per hour (E2s–E64s v5, Linux, East US)
+        "is_byol":     True,
+        "is_li":       False,
+        "note":        "Compute cost only. Bring your own Oracle licence. "
+                       "Oracle core factor 0.5 on Azure Intel VMs → 2 vCPUs per processor licence.",
+    },
+    {
+        "name":        "Oracle Database@Azure — Exadata X9M (Licence Included)",
+        "sku_name":    "Oracle Exadata X9M",
+        "metric":      "OCPU per hour",
+        "unit_price":  3.0272,   # per OCPU per hour (Oracle@Azure Exadata X9M base shape, 2024)
+        "is_byol":     False,
+        "is_li":       True,
+        "note":        "Oracle Exadata running natively on Azure infrastructure. "
+                       "Licence included — no separate Oracle software contract needed.",
+    },
+]
+
+
+def _fetch_azure_raw() -> list:
+    resp = requests.get(_AZURE_PRICING_URL, timeout=15)
+    resp.raise_for_status()
+    return resp.json().get("Items", [])
+
+
+def get_azure_prices() -> list:
+    """
+    Try to fetch Azure VM prices from the public Retail Prices API.
+    Falls back to static published prices on any error.
+    Returns list of SKU dicts with same shape as _AZURE_STATIC_SKUS.
+    """
+    try:
+        items = _fetch_azure_raw()
+        if not items:
+            return _AZURE_STATIC_SKUS
+
+        # Compute average per-vCPU price across returned E-series sizes
+        total, count = 0.0, 0
+        for it in items:
+            vcpus = it.get("armSkuName", "").count("_") and None  # not reliable
+            retail = it.get("retailPrice")
+            vcpu_count_str = ""
+            # Parse vCPU count from skuName e.g. "E4s v5"
+            import re as _re
+            m = _re.search(r"E(\d+)s", it.get("skuName", ""))
+            if m and retail:
+                total += float(retail) / int(m.group(1))
+                count += 1
+        if count == 0:
+            return _AZURE_STATIC_SKUS
+        per_vcpu = round(total / count, 4)
+        dynamic = [dict(_AZURE_STATIC_SKUS[0])]
+        dynamic[0]["unit_price"] = per_vcpu
+        dynamic[0]["name"] += " (live price)"
+        return dynamic + [_AZURE_STATIC_SKUS[1]]
+    except Exception:
+        return _AZURE_STATIC_SKUS
+
+
+def build_azure_comparison(azure_skus: list, physical_cores: float,
+                           horizon: int) -> dict | None:
+    """
+    Build year-by-year Azure cost comparison.
+
+    Azure BYOL (VM):
+      - Oracle core factor on Azure Intel VMs = 0.5
+      - vCPUs needed = physical_cores × 2  (2 vCPUs per licence at 0.5 factor)
+      - Annual = vcpus × hourly_rate × 8760
+
+    Oracle@Azure (Exadata, Licence Included):
+      - Billed per OCPU; 1 physical core ≈ 1 OCPU (same mapping as OCI)
+      - Annual = physical_cores × hourly_rate × 8760
+    """
+    if not azure_skus or physical_cores <= 0:
+        return None
+
+    byol_sku = li_sku = None
+    for sku in azure_skus:
+        if sku["is_byol"] and byol_sku is None:
+            byol_sku = sku
+        if sku["is_li"] and li_sku is None:
+            li_sku = sku
+
+    if not byol_sku and not li_sku:
+        return None
+
+    vcpus = physical_cores * 2   # 2 vCPUs per physical core on Azure Intel VMs
+
+    byol_annual = round(byol_sku["unit_price"] * vcpus * 8760, 2) if byol_sku else None
+    li_annual   = round(li_sku["unit_price"]   * physical_cores * 8760, 2) if li_sku else None
+
+    yearly = []
+    for y in range(1, horizon + 1):
+        yearly.append({
+            "year":     y,
+            "byol_cum": round(byol_annual * y, 2) if byol_annual is not None else None,
+            "li_cum":   round(li_annual   * y, 2) if li_annual   is not None else None,
+        })
+
+    prices_static = all(s in _AZURE_STATIC_SKUS for s in azure_skus)
+
+    return {
+        "vcpus":         vcpus,
+        "ocpus":         physical_cores,
+        "byol_sku":      byol_sku,
+        "li_sku":        li_sku,
+        "byol_annual":   byol_annual,
+        "li_annual":     li_annual,
+        "yearly":        yearly,
+        "prices_static": prices_static,
+    }
+
+
 def build_oci_comparison(oci_skus: list, total_processor_cores: float,
                          horizon: int) -> dict | None:
     """
@@ -4901,6 +5038,9 @@ def licence_analysis():
             if oci_comparison:
                 oci_comparison["prices_static"] = oci_prices_static
 
+            azure_skus       = get_azure_prices()
+            azure_comparison = build_azure_comparison(azure_skus, physical_cores, horizon)
+
             any_missing_price = any(l["price_missing"] for l in lines)
 
             result = {
@@ -4924,6 +5064,7 @@ def licence_analysis():
                 "horizon":           horizon,
                 "any_missing_price": any_missing_price,
                 "oci":               oci_comparison,
+                "azure":             azure_comparison,
             }
 
         except Exception as e:
