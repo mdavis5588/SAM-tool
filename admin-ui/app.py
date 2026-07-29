@@ -18,9 +18,158 @@ from flask import (Flask, Response, render_template, request, redirect,
                    url_for, session, flash, jsonify, abort)
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
+import threading
+import time
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "change-me-in-production")
+
+# ---------------------------------------------------------------------------
+# OCI public pricing cache
+# Oracle publishes a full SKU list at this endpoint (no auth required).
+# We cache it in-process for OCI_CACHE_TTL seconds to avoid hitting it on
+# every page load.
+# ---------------------------------------------------------------------------
+_OCI_CACHE: dict = {"data": None, "fetched_at": 0.0, "lock": threading.Lock()}
+OCI_CACHE_TTL   = 3600  # 1 hour
+OCI_PRICING_URL = (
+    "https://apexapps.oracle.com/pls/apex/cetools/api/v1/products/"
+    "?currencyCode=USD"
+)
+
+# Keywords used to identify Oracle Database SKUs in the OCI catalogue.
+_OCI_DB_KEYWORDS = [
+    "oracle database enterprise edition",
+    "oracle database standard edition",
+    "oracle base database",
+    "database cloud service",
+    "exadata database",
+]
+
+# Metric labels returned by the OCI API that map to per-OCPU billing.
+_OCI_OCPU_METRICS = {"ocpu per hour", "ocpu-hour", "ocpu hour"}
+
+
+def _fetch_oci_raw() -> list:
+    """Download all items from the OCI public pricing API."""
+    resp = requests.get(OCI_PRICING_URL, timeout=15)
+    resp.raise_for_status()
+    return resp.json().get("items", [])
+
+
+def get_oci_prices() -> list:
+    """
+    Return cached list of OCI Database SKUs, refreshing if stale.
+    Each item: {name, part_number, metric, currency_code_local_price,
+                unit_price_usd, is_byol, is_licence_included}.
+    Returns [] on any fetch error so the page degrades gracefully.
+    """
+    cache = _OCI_CACHE
+    now = time.time()
+    with cache["lock"]:
+        if cache["data"] is not None and (now - cache["fetched_at"]) < OCI_CACHE_TTL:
+            return cache["data"]
+
+    try:
+        raw = _fetch_oci_raw()
+    except Exception:
+        # Return stale data if we have it; otherwise empty list
+        return cache["data"] or []
+
+    db_skus = []
+    for item in raw:
+        name_lower = (item.get("displayName") or "").lower()
+        if not any(kw in name_lower for kw in _OCI_DB_KEYWORDS):
+            continue
+        prices = item.get("currencyCodeLocalizations", [])
+        usd_price = None
+        for p in prices:
+            if (p.get("currencyCode") or "").upper() == "USD":
+                usd_price = p.get("localizedPrice")
+                break
+        if usd_price is None:
+            continue
+        metric = (item.get("metricName") or "").lower()
+        db_skus.append({
+            "name":         item.get("displayName", ""),
+            "part_number":  item.get("partNumber", ""),
+            "metric":       metric,
+            "unit_price":   float(usd_price),
+            "is_byol":      "byol" in name_lower or "bring your own" in name_lower,
+            "is_licence_included": "license included" in name_lower
+                                   or "licence included" in name_lower,
+        })
+
+    with cache["lock"]:
+        cache["data"] = db_skus
+        cache["fetched_at"] = now
+
+    return db_skus
+
+
+def build_oci_comparison(oci_skus: list, total_processor_cores: float,
+                         horizon: int) -> dict | None:
+    """
+    Given the client's required processor-licensed cores and OCI SKUs,
+    build a year-by-year cost comparison for:
+      - OCI BYOL  (bring your own perpetual licence, pay compute only)
+      - OCI Licence Included (full subscription, no on-prem licence needed)
+
+    OCI maps 1 physical core → 1 OCPU (for non-HT shapes).
+    We use the first matching BYOL EE and LI EE hourly OCPU SKUs.
+    Annual cost = ocpu_count × hourly_rate × 8760.
+
+    Returns None if no relevant OCPU SKUs are found.
+    """
+    if not oci_skus or total_processor_cores <= 0:
+        return None
+
+    byol_sku = li_sku = None
+    for sku in oci_skus:
+        if sku["metric"] not in _OCI_OCPU_METRICS:
+            continue
+        name_l = sku["name"].lower()
+        if "enterprise" not in name_l:
+            continue
+        if sku["is_byol"] and byol_sku is None:
+            byol_sku = sku
+        if sku["is_licence_included"] and li_sku is None:
+            li_sku = sku
+        if byol_sku and li_sku:
+            break
+
+    if not byol_sku and not li_sku:
+        return None
+
+    ocpus = total_processor_cores  # 1 physical core = 1 OCPU
+
+    def annual(sku):
+        return round(sku["unit_price"] * ocpus * 8760, 2) if sku else None
+
+    byol_annual  = annual(byol_sku)
+    li_annual    = annual(li_sku)
+
+    yearly = []
+    for y in range(1, horizon + 1):
+        yearly.append({
+            "year":       y,
+            "byol_cum":   round(byol_annual * y, 2) if byol_annual is not None else None,
+            "li_cum":     round(li_annual   * y, 2) if li_annual   is not None else None,
+        })
+
+    return {
+        "ocpus":           ocpus,
+        "byol_sku":        byol_sku,
+        "li_sku":          li_sku,
+        "byol_annual":     byol_annual,
+        "li_annual":       li_annual,
+        "yearly":          yearly,
+        "note": (
+            "OCI costs are indicative (list price, compute only). "
+            "Actual OCI costs depend on shape, storage, networking, and negotiated discounts. "
+            "BYOL assumes existing perpetual EE licences are available to bring to OCI."
+        ),
+    }
 
 # ---------------------------------------------------------------------------
 # i18n — simple JSON-based translations
@@ -4601,6 +4750,16 @@ def licence_analysis():
 
             any_missing_price = any(l["price_missing"] for l in lines)
 
+            # --- 5. OCI comparison ---
+            # Total processor-licensed cores drives OCPU count for OCI sizing.
+            total_proc_cores = sum(
+                l["units_required"]
+                for l in lines
+                if l["metric"] == "processor"
+            )
+            oci_skus       = get_oci_prices()
+            oci_comparison = build_oci_comparison(oci_skus, total_proc_cores, horizon)
+
             result = {
                 "client":           client,
                 "lines":            lines,
@@ -4617,6 +4776,8 @@ def licence_analysis():
                 "break_even":       break_even,
                 "horizon":          horizon,
                 "any_missing_price": any_missing_price,
+                "oci":              oci_comparison,
+                "total_proc_cores": total_proc_cores,
             }
         except Exception as e:
             result = {"error": str(e)}

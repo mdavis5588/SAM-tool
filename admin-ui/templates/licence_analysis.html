@@ -318,6 +318,157 @@
       </div>
     </div>
 
+    <!-- ============================================================
+         OCI CLOUD COMPARISON
+         ============================================================ -->
+    <div class="card shadow-sm mb-4" id="oci-comparison">
+      <div class="card-header fw-semibold d-flex align-items-center gap-2">
+        <img src="https://www.oracle.com/favicon.ico" width="16" height="16"
+             onerror="this.style.display='none'" alt="">
+        <i class="bi bi-cloud me-1"></i> OCI Cloud Cost Comparison
+        <span class="badge bg-secondary fw-normal ms-auto">indicative list price</span>
+      </div>
+      <div class="card-body">
+
+        {% if result.oci %}
+          {% set oci = result.oci %}
+          <p class="text-muted small mb-3">
+            Based on <strong>{{ "{:,.0f}".format(oci.ocpus) }} OCPUs</strong>
+            ({{ "{:,.0f}".format(result.total_proc_cores) }} processor-licensed cores × 1 OCPU each),
+            running 24 × 7 × 365 at Oracle list price.
+            <a href="https://www.oracle.com/cloud/price-list/" target="_blank"
+               rel="noopener" class="ms-1">OCI Price List <i class="bi bi-box-arrow-up-right small"></i></a>
+          </p>
+
+          <!-- SKU cards -->
+          <div class="row g-3 mb-4">
+            {% if oci.byol_sku %}
+            <div class="col-md-6">
+              <div class="card border-primary h-100">
+                <div class="card-body">
+                  <div class="d-flex align-items-start justify-content-between mb-2">
+                    <div>
+                      <h6 class="mb-0 text-primary">OCI BYOL</h6>
+                      <div class="text-muted small">Bring Your Own Licence</div>
+                    </div>
+                    <span class="badge bg-primary">{{ oci.byol_sku.part_number }}</span>
+                  </div>
+                  <div class="text-muted small mb-2">{{ oci.byol_sku.name }}</div>
+                  <div class="row g-2 text-center">
+                    <div class="col border-end">
+                      <div class="text-muted small">Per OCPU / hour</div>
+                      <div class="fw-bold">${{ "{:,.4f}".format(oci.byol_sku.unit_price) }}</div>
+                    </div>
+                    <div class="col border-end">
+                      <div class="text-muted small">Annual ({{ "{:,.0f}".format(oci.ocpus) }} OCPUs)</div>
+                      <div class="fw-bold text-primary">${{ "{:,.0f}".format(oci.byol_annual) }}</div>
+                    </div>
+                    <div class="col">
+                      <div class="text-muted small">Existing licences</div>
+                      <div class="fw-bold text-success">Required</div>
+                    </div>
+                  </div>
+                  <div class="alert alert-info py-1 px-2 mt-2 small mb-0">
+                    You still pay on-prem support on the licences moved to OCI
+                    unless they are fully retired.
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            {% if oci.li_sku %}
+            <div class="col-md-6">
+              <div class="card border-success h-100">
+                <div class="card-body">
+                  <div class="d-flex align-items-start justify-content-between mb-2">
+                    <div>
+                      <h6 class="mb-0 text-success">OCI Licence Included</h6>
+                      <div class="text-muted small">Full subscription — no on-prem licence needed</div>
+                    </div>
+                    <span class="badge bg-success">{{ oci.li_sku.part_number }}</span>
+                  </div>
+                  <div class="text-muted small mb-2">{{ oci.li_sku.name }}</div>
+                  <div class="row g-2 text-center">
+                    <div class="col border-end">
+                      <div class="text-muted small">Per OCPU / hour</div>
+                      <div class="fw-bold">${{ "{:,.4f}".format(oci.li_sku.unit_price) }}</div>
+                    </div>
+                    <div class="col border-end">
+                      <div class="text-muted small">Annual ({{ "{:,.0f}".format(oci.ocpus) }} OCPUs)</div>
+                      <div class="fw-bold text-success">${{ "{:,.0f}".format(oci.li_annual) }}</div>
+                    </div>
+                    <div class="col">
+                      <div class="text-muted small">Existing licences</div>
+                      <div class="fw-bold text-muted">Not needed</div>
+                    </div>
+                  </div>
+                  <div class="alert alert-success py-1 px-2 mt-2 small mb-0">
+                    Licence included means Oracle support is bundled — no separate
+                    support contract required.
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- Year-by-year OCI vs on-prem table -->
+          <h6 class="fw-semibold mb-2">Cumulative Cost — OCI vs On-Premises ({{ result.horizon }}-year horizon)</h6>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle mb-2">
+              <thead class="table-light">
+                <tr>
+                  <th>Year</th>
+                  <th class="text-end">ULA Cumulative</th>
+                  <th class="text-end">Alt. Perpetual Cumulative</th>
+                  {% if oci.byol_sku %}<th class="text-end">OCI BYOL Cumulative</th>{% endif %}
+                  {% if oci.li_sku  %}<th class="text-end">OCI Lic. Incl. Cumulative</th>{% endif %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for yr_row in result.yearly %}
+                {% set oci_yr = oci.yearly[loop.index0] %}
+                <tr>
+                  <td class="fw-semibold">Year {{ yr_row.year }}</td>
+                  <td class="text-end text-danger">${{ "{:,.0f}".format(yr_row.ula_cum) }}</td>
+                  <td class="text-end {% if yr_row.alt_cum < yr_row.ula_cum %}text-success{% else %}text-warning{% endif %}">
+                    ${{ "{:,.0f}".format(yr_row.alt_cum) }}
+                  </td>
+                  {% if oci.byol_sku %}
+                  <td class="text-end text-primary">${{ "{:,.0f}".format(oci_yr.byol_cum) }}</td>
+                  {% endif %}
+                  {% if oci.li_sku %}
+                  <td class="text-end text-success">${{ "{:,.0f}".format(oci_yr.li_cum) }}</td>
+                  {% endif %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="alert alert-warning py-2 small mb-0">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            {{ oci.note }}
+          </div>
+
+        {% elif result.total_proc_cores == 0 %}
+          <div class="alert alert-secondary mb-0">
+            <i class="bi bi-info-circle me-1"></i>
+            No processor-licensed requirements found for this client — OCI OCPU sizing requires
+            at least one processor-metric product.
+          </div>
+        {% else %}
+          <div class="alert alert-warning mb-0">
+            <i class="bi bi-cloud-slash me-1"></i>
+            OCI pricing could not be fetched from Oracle's public API right now.
+            The rest of the analysis is unaffected.
+          </div>
+        {% endif %}
+
+      </div>
+    </div><!-- /oci-comparison -->
+
   {% endif %}
 {% endif %}
 
