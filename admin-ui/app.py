@@ -4719,7 +4719,7 @@ def licence_analysis():
                            m.licences_consumed,
                            cs.csi_number,
                            cs.contract_name,
-                           l.list_price_per_unit,
+                           l.unit_price                   AS list_price_per_unit,
                            l.license_metric::TEXT          AS metric
                     FROM   {schema}.server_csi_map m
                     JOIN   shared.csi_contracts cs ON cs.csi_id = m.csi_id
