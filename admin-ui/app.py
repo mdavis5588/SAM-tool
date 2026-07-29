@@ -44,6 +44,8 @@ _OCI_DB_KEYWORDS = [
     "oracle base database",
     "database cloud service",
     "exadata database",
+    "exadata cloud@customer",
+    "exacc",
 ]
 
 # Metric labels returned by the OCI API that map to per-OCPU billing.
@@ -51,24 +53,26 @@ _OCI_OCPU_METRICS = {"ocpu per hour", "ocpu-hour", "ocpu hour"}
 
 
 # Oracle published OCI Database hourly OCPU list prices (USD, as of 2024).
-# Used as fallback when the live API is unreachable (e.g. proxy restrictions).
+# Used as fallback when the live API is unreachable.
 # Source: https://www.oracle.com/cloud/price-list/
 _OCI_STATIC_SKUS = [
     {
         "name":                 "Oracle Database Enterprise Edition — BYOL",
         "part_number":          "B90453",
         "metric":               "ocpu per hour",
-        "unit_price":           0.4480,   # per OCPU per hour
+        "unit_price":           0.4480,
         "is_byol":              True,
         "is_licence_included":  False,
+        "is_exacc":             False,
     },
     {
         "name":                 "Oracle Database Enterprise Edition — Licence Included",
         "part_number":          "B90454",
         "metric":               "ocpu per hour",
-        "unit_price":           2.9008,   # per OCPU per hour
+        "unit_price":           2.9008,
         "is_byol":              False,
         "is_licence_included":  True,
+        "is_exacc":             False,
     },
     {
         "name":                 "Oracle Database Standard Edition 2 — BYOL",
@@ -77,6 +81,7 @@ _OCI_STATIC_SKUS = [
         "unit_price":           0.1344,
         "is_byol":              True,
         "is_licence_included":  False,
+        "is_exacc":             False,
     },
     {
         "name":                 "Oracle Database Standard Edition 2 — Licence Included",
@@ -85,6 +90,28 @@ _OCI_STATIC_SKUS = [
         "unit_price":           0.2688,
         "is_byol":              False,
         "is_licence_included":  True,
+        "is_exacc":             False,
+    },
+    # ExaCC (Exadata Cloud@Customer) X9M — Oracle-managed Exadata on-premises
+    # Source: Oracle price list 2024. Note: infrastructure subscription fees apply
+    # separately on top of these per-OCPU software rates.
+    {
+        "name":                 "Exadata Cloud@Customer X9M — BYOL",
+        "part_number":          "B93189",
+        "metric":               "ocpu per hour",
+        "unit_price":           0.4480,   # same compute rate as OCI EE BYOL
+        "is_byol":              True,
+        "is_licence_included":  False,
+        "is_exacc":             True,
+    },
+    {
+        "name":                 "Exadata Cloud@Customer X9M — Licence Included",
+        "part_number":          "B93190",
+        "metric":               "ocpu per hour",
+        "unit_price":           3.5168,   # per OCPU per hour, EE licence bundled
+        "is_byol":              False,
+        "is_licence_included":  True,
+        "is_exacc":             True,
     },
 ]
 
@@ -137,6 +164,7 @@ def get_oci_prices() -> list:
                 "is_byol":             "byol" in name_lower or "bring your own" in name_lower,
                 "is_licence_included": "license included" in name_lower
                                        or "licence included" in name_lower,
+                "is_exacc":            "cloud@customer" in name_lower or "exacc" in name_lower,
             })
         if db_skus:
             with cache["lock"]:
@@ -290,35 +318,34 @@ def build_azure_comparison(azure_skus: list, physical_cores: float,
 def build_oci_comparison(oci_skus: list, total_processor_cores: float,
                          horizon: int) -> dict | None:
     """
-    Given the client's required processor-licensed cores and OCI SKUs,
-    build a year-by-year cost comparison for:
-      - OCI BYOL  (bring your own perpetual licence, pay compute only)
-      - OCI Licence Included (full subscription, no on-prem licence needed)
-
-    OCI maps 1 physical core → 1 OCPU (for non-HT shapes).
-    We use the first matching BYOL EE and LI EE hourly OCPU SKUs.
+    Build year-by-year OCI cost comparison including ExaCC.
+    Picks the first matching EE SKU for each of:
+      - OCI BYOL (standard cloud), OCI Licence Included, ExaCC BYOL, ExaCC LI
     Annual cost = ocpu_count × hourly_rate × 8760.
-
-    Returns None if no relevant OCPU SKUs are found.
     """
     if not oci_skus or total_processor_cores <= 0:
         return None
 
-    byol_sku = li_sku = None
+    byol_sku = li_sku = exacc_byol_sku = exacc_li_sku = None
     for sku in oci_skus:
         if sku["metric"] not in _OCI_OCPU_METRICS:
             continue
         name_l = sku["name"].lower()
         if "enterprise" not in name_l:
             continue
-        if sku["is_byol"] and byol_sku is None:
-            byol_sku = sku
-        if sku["is_licence_included"] and li_sku is None:
-            li_sku = sku
-        if byol_sku and li_sku:
-            break
+        is_exacc = sku.get("is_exacc", False)
+        if is_exacc:
+            if sku["is_byol"] and exacc_byol_sku is None:
+                exacc_byol_sku = sku
+            if sku["is_licence_included"] and exacc_li_sku is None:
+                exacc_li_sku = sku
+        else:
+            if sku["is_byol"] and byol_sku is None:
+                byol_sku = sku
+            if sku["is_licence_included"] and li_sku is None:
+                li_sku = sku
 
-    if not byol_sku and not li_sku:
+    if not any([byol_sku, li_sku, exacc_byol_sku, exacc_li_sku]):
         return None
 
     ocpus = total_processor_cores  # 1 physical core = 1 OCPU
@@ -326,28 +353,37 @@ def build_oci_comparison(oci_skus: list, total_processor_cores: float,
     def annual(sku):
         return round(sku["unit_price"] * ocpus * 8760, 2) if sku else None
 
-    byol_annual  = annual(byol_sku)
-    li_annual    = annual(li_sku)
+    byol_annual      = annual(byol_sku)
+    li_annual        = annual(li_sku)
+    exacc_byol_annual = annual(exacc_byol_sku)
+    exacc_li_annual   = annual(exacc_li_sku)
 
     yearly = []
     for y in range(1, horizon + 1):
         yearly.append({
-            "year":       y,
-            "byol_cum":   round(byol_annual * y, 2) if byol_annual is not None else None,
-            "li_cum":     round(li_annual   * y, 2) if li_annual   is not None else None,
+            "year":            y,
+            "byol_cum":        round(byol_annual * y, 2)       if byol_annual is not None else None,
+            "li_cum":          round(li_annual * y, 2)         if li_annual is not None else None,
+            "exacc_byol_cum":  round(exacc_byol_annual * y, 2) if exacc_byol_annual is not None else None,
+            "exacc_li_cum":    round(exacc_li_annual * y, 2)   if exacc_li_annual is not None else None,
         })
 
     return {
-        "ocpus":           ocpus,
-        "byol_sku":        byol_sku,
-        "li_sku":          li_sku,
-        "byol_annual":     byol_annual,
-        "li_annual":       li_annual,
-        "yearly":          yearly,
+        "ocpus":             ocpus,
+        "byol_sku":          byol_sku,
+        "li_sku":            li_sku,
+        "exacc_byol_sku":    exacc_byol_sku,
+        "exacc_li_sku":      exacc_li_sku,
+        "byol_annual":       byol_annual,
+        "li_annual":         li_annual,
+        "exacc_byol_annual": exacc_byol_annual,
+        "exacc_li_annual":   exacc_li_annual,
+        "yearly":            yearly,
         "note": (
             "OCI costs are indicative (list price, compute only). "
-            "Actual OCI costs depend on shape, storage, networking, and negotiated discounts. "
-            "BYOL assumes existing perpetual EE licences are available to bring to OCI."
+            "Actual costs depend on shape, storage, networking, and negotiated discounts. "
+            "BYOL assumes existing perpetual EE licences. "
+            "ExaCC has additional infrastructure subscription fees not included here."
         ),
     }
 

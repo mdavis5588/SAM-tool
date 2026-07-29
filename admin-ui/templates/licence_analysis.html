@@ -462,9 +462,67 @@
               </div>
             </div>
             {% endif %}
+
+            <!-- ExaCC BYOL -->
+            {% if oci.exacc_byol_sku %}
+            <div class="col-md-4">
+              <div class="card h-100" style="border-color:#7c5cbf;">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-start mb-1">
+                    <h6 class="fw-semibold mb-0" style="color:#7c5cbf;">ExaCC — BYOL</h6>
+                    <span class="badge small" style="background:#7c5cbf;">{{ oci.exacc_byol_sku.part_number }}</span>
+                  </div>
+                  <div class="text-muted small mb-1">{{ oci.exacc_byol_sku.name }}</div>
+                  <div class="text-muted small mb-3">Exadata on-premises, Oracle-managed — bring your licence</div>
+                  <div class="row g-1 text-center">
+                    <div class="col-6 border-end">
+                      <div class="text-muted small">Per OCPU/hr</div>
+                      <div class="fw-bold">${{ "{:,.4f}".format(oci.exacc_byol_sku.unit_price) }}</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-muted small">Annual ({{ "{:,.0f}".format(oci.ocpus) }} OCPUs)</div>
+                      <div class="fw-bold" style="color:#7c5cbf;">${{ "{:,.0f}".format(oci.exacc_byol_annual) }}</div>
+                    </div>
+                  </div>
+                  <div class="alert py-1 px-2 mt-2 small mb-0" style="background:#f3f0ff;border-color:#c4b5e0;color:#4c1d95;">
+                    Infrastructure subscription fees apply separately on top of this compute rate.
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            <!-- ExaCC Licence Included -->
+            {% if oci.exacc_li_sku %}
+            <div class="col-md-4">
+              <div class="card h-100" style="border-color:#5b34a8;">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-start mb-1">
+                    <h6 class="fw-semibold mb-0" style="color:#5b34a8;">ExaCC — Licence Included</h6>
+                    <span class="badge small" style="background:#5b34a8;">{{ oci.exacc_li_sku.part_number }}</span>
+                  </div>
+                  <div class="text-muted small mb-1">{{ oci.exacc_li_sku.name }}</div>
+                  <div class="text-muted small mb-3">Exadata on-premises, Oracle-managed — licence bundled</div>
+                  <div class="row g-1 text-center">
+                    <div class="col-6 border-end">
+                      <div class="text-muted small">Per OCPU/hr</div>
+                      <div class="fw-bold">${{ "{:,.4f}".format(oci.exacc_li_sku.unit_price) }}</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-muted small">Annual ({{ "{:,.0f}".format(oci.ocpus) }} OCPUs)</div>
+                      <div class="fw-bold" style="color:#5b34a8;">${{ "{:,.0f}".format(oci.exacc_li_annual) }}</div>
+                    </div>
+                  </div>
+                  <div class="alert py-1 px-2 mt-2 small mb-0" style="background:#f3f0ff;border-color:#c4b5e0;color:#4c1d95;">
+                    Infrastructure subscription fees apply separately. No separate Oracle support contract needed.
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
           </div>
 
-          <!-- Year-by-year 4-column comparison -->
+          <!-- Year-by-year comparison -->
           <h6 class="fw-semibold mb-2">Cumulative Cost Comparison — {{ result.horizon }}-Year Horizon</h6>
           <div class="table-responsive">
             <table class="table table-sm table-bordered align-middle mb-2">
@@ -481,14 +539,27 @@
                   <th class="text-end text-success">OCI Lic. Incl. Annual</th>
                   <th class="text-end text-success">OCI Lic. Incl. Cumulative</th>
                   {% endif %}
+                  {% if oci.exacc_byol_sku %}
+                  <th class="text-end" style="color:#7c5cbf;">ExaCC BYOL Annual</th>
+                  <th class="text-end" style="color:#7c5cbf;">ExaCC BYOL Cumulative</th>
+                  {% endif %}
+                  {% if oci.exacc_li_sku %}
+                  <th class="text-end" style="color:#5b34a8;">ExaCC LI Annual</th>
+                  <th class="text-end" style="color:#5b34a8;">ExaCC LI Cumulative</th>
+                  {% endif %}
                 </tr>
               </thead>
               <tbody>
                 {% for yr in result.yearly_onprem %}
                 {% set oci_yr = oci.yearly[loop.index0] %}
-                {% set byol_cum = oci_yr.byol_cum if oci.byol_sku else none %}
-                {% set li_cum   = oci_yr.li_cum   if oci.li_sku   else none %}
-                {% set cloud_cheaper = (byol_cum is not none and byol_cum < yr.cum) or (li_cum is not none and li_cum < yr.cum) %}
+                {% set byol_cum      = oci_yr.byol_cum      if oci.byol_sku      else none %}
+                {% set li_cum        = oci_yr.li_cum        if oci.li_sku        else none %}
+                {% set exacc_b_cum   = oci_yr.exacc_byol_cum if oci.exacc_byol_sku else none %}
+                {% set exacc_li_cum  = oci_yr.exacc_li_cum  if oci.exacc_li_sku  else none %}
+                {% set cloud_cheaper = (byol_cum is not none and byol_cum < yr.cum)
+                                    or (li_cum is not none and li_cum < yr.cum)
+                                    or (exacc_b_cum is not none and exacc_b_cum < yr.cum)
+                                    or (exacc_li_cum is not none and exacc_li_cum < yr.cum) %}
                 <tr {% if cloud_cheaper %}class="table-success"{% endif %}>
                   <td class="fw-semibold">
                     Year {{ yr.year }}
@@ -503,6 +574,14 @@
                   {% if oci.li_sku %}
                   <td class="text-end text-success">${{ "{:,.0f}".format(oci.li_annual) }}</td>
                   <td class="text-end text-success fw-semibold">${{ "{:,.0f}".format(oci_yr.li_cum) }}</td>
+                  {% endif %}
+                  {% if oci.exacc_byol_sku %}
+                  <td class="text-end" style="color:#7c5cbf;">${{ "{:,.0f}".format(oci.exacc_byol_annual) }}</td>
+                  <td class="text-end fw-semibold" style="color:#7c5cbf;">${{ "{:,.0f}".format(oci_yr.exacc_byol_cum) }}</td>
+                  {% endif %}
+                  {% if oci.exacc_li_sku %}
+                  <td class="text-end" style="color:#5b34a8;">${{ "{:,.0f}".format(oci.exacc_li_annual) }}</td>
+                  <td class="text-end fw-semibold" style="color:#5b34a8;">${{ "{:,.0f}".format(oci_yr.exacc_li_cum) }}</td>
                   {% endif %}
                 </tr>
                 {% endfor %}
