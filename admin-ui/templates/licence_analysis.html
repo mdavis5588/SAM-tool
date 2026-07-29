@@ -137,47 +137,47 @@
   {% else %}
 
     <!-- Server / hardware + licence summary banner -->
-    <div class="card mb-4 shadow-sm">
+    <div class="card mb-4 shadow-sm" style="border-color: #6f42c1;">
       <!-- Card header: hardware stats -->
-      <div class="card-header bg-light py-3">
+      <div class="card-header py-3" style="background: linear-gradient(135deg, #6f42c1 0%, #8b5cf6 100%); color: #fff;">
         <div class="row align-items-center g-2">
           <div class="col-auto">
-            <i class="bi bi-server fs-4 text-purple"></i>
+            <i class="bi bi-server fs-4" style="color: rgba(255,255,255,0.8);"></i>
           </div>
           <div class="col">
-            <div class="fw-semibold fs-6">
+            <div class="fw-semibold fs-6" style="color:#fff;">
               {{ result.input_label }}
               {% if result.input_env %}
-                <span class="badge bg-secondary fw-normal ms-1">{{ result.input_env }}</span>
+                <span class="badge fw-normal ms-1" style="background:rgba(255,255,255,0.25);">{{ result.input_env }}</span>
               {% endif %}
               {% if result.mode == 'manual' %}
-                <span class="badge bg-info text-dark fw-normal ms-1">Manual Entry</span>
+                <span class="badge fw-normal ms-1" style="background:rgba(255,255,255,0.25);">Manual Entry</span>
               {% endif %}
             </div>
             {% if result.client %}
-              <div class="text-muted small">{{ result.client.client_name }}</div>
+              <div class="small" style="color:rgba(255,255,255,0.7);">{{ result.client.client_name }}</div>
             {% endif %}
           </div>
-          <div class="col-auto text-center px-3 border-start">
-            <div class="text-muted small">Sockets</div>
-            <div class="fw-bold">{{ result.input_sockets }}</div>
+          <div class="col-auto text-center px-3" style="border-left: 1px solid rgba(255,255,255,0.3);">
+            <div class="small" style="color:rgba(255,255,255,0.7);">Sockets</div>
+            <div class="fw-bold" style="color:#fff;">{{ result.input_sockets }}</div>
           </div>
-          <div class="col-auto text-center px-3 border-start">
-            <div class="text-muted small">Cores / Socket</div>
-            <div class="fw-bold">{{ result.input_cps }}</div>
+          <div class="col-auto text-center px-3" style="border-left: 1px solid rgba(255,255,255,0.3);">
+            <div class="small" style="color:rgba(255,255,255,0.7);">Cores / Socket</div>
+            <div class="fw-bold" style="color:#fff;">{{ result.input_cps }}</div>
           </div>
-          <div class="col-auto text-center px-3 border-start">
-            <div class="text-muted small">Physical Cores</div>
-            <div class="fw-bold fs-5">{{ "{:,.0f}".format(result.physical_cores) }}</div>
+          <div class="col-auto text-center px-3" style="border-left: 1px solid rgba(255,255,255,0.3);">
+            <div class="small" style="color:rgba(255,255,255,0.7);">Physical Cores</div>
+            <div class="fw-bold fs-5" style="color:#fff;">{{ "{:,.0f}".format(result.physical_cores) }}</div>
           </div>
-          <div class="col-auto text-center px-3 border-start">
-            <div class="text-muted small">OCI Equivalent</div>
-            <div class="fw-bold fs-5 text-primary">{{ "{:,.0f}".format(result.ocpus) }} OCPUs</div>
+          <div class="col-auto text-center px-3" style="border-left: 1px solid rgba(255,255,255,0.3);">
+            <div class="small" style="color:rgba(255,255,255,0.7);">OCI Equivalent</div>
+            <div class="fw-bold fs-5" style="color:#ede9fe;">{{ "{:,.0f}".format(result.ocpus) }} OCPUs</div>
           </div>
           {% if result.input_ram_gb %}
-          <div class="col-auto text-center px-3 border-start">
-            <div class="text-muted small">RAM</div>
-            <div class="fw-bold">{{ "{:,.0f}".format(result.input_ram_gb) }} GB</div>
+          <div class="col-auto text-center px-3" style="border-left: 1px solid rgba(255,255,255,0.3);">
+            <div class="small" style="color:rgba(255,255,255,0.7);">RAM</div>
+            <div class="fw-bold" style="color:#fff;">{{ "{:,.0f}".format(result.input_ram_gb) }} GB</div>
           </div>
           {% endif %}
         </div>
@@ -188,8 +188,8 @@
       <div class="card-body p-0">
         <div class="table-responsive">
           <table class="table table-sm table-hover mb-0">
-            <thead class="table-light">
-              <tr class="text-muted small">
+            <thead style="background:#f3f0ff;">
+              <tr class="small" style="color:#4c1d95;">
                 <th class="ps-3 py-2">Feature / Product Required</th>
                 <th class="py-2 text-center">Metric</th>
                 <th class="py-2 text-end">On-Prem Units</th>
