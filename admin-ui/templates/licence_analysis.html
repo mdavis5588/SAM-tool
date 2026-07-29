@@ -206,7 +206,7 @@
                   {% endif %}
                 </td>
                 <td class="py-2 text-center">
-                  <span class="badge {% if l.metric in ('processor', 'processor_perpetual') %}bg-purple{% else %}bg-secondary{% endif %} fw-normal">
+                  <span class="badge fw-normal" style="{% if l.metric in ('processor', 'processor_perpetual') %}background:#7c5cbf; color:#fff;{% else %}background:#6c757d; color:#fff;{% endif %}">
                     {{ l.metric|replace('_',' ')|title }}
                   </span>
                 </td>
