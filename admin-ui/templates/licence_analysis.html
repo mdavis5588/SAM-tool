@@ -193,10 +193,6 @@
                 <th class="py-1 text-center">Metric</th>
                 <th class="py-1 text-end">On-Prem Units</th>
                 <th class="py-1 text-end">OCI OCPUs</th>
-                <th class="py-1 text-end">List Price / Unit</th>
-                <th class="py-1 text-end">Licence Cost</th>
-                <th class="py-1 text-end">Yr 1 Total</th>
-                <th class="py-1 text-end">Yr 2+ Annual</th>
               </tr>
             </thead>
             <tbody>
@@ -222,22 +218,6 @@
                     <span class="text-muted">N/A</span>
                   {% endif %}
                 </td>
-                <td class="py-1 text-end">
-                  {% if l.unit_price is not none %}${{ "{:,.2f}".format(l.unit_price) }}
-                  {% else %}<span class="text-muted">—</span>{% endif %}
-                </td>
-                <td class="py-1 text-end">
-                  {% if l.licence_cost is not none %}${{ "{:,.0f}".format(l.licence_cost) }}
-                  {% else %}<span class="text-muted">—</span>{% endif %}
-                </td>
-                <td class="py-1 text-end">
-                  {% if l.yr1_total is not none %}${{ "{:,.0f}".format(l.yr1_total) }}
-                  {% else %}<span class="text-muted">—</span>{% endif %}
-                </td>
-                <td class="py-1 text-end">
-                  {% if l.yr2_annual is not none %}${{ "{:,.0f}".format(l.yr2_annual) }}
-                  {% else %}<span class="text-muted">—</span>{% endif %}
-                </td>
               </tr>
               {% endfor %}
               <!-- Totals row -->
@@ -245,10 +225,6 @@
                 <td class="ps-0" colspan="2">Total</td>
                 <td></td>
                 <td class="text-end text-primary">{{ "{:,.0f}".format(result.ocpus) }} OCPUs</td>
-                <td></td>
-                <td class="text-end">${{ "{:,.0f}".format(result.total_licence_cost) }}</td>
-                <td class="text-end">${{ "{:,.0f}".format(result.onprem_yr1) }}</td>
-                <td class="text-end">${{ "{:,.0f}".format(result.onprem_yr2) }}</td>
               </tr>
             </tbody>
           </table>
