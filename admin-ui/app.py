@@ -50,6 +50,45 @@ _OCI_DB_KEYWORDS = [
 _OCI_OCPU_METRICS = {"ocpu per hour", "ocpu-hour", "ocpu hour"}
 
 
+# Oracle published OCI Database hourly OCPU list prices (USD, as of 2024).
+# Used as fallback when the live API is unreachable (e.g. proxy restrictions).
+# Source: https://www.oracle.com/cloud/price-list/
+_OCI_STATIC_SKUS = [
+    {
+        "name":                 "Oracle Database Enterprise Edition — BYOL",
+        "part_number":          "B90453",
+        "metric":               "ocpu per hour",
+        "unit_price":           0.4480,   # per OCPU per hour
+        "is_byol":              True,
+        "is_licence_included":  False,
+    },
+    {
+        "name":                 "Oracle Database Enterprise Edition — Licence Included",
+        "part_number":          "B90454",
+        "metric":               "ocpu per hour",
+        "unit_price":           2.9008,   # per OCPU per hour
+        "is_byol":              False,
+        "is_licence_included":  True,
+    },
+    {
+        "name":                 "Oracle Database Standard Edition 2 — BYOL",
+        "part_number":          "B90455",
+        "metric":               "ocpu per hour",
+        "unit_price":           0.1344,
+        "is_byol":              True,
+        "is_licence_included":  False,
+    },
+    {
+        "name":                 "Oracle Database Standard Edition 2 — Licence Included",
+        "part_number":          "B90456",
+        "metric":               "ocpu per hour",
+        "unit_price":           0.2688,
+        "is_byol":              False,
+        "is_licence_included":  True,
+    },
+]
+
+
 def _fetch_oci_raw() -> list:
     """Download all items from the OCI public pricing API."""
     resp = requests.get(OCI_PRICING_URL, timeout=15)
@@ -60,9 +99,10 @@ def _fetch_oci_raw() -> list:
 def get_oci_prices() -> list:
     """
     Return cached list of OCI Database SKUs, refreshing if stale.
-    Each item: {name, part_number, metric, currency_code_local_price,
-                unit_price_usd, is_byol, is_licence_included}.
-    Returns [] on any fetch error so the page degrades gracefully.
+    Tries the live Oracle public API first; falls back to the static price
+    table if the API is unreachable (proxy restrictions, network errors).
+    Each item: {name, part_number, metric, unit_price,
+                is_byol, is_licence_included}.
     """
     cache = _OCI_CACHE
     now = time.time()
@@ -72,39 +112,39 @@ def get_oci_prices() -> list:
 
     try:
         raw = _fetch_oci_raw()
+        db_skus = []
+        for item in raw:
+            name_lower = (item.get("displayName") or "").lower()
+            if not any(kw in name_lower for kw in _OCI_DB_KEYWORDS):
+                continue
+            prices = item.get("currencyCodeLocalizations", [])
+            usd_price = None
+            for p in prices:
+                if (p.get("currencyCode") or "").upper() == "USD":
+                    usd_price = p.get("localizedPrice")
+                    break
+            if usd_price is None:
+                continue
+            metric = (item.get("metricName") or "").lower()
+            db_skus.append({
+                "name":                item.get("displayName", ""),
+                "part_number":         item.get("partNumber", ""),
+                "metric":              metric,
+                "unit_price":          float(usd_price),
+                "is_byol":             "byol" in name_lower or "bring your own" in name_lower,
+                "is_licence_included": "license included" in name_lower
+                                       or "licence included" in name_lower,
+            })
+        if db_skus:
+            with cache["lock"]:
+                cache["data"] = db_skus
+                cache["fetched_at"] = now
+            return db_skus
     except Exception:
-        # Return stale data if we have it; otherwise empty list
-        return cache["data"] or []
+        pass
 
-    db_skus = []
-    for item in raw:
-        name_lower = (item.get("displayName") or "").lower()
-        if not any(kw in name_lower for kw in _OCI_DB_KEYWORDS):
-            continue
-        prices = item.get("currencyCodeLocalizations", [])
-        usd_price = None
-        for p in prices:
-            if (p.get("currencyCode") or "").upper() == "USD":
-                usd_price = p.get("localizedPrice")
-                break
-        if usd_price is None:
-            continue
-        metric = (item.get("metricName") or "").lower()
-        db_skus.append({
-            "name":         item.get("displayName", ""),
-            "part_number":  item.get("partNumber", ""),
-            "metric":       metric,
-            "unit_price":   float(usd_price),
-            "is_byol":      "byol" in name_lower or "bring your own" in name_lower,
-            "is_licence_included": "license included" in name_lower
-                                   or "licence included" in name_lower,
-        })
-
-    with cache["lock"]:
-        cache["data"] = db_skus
-        cache["fetched_at"] = now
-
-    return db_skus
+    # Live API unavailable — use static published prices
+    return _OCI_STATIC_SKUS
 
 
 def build_oci_comparison(oci_skus: list, total_processor_cores: float,
@@ -4855,8 +4895,11 @@ def licence_analysis():
             # So total_physical_cores × 0.5 × 2 = total_physical_cores OCPUs
             ocpus = physical_cores  # net result: 1 physical core = 1 OCPU
 
-            oci_skus       = get_oci_prices()
-            oci_comparison = build_oci_comparison(oci_skus, ocpus, horizon)
+            oci_skus          = get_oci_prices()
+            oci_prices_static = (oci_skus is _OCI_STATIC_SKUS)
+            oci_comparison    = build_oci_comparison(oci_skus, ocpus, horizon)
+            if oci_comparison:
+                oci_comparison["prices_static"] = oci_prices_static
 
             any_missing_price = any(l["price_missing"] for l in lines)
 

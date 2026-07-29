@@ -371,7 +371,11 @@
           {{ "{:,.0f}".format(result.physical_cores) }} physical cores
           → <strong class="text-primary">{{ "{:,.0f}".format(result.ocpus) }} OCPUs</strong>
         </span>
+        {% if result.oci and result.oci.get('prices_static') %}
+        <span class="badge bg-warning text-dark fw-normal ms-auto" title="Oracle public API unreachable — using published list prices">published list prices · 24×7×365</span>
+        {% else %}
         <span class="badge bg-secondary fw-normal ms-auto">indicative list price · 24×7×365</span>
+        {% endif %}
       </div>
       <div class="card-body">
 
