@@ -4711,23 +4711,41 @@ def licence_analysis():
                     ORDER  BY product_family, product_detail, licence_metric
                 """, (server_id_int,))
 
-                # Current licence assignments with cost context
+                # Current licence assignments with cost context — one row per
+                # product/CSI combination.  The LEFT JOIN on entitlement lines is
+                # narrowed to a single best-matching line via DISTINCT ON so that
+                # a CSI with multiple lines under the same product_family doesn't
+                # fan the map row out into duplicates.
                 assignments = query(f"""
-                    SELECT m.product_family::TEXT          AS product_family,
+                    SELECT m.product_family::TEXT                          AS product_family,
                            COALESCE(m.product_detail,
-                                    m.product_family::TEXT) AS product_label,
-                           m.licences_consumed,
+                                    m.product_family::TEXT)               AS product_label,
+                           SUM(m.licences_consumed)                       AS licences_consumed,
                            cs.csi_number,
                            cs.contract_name,
-                           l.unit_price                   AS list_price_per_unit,
-                           l.license_metric::TEXT          AS metric
+                           (SELECT l2.unit_price
+                            FROM   shared.license_entitlement_lines l2
+                            WHERE  l2.csi_id = m.csi_id
+                              AND  l2.product_family::TEXT = m.product_family::TEXT
+                              AND  l2.is_active
+                            ORDER BY
+                              CASE WHEN LOWER(COALESCE(l2.product_name,'')) LIKE
+                                        '%%' || LOWER(COALESCE(m.product_detail, m.product_family::TEXT)) || '%%'
+                                   THEN 0 ELSE 1 END,
+                              l2.unit_price DESC NULLS LAST
+                            LIMIT 1)                                       AS list_price_per_unit,
+                           (SELECT l2.license_metric::TEXT
+                            FROM   shared.license_entitlement_lines l2
+                            WHERE  l2.csi_id = m.csi_id
+                              AND  l2.product_family::TEXT = m.product_family::TEXT
+                              AND  l2.is_active
+                            LIMIT 1)                                       AS metric
                     FROM   {schema}.server_csi_map m
                     JOIN   shared.csi_contracts cs ON cs.csi_id = m.csi_id
-                    LEFT JOIN shared.license_entitlement_lines l
-                           ON l.csi_id = m.csi_id
-                          AND l.product_family::TEXT = m.product_family::TEXT
                     WHERE  m.server_id = %s
                       AND  cs.status = 'active'
+                    GROUP  BY m.product_family, m.product_detail, m.csi_id,
+                              cs.csi_number, cs.contract_name
                     ORDER  BY m.product_family, m.product_detail
                 """, (server_id_int,))
 
