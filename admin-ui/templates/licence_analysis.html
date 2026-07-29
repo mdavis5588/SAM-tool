@@ -206,13 +206,13 @@
                   {% endif %}
                 </td>
                 <td class="py-2 text-center">
-                  <span class="badge {% if l.metric == 'processor' %}bg-purple{% else %}bg-secondary{% endif %} fw-normal">
+                  <span class="badge {% if l.metric in ('processor', 'processor_perpetual') %}bg-purple{% else %}bg-secondary{% endif %} fw-normal">
                     {{ l.metric|replace('_',' ')|title }}
                   </span>
                 </td>
                 <td class="py-2 text-end fw-bold">{{ "{:,.2f}".format(l.units_required) }}</td>
                 <td class="py-2 text-end pe-3 text-primary fw-bold">
-                  {% if l.metric == 'processor' %}
+                  {% if l.metric in ('processor', 'processor_perpetual') %}
                     {{ "{:,.0f}".format(l.units_required * 2) }} OCPUs
                     <span class="text-muted fw-normal small">(×2)</span>
                   {% else %}
@@ -286,7 +286,7 @@
                 {% endif %}
               </td>
               <td>
-                <span class="badge {% if l.metric == 'processor' %}bg-purple{% else %}bg-secondary{% endif %}">
+                <span class="badge {% if l.metric in ('processor', 'processor_perpetual') %}bg-purple{% else %}bg-secondary{% endif %}">
                   {{ l.metric|replace('_',' ')|title }}
                 </span>
               </td>
