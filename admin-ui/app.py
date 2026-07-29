@@ -4497,12 +4497,44 @@ def cost_optimisation():
                            total_unused_licences=total_unused_licences)
 
 
+@app.route("/api/licence-analysis/servers")
+@login_required
+def licence_analysis_servers_api():
+    """JSON endpoint — returns servers for a client, for the analysis form dropdown."""
+    client_id = request.args.get("client_id", "")
+    if not client_id:
+        return jsonify([])
+    client = query(
+        "SELECT schema_name FROM sam_admin.clients WHERE client_id=%s AND is_active",
+        (int(client_id),), fetchall=False
+    )
+    if not client:
+        return jsonify([])
+    schema = client["schema_name"]
+    rows = query(f"""
+        SELECT sv.server_id,
+               sv.hostname,
+               sv.environment::TEXT                   AS environment,
+               COALESCE(op.cpu_sockets, 1)            AS cpu_sockets,
+               COALESCE(op.cores_per_socket, 1)       AS cores_per_socket,
+               COALESCE(op.total_physical_cores,
+                        op.cpu_sockets * op.cores_per_socket, 1) AS total_physical_cores
+        FROM   {schema}.oracle_servers sv
+        LEFT JOIN {schema}.oracle_processors op ON op.server_id = sv.server_id
+        WHERE  sv.is_active IS NOT FALSE
+        ORDER  BY sv.hostname
+    """)
+    return jsonify([dict(r) for r in rows])
+
+
 @app.route("/licence-analysis", methods=["GET", "POST"])
 @login_required
 def licence_analysis():
     role = current_role()
     if role not in ("superadmin", "contracting", "dba"):
         return abort(403)
+
+    SUPPORT_RATE = 0.22  # Oracle standard annual support rate — locked
 
     clients = query(
         "SELECT client_id, client_code, client_name FROM sam_admin.clients "
@@ -4515,18 +4547,20 @@ def licence_analysis():
         "ORDER BY product_name, metric, effective_date DESC"
     )
 
-    # Price management (POST actions that don't run analysis)
+    # ------------------------------------------------------------------
+    # Price catalogue management (POST)
+    # ------------------------------------------------------------------
     if request.method == "POST":
         action = request.form.get("action", "")
 
         if action == "save_price":
-            pid   = request.form.get("price_id")
-            pname = request.form.get("product_name", "").strip()
-            metric = request.form.get("metric", "").strip()
-            lprice = request.form.get("list_price", "").strip()
+            pid      = request.form.get("price_id")
+            pname    = request.form.get("product_name", "").strip()
+            metric   = request.form.get("metric", "").strip()
+            lprice   = request.form.get("list_price", "").strip()
             currency = request.form.get("currency", "USD").strip().upper() or "USD"
             eff_date = request.form.get("effective_date") or None
-            notes = request.form.get("notes", "").strip() or None
+            notes    = request.form.get("notes", "").strip() or None
             is_current = request.form.get("is_current") == "1"
             if pname and metric and lprice:
                 if pid:
@@ -4552,233 +4586,276 @@ def licence_analysis():
                          eff_date, is_current, notes,
                          session.get("username", "system"))
                     )
-            from flask import redirect
             return redirect(url_for("licence_analysis") + "#pricing")
 
         if action == "delete_price":
             pid = request.form.get("price_id")
             if pid:
                 execute("DELETE FROM shared.oracle_product_list_prices WHERE price_id=%s", (int(pid),))
-            from flask import redirect
             return redirect(url_for("licence_analysis") + "#pricing")
 
-    # Run analysis if GET params supplied
-    result = None
-    SUPPORT_RATE = 0.22  # locked — Oracle standard annual support rate
+    # ------------------------------------------------------------------
+    # Analysis form values
+    # ------------------------------------------------------------------
+    mode = request.args.get("mode", "server")   # "server" or "manual"
 
     form_vals = {
-        "client_id":       request.args.get("client_id", ""),
-        "ula_support_cost": request.args.get("ula_support_cost", ""),
-        "horizon_years":   request.args.get("horizon_years", "5"),
+        "mode":           mode,
+        "client_id":      request.args.get("client_id", ""),
+        "server_id":      request.args.get("server_id", ""),
+        # manual-entry fields
+        "m_hostname":     request.args.get("m_hostname", ""),
+        "m_cores":        request.args.get("m_cores", ""),
+        "m_sockets":      request.args.get("m_sockets", "1"),
+        "m_ram_gb":       request.args.get("m_ram_gb", ""),
+        "m_edition":      request.args.get("m_edition", "Enterprise Edition"),
+        "horizon_years":  request.args.get("horizon_years", "5"),
     }
 
-    if form_vals["client_id"] and form_vals["ula_support_cost"]:
+    result      = None
+    server_list = []  # pre-populate server dropdown if client already selected
+
+    if form_vals["client_id"]:
         try:
-            client_id      = int(form_vals["client_id"])
-            ula_support    = float(form_vals["ula_support_cost"])
-            ula_purchase   = round(ula_support / SUPPORT_RATE, 2)
-            support_rate   = SUPPORT_RATE
-            horizon        = min(max(int(form_vals["horizon_years"]), 1), 20)
-
-            # ULA cost model: Year 1 = purchase + first-year support
-            #                 Year 2+ = ongoing support only (22% of purchase price)
-            ula_yr1_support = round(ula_purchase * SUPPORT_RATE, 2)
-            ula_yr1         = round(ula_purchase + ula_yr1_support, 2)
-            ula_yr2_annual  = ula_yr1_support   # same rate, support-only from year 2
-
-            client = query(
-                "SELECT schema_name, client_name, client_code "
-                "FROM sam_admin.clients WHERE client_id=%s",
-                (client_id,), fetchall=False
+            client_id_int = int(form_vals["client_id"])
+            cl = query(
+                "SELECT schema_name FROM sam_admin.clients WHERE client_id=%s AND is_active",
+                (client_id_int,), fetchall=False
             )
-            if not client:
-                raise ValueError("Client not found")
-            schema = client["schema_name"]
+            if cl:
+                schema = cl["schema_name"]
+                server_list = query(f"""
+                    SELECT sv.server_id,
+                           sv.hostname,
+                           sv.environment::TEXT                         AS environment,
+                           COALESCE(op.cpu_sockets, 1)                 AS cpu_sockets,
+                           COALESCE(op.cores_per_socket, 1)            AS cores_per_socket,
+                           COALESCE(op.total_physical_cores,
+                                    op.cpu_sockets * op.cores_per_socket, 1) AS total_physical_cores
+                    FROM   {schema}.oracle_servers sv
+                    LEFT JOIN {schema}.oracle_processors op ON op.server_id = sv.server_id
+                    WHERE  sv.is_active IS NOT FALSE
+                    ORDER  BY sv.hostname
+                """)
+        except Exception:
+            pass
 
-            # --- 1. Licence requirements for this client ---
-            reqs = query(f"""
-                SELECT product_family::TEXT                          AS product_family,
-                       COALESCE(product_detail, product_family::TEXT) AS product_label,
-                       licence_metric::TEXT                          AS metric,
-                       CEIL(SUM(licences_required))::NUMERIC        AS units_required
-                FROM   {schema}.license_position
-                WHERE  licences_required > 0
-                GROUP  BY product_family, product_detail, licence_metric
-                ORDER  BY product_family, product_detail, licence_metric
-            """)
+    # ------------------------------------------------------------------
+    # Run analysis when enough parameters are present
+    # ------------------------------------------------------------------
+    ready_server = (mode == "server" and form_vals["client_id"] and form_vals["server_id"])
+    ready_manual = (mode == "manual" and form_vals["m_cores"])
 
-            # --- 2. Shared pool entitlement (shareable CSIs, active) ---
-            pool_lines = query("""
-                SELECT l.csi_id,
-                       l.product_name,
-                       l.product_family::TEXT  AS product_family,
-                       l.license_metric::TEXT  AS metric,
-                       l.quantity
-                FROM   shared.license_entitlement_lines l
-                JOIN   shared.csi_contracts cs ON cs.csi_id = l.csi_id
-                WHERE  cs.sharing_policy = 'shareable'
-                  AND  cs.status = 'active'
-                  AND  l.is_active
-            """)
+    if ready_server or ready_manual:
+        try:
+            horizon = min(max(int(form_vals["horizon_years"]), 1), 20)
 
-            # Consumed per CSI across all client schemas
-            all_schemas = [
-                r["schema_name"] for r in query(
-                    "SELECT schema_name FROM sam_admin.clients WHERE is_active ORDER BY schema_name"
-                )
-            ]
-            consumed_by_csi: dict = {}
-            if all_schemas:
-                union_parts = " UNION ALL ".join(
-                    f"SELECT csi_id, COALESCE(SUM(licences_consumed),0) AS c "
-                    f"FROM {s}.server_csi_map GROUP BY csi_id"
-                    for s in all_schemas
-                )
-                for r in query(
-                    f"SELECT csi_id, SUM(c) AS total FROM ({union_parts}) t GROUP BY csi_id"
-                ):
-                    consumed_by_csi[r["csi_id"]] = float(r["total"] or 0)
-
-            # Available per (product_family, metric) from shareable pool
-            pool_available: dict = {}  # (product_family, metric) -> float
-            for pl in pool_lines:
-                consumed = consumed_by_csi.get(pl["csi_id"], 0)
-                available = max(float(pl["quantity"] or 0) - consumed, 0)
-                key = (pl["product_family"], pl["metric"])
-                pool_available[key] = pool_available.get(key, 0) + available
-
-            # --- 3. Price lookup ---
-            price_map: dict = {}  # (product_name_lower, metric) -> float
+            # Build a price lookup map from catalogue
+            price_map: dict = {}
             for p in prices:
                 if p["is_current"]:
                     price_map[(p["product_name"].lower(), p["metric"])] = float(p["list_price"])
 
             def find_price(product_label, metric):
                 pl_lower = (product_label or "").lower()
-                # Exact match
                 if (pl_lower, metric) in price_map:
                     return price_map[(pl_lower, metric)]
-                # Substring match
-                for (pn, m), price in price_map.items():
+                for (pn, m), pr in price_map.items():
                     if m == metric and (pn in pl_lower or pl_lower in pn):
-                        return price
+                        return pr
                 return None
 
-            # --- 4. Build analysis lines ---
+            # ----------------------------------------------------------
+            # MODE A — existing server
+            # ----------------------------------------------------------
+            if ready_server:
+                client_id_int = int(form_vals["client_id"])
+                server_id_int = int(form_vals["server_id"])
+
+                client = query(
+                    "SELECT schema_name, client_name, client_code "
+                    "FROM sam_admin.clients WHERE client_id=%s",
+                    (client_id_int,), fetchall=False
+                )
+                if not client:
+                    raise ValueError("Client not found")
+                schema = client["schema_name"]
+
+                # Server hardware
+                server = query(f"""
+                    SELECT sv.server_id, sv.hostname, sv.environment::TEXT AS environment,
+                           sv.os_platform, sv.db_version,
+                           COALESCE(op.cpu_sockets, 1)           AS cpu_sockets,
+                           COALESCE(op.cores_per_socket, 1)      AS cores_per_socket,
+                           COALESCE(op.total_physical_cores,
+                                    op.cpu_sockets * op.cores_per_socket, 1) AS total_physical_cores,
+                           COALESCE(sv.total_ram_mb, 0)          AS ram_mb
+                    FROM   {schema}.oracle_servers sv
+                    LEFT JOIN {schema}.oracle_processors op ON op.server_id = sv.server_id
+                    WHERE  sv.server_id = %s
+                """, (server_id_int,), fetchall=False)
+                if not server:
+                    raise ValueError("Server not found")
+
+                physical_cores = float(server["total_physical_cores"] or 1)
+
+                # Licence requirements for this server from license_position
+                reqs = query(f"""
+                    SELECT product_family::TEXT                           AS product_family,
+                           COALESCE(product_detail, product_family::TEXT) AS product_label,
+                           licence_metric::TEXT                           AS metric,
+                           CEIL(licences_required)::NUMERIC              AS units_required
+                    FROM   {schema}.license_position
+                    WHERE  server_id = %s
+                      AND  licences_required > 0
+                    ORDER  BY product_family, product_detail, licence_metric
+                """, (server_id_int,))
+
+                # Current licence assignments with cost context
+                assignments = query(f"""
+                    SELECT m.product_family::TEXT          AS product_family,
+                           COALESCE(m.product_detail,
+                                    m.product_family::TEXT) AS product_label,
+                           m.licences_consumed,
+                           cs.csi_number,
+                           cs.contract_name,
+                           l.list_price_per_unit,
+                           l.license_metric::TEXT          AS metric
+                    FROM   {schema}.server_csi_map m
+                    JOIN   shared.csi_contracts cs ON cs.csi_id = m.csi_id
+                    LEFT JOIN shared.license_entitlement_lines l
+                           ON l.csi_id = m.csi_id
+                          AND l.product_family::TEXT = m.product_family::TEXT
+                    WHERE  m.server_id = %s
+                      AND  cs.status = 'active'
+                    ORDER  BY m.product_family, m.product_detail
+                """, (server_id_int,))
+
+                input_label   = server["hostname"]
+                input_env     = server["environment"] or ""
+                input_sockets = int(server["cpu_sockets"] or 1)
+                input_cps     = int(server["cores_per_socket"] or 1)
+                input_ram_gb  = round(float(server["ram_mb"] or 0) / 1024, 1)
+
+            # ----------------------------------------------------------
+            # MODE B — manual entry
+            # ----------------------------------------------------------
+            else:
+                client        = None
+                server        = None
+                assignments   = []
+                physical_cores = float(form_vals["m_cores"])
+                sockets       = int(form_vals["m_sockets"] or 1)
+                cps           = max(1, round(physical_cores / sockets))
+                edition       = form_vals["m_edition"]
+                input_label   = form_vals["m_hostname"] or "Manual Entry"
+                input_env     = ""
+                input_sockets = sockets
+                input_cps     = cps
+                input_ram_gb  = float(form_vals["m_ram_gb"]) if form_vals["m_ram_gb"] else None
+
+                # Synthetic requirements based on edition + core count
+                metric = "processor"
+                reqs = [{
+                    "product_family": edition,
+                    "product_label":  edition,
+                    "metric":         metric,
+                    "units_required": physical_cores,
+                }]
+
+            # ----------------------------------------------------------
+            # Cost model — perpetual on-prem
+            # ----------------------------------------------------------
             lines = []
-            total_new_cost = 0.0
-            total_yr1_support = 0.0
-            total_yr2_annual = 0.0
-            pool_units_used = {}  # track pool consumption per key
+            total_licence_cost  = 0.0
+            total_yr1_support   = 0.0
+            total_yr2_annual    = 0.0
 
             for req in reqs:
-                key = (req["product_family"], req["metric"])
                 units_req  = float(req["units_required"] or 0)
-                pool_avail = pool_available.get(key, 0)
-                # Don't use more pool than required
-                pool_used  = min(pool_avail, units_req)
-                # Track pool usage so multiple requirements don't double-dip
-                already_used = pool_units_used.get(key, 0)
-                pool_remaining = max(pool_avail - already_used, 0)
-                pool_used = min(pool_remaining, units_req)
-                pool_units_used[key] = already_used + pool_used
-
-                gap = max(units_req - pool_used, 0)
                 unit_price = find_price(req["product_label"], req["metric"])
-                new_cost   = round(gap * unit_price, 2) if unit_price is not None else None
-                yr1_sup    = round(new_cost * SUPPORT_RATE, 2) if new_cost is not None else None
-                yr1_total  = round(new_cost + yr1_sup, 2) if new_cost is not None else None
-                yr2_ann    = yr1_sup  # same as yr1 support; support on newly purchased licences
+                licence_cost = round(units_req * unit_price, 2) if unit_price is not None else None
+                yr1_sup      = round(licence_cost * SUPPORT_RATE, 2) if licence_cost is not None else None
+                yr1_total    = round(licence_cost + yr1_sup, 2) if licence_cost is not None else None
 
-                if new_cost is not None:
-                    total_new_cost   += new_cost
-                    total_yr1_support += yr1_sup
-                    total_yr2_annual  += yr2_ann
+                if licence_cost is not None:
+                    total_licence_cost += licence_cost
+                    total_yr1_support  += yr1_sup
+                    total_yr2_annual   += yr1_sup
+
+                # Current assigned cost (server mode only)
+                assigned_cost = None
+                if ready_server:
+                    for a in assignments:
+                        if (a["product_family"] == req["product_family"]
+                                and a.get("list_price_per_unit") is not None):
+                            assigned_cost = round(
+                                float(a["licences_consumed"] or 0)
+                                * float(a["list_price_per_unit"]), 2
+                            )
+                            break
 
                 lines.append({
-                    "product_label": req["product_label"],
+                    "product_label":  req["product_label"],
                     "product_family": req["product_family"],
                     "metric":         req["metric"],
                     "units_required": units_req,
-                    "pool_available": round(pool_used, 2),
-                    "gap":            round(gap, 2),
                     "unit_price":     unit_price,
-                    "new_cost":       new_cost,
+                    "licence_cost":   licence_cost,
                     "yr1_support":    yr1_sup,
                     "yr1_total":      yr1_total,
-                    "yr2_annual":     yr2_ann,
-                    "price_missing":  unit_price is None and gap > 0,
+                    "yr2_annual":     yr1_sup,
+                    "assigned_cost":  assigned_cost,
+                    "price_missing":  unit_price is None,
                 })
 
-            # Year 1 total alternative = new licence purchases + first-year support
-            yr1_alt = round(total_new_cost + total_yr1_support, 2)
-            # Year 2+ annual = support on new licences only
-            yr2_alt = round(total_yr2_annual, 2)
+            onprem_yr1   = round(total_licence_cost + total_yr1_support, 2)
+            onprem_yr2   = round(total_yr2_annual, 2)
 
-            # Year-by-year cumulative table
-            yearly = []
+            # Year-by-year on-prem cumulative
+            yearly_onprem = []
             for y in range(1, horizon + 1):
-                # ULA: year 1 = purchase + support; year 2+ = support only
-                if y == 1:
-                    ula_annual_this = ula_yr1
-                    ula_cum = ula_yr1
-                else:
-                    ula_annual_this = ula_yr2_annual
-                    ula_cum = round(ula_yr1 + (y - 1) * ula_yr2_annual, 2)
-                # Alternative: year 1 = new licence cost + support; year 2+ = support only
-                if y == 1:
-                    alt_annual_this = yr1_alt
-                    alt_cum = yr1_alt
-                else:
-                    alt_annual_this = yr2_alt
-                    alt_cum = round(yr1_alt + (y - 1) * yr2_alt, 2)
-                yearly.append({
-                    "year":            y,
-                    "ula_annual_this": ula_annual_this,
-                    "ula_cum":         ula_cum,
-                    "alt_annual_this": alt_annual_this,
-                    "alt_cum":         alt_cum,
-                    "saving":          round(ula_cum - alt_cum, 2),
-                })
+                ann  = onprem_yr1 if y == 1 else onprem_yr2
+                cum  = onprem_yr1 if y == 1 else round(onprem_yr1 + (y - 1) * onprem_yr2, 2)
+                yearly_onprem.append({"year": y, "annual": ann, "cum": cum})
 
-            # Break-even: first year where alternative cumulative < ULA cumulative
-            break_even = None
-            for row in yearly:
-                if row["alt_cum"] < row["ula_cum"]:
-                    break_even = row["year"]
-                    break
+            # ----------------------------------------------------------
+            # OCI comparison
+            # ----------------------------------------------------------
+            # Oracle core factor for processor licensing: most x86 = 0.5
+            # 1 physical core licensed = 0.5 processor licences on x86
+            # OCI: 1 processor licence (perpetual) → 2 OCPUs (BYOL)
+            # So total_physical_cores × 0.5 × 2 = total_physical_cores OCPUs
+            ocpus = physical_cores  # net result: 1 physical core = 1 OCPU
+
+            oci_skus       = get_oci_prices()
+            oci_comparison = build_oci_comparison(oci_skus, ocpus, horizon)
 
             any_missing_price = any(l["price_missing"] for l in lines)
 
-            # --- 5. OCI comparison ---
-            # Total processor-licensed cores drives OCPU count for OCI sizing.
-            total_proc_cores = sum(
-                l["units_required"]
-                for l in lines
-                if l["metric"] == "processor"
-            )
-            oci_skus       = get_oci_prices()
-            oci_comparison = build_oci_comparison(oci_skus, total_proc_cores, horizon)
-
             result = {
-                "client":           client,
-                "lines":            lines,
-                "ula_support":      ula_support,
-                "ula_purchase":     ula_purchase,
-                "ula_yr1":          ula_yr1,
-                "ula_yr1_support":  ula_yr1_support,
-                "ula_yr2_annual":   ula_yr2_annual,
-                "support_rate_pct": 22,
-                "total_new_cost":   round(total_new_cost, 2),
-                "yr1_alt":          yr1_alt,
-                "yr2_alt":          yr2_alt,
-                "yearly":           yearly,
-                "break_even":       break_even,
-                "horizon":          horizon,
+                "mode":              mode,
+                "input_label":       input_label,
+                "input_env":         input_env,
+                "input_sockets":     input_sockets,
+                "input_cps":         input_cps,
+                "input_ram_gb":      input_ram_gb,
+                "physical_cores":    physical_cores,
+                "ocpus":             ocpus,
+                "client":            client,
+                "server":            server,
+                "assignments":       assignments,
+                "lines":             lines,
+                "support_rate_pct":  22,
+                "total_licence_cost": round(total_licence_cost, 2),
+                "onprem_yr1":        onprem_yr1,
+                "onprem_yr2":        onprem_yr2,
+                "yearly_onprem":     yearly_onprem,
+                "horizon":           horizon,
                 "any_missing_price": any_missing_price,
-                "oci":              oci_comparison,
-                "total_proc_cores": total_proc_cores,
+                "oci":               oci_comparison,
             }
+
         except Exception as e:
             result = {"error": str(e)}
 
@@ -4787,6 +4864,7 @@ def licence_analysis():
         clients=clients,
         prices=prices,
         form_vals=form_vals,
+        server_list=server_list,
         result=result,
     )
 
