@@ -137,16 +137,15 @@
   {% else %}
 
     <!-- Server / hardware + licence summary banner -->
-    <div class="card border-0 bg-light mb-4">
-      <div class="card-body pt-3 pb-2">
-
-        <!-- Hardware headline row -->
-        <div class="row align-items-center g-2 mb-3">
+    <div class="card mb-4 shadow-sm">
+      <!-- Card header: hardware stats -->
+      <div class="card-header bg-light py-3">
+        <div class="row align-items-center g-2">
           <div class="col-auto">
             <i class="bi bi-server fs-4 text-purple"></i>
           </div>
           <div class="col">
-            <div class="fw-semibold">
+            <div class="fw-semibold fs-6">
               {{ result.input_label }}
               {% if result.input_env %}
                 <span class="badge bg-secondary fw-normal ms-1">{{ result.input_env }}</span>
@@ -182,35 +181,37 @@
           </div>
           {% endif %}
         </div>
+      </div>
 
-        <!-- Per-product licence requirements inline -->
-        {% if result.lines %}
+      <!-- Card body: per-product licence table -->
+      {% if result.lines %}
+      <div class="card-body p-0">
         <div class="table-responsive">
-          <table class="table table-sm table-borderless mb-1" style="background:transparent">
-            <thead>
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-light">
               <tr class="text-muted small">
-                <th class="py-1 ps-0">Feature / Product Required</th>
-                <th class="py-1 text-center">Metric</th>
-                <th class="py-1 text-end">On-Prem Units</th>
-                <th class="py-1 text-end">OCI OCPUs</th>
+                <th class="ps-3 py-2">Feature / Product Required</th>
+                <th class="py-2 text-center">Metric</th>
+                <th class="py-2 text-end">On-Prem Units</th>
+                <th class="py-2 text-end pe-3">OCI OCPUs</th>
               </tr>
             </thead>
             <tbody>
               {% for l in result.lines %}
-              <tr class="align-middle {% if l.price_missing %}text-warning{% endif %}">
-                <td class="py-1 ps-0 fw-semibold">
+              <tr class="align-middle {% if l.price_missing %}table-warning{% endif %}">
+                <td class="ps-3 py-2 fw-semibold">
                   {{ l.product_label }}
                   {% if l.price_missing %}
                     <span class="badge bg-warning text-dark ms-1 fw-normal small">no price</span>
                   {% endif %}
                 </td>
-                <td class="py-1 text-center">
+                <td class="py-2 text-center">
                   <span class="badge {% if l.metric == 'processor' %}bg-purple{% else %}bg-secondary{% endif %} fw-normal">
                     {{ l.metric|replace('_',' ')|title }}
                   </span>
                 </td>
-                <td class="py-1 text-end fw-bold">{{ "{:,.2f}".format(l.units_required) }}</td>
-                <td class="py-1 text-end text-primary fw-bold">
+                <td class="py-2 text-end fw-bold">{{ "{:,.2f}".format(l.units_required) }}</td>
+                <td class="py-2 text-end pe-3 text-primary fw-bold">
                   {% if l.metric == 'processor' %}
                     {{ "{:,.0f}".format(l.units_required * 2) }} OCPUs
                     <span class="text-muted fw-normal small">(×2)</span>
@@ -220,25 +221,26 @@
                 </td>
               </tr>
               {% endfor %}
-              <!-- Totals row -->
-              <tr class="border-top fw-semibold">
-                <td class="ps-0" colspan="2">Total</td>
-                <td></td>
-                <td class="text-end text-primary">{{ "{:,.0f}".format(result.ocpus) }} OCPUs</td>
-              </tr>
             </tbody>
+            <tfoot class="table-light">
+              <tr class="fw-semibold">
+                <td class="ps-3 py-2" colspan="3">Total OCPUs required in OCI</td>
+                <td class="py-2 text-end pe-3 text-primary">{{ "{:,.0f}".format(result.ocpus) }} OCPUs</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
-        {% endif %}
+      </div>
+      {% endif %}
 
-        <div class="text-muted small mt-1">
-          <i class="bi bi-info-circle me-1"></i>
-          OCI OCPU mapping: 1 processor licence = 2 OCPUs (Oracle x86 core factor 0.5, so
-          {{ "{:,.0f}".format(result.physical_cores) }} cores →
-          {{ "{:,.0f}".format(result.physical_cores // 2) }} proc. licences →
-          {{ "{:,.0f}".format(result.ocpus) }} OCPUs).
-          NUP licences have no direct OCPU equivalent — shown as N/A.
-        </div>
+      <!-- Card footer: mapping note -->
+      <div class="card-footer text-muted small py-2">
+        <i class="bi bi-info-circle me-1"></i>
+        OCI OCPU mapping: 1 processor licence = 2 OCPUs (Oracle x86 core factor 0.5, so
+        {{ "{:,.0f}".format(result.physical_cores) }} cores →
+        {{ "{:,.0f}".format(result.physical_cores // 2) }} proc. licences →
+        {{ "{:,.0f}".format(result.ocpus) }} OCPUs).
+        NUP licences have no direct OCPU equivalent — shown as N/A.
       </div>
     </div>
 
