@@ -197,8 +197,8 @@
               {% set consumed = consumed_by_line.get(l.product_family, 0) %}
               {% set qty = l.quantity or 0 %}
               {% set available = [qty - consumed, 0] | max %}
-              {% set ann_support = (l.total_price * 0.22) if l.total_price else none %}
-              {% set support_per_unit = (l.unit_price * 0.22) if l.unit_price else none %}
+              {% set ann_support = (l.total_price | float * 0.22) if l.total_price is not none and l.total_price else none %}
+              {% set support_per_unit = (l.unit_price | float * 0.22) if l.unit_price is not none and l.unit_price else none %}
               <tr>
                 <td>{{ l.line_number }}</td>
                 <td>{{ l.product_name }}</td>
@@ -224,8 +224,8 @@
                 </td>
                 <td>{% if l.unit_price %}{{ '{:,.2f}'.format(l.unit_price) }}{% else %}—{% endif %}</td>
                 <td>{% if l.total_price %}{{ '{:,.2f}'.format(l.total_price) }}{% else %}—{% endif %}</td>
-                <td>{% if ann_support is not none %}{{ '{:,.2f}'.format(ann_support) }}{% else %}—{% endif %}</td>
-                <td>{% if support_per_unit is not none %}{{ '{:,.2f}'.format(support_per_unit) }}{% else %}—{% endif %}</td>
+                <td>{% if ann_support %}{{ '{:,.2f}'.format(ann_support) }}{% else %}—{% endif %}</td>
+                <td>{% if support_per_unit %}{{ '{:,.2f}'.format(support_per_unit) }}{% else %}—{% endif %}</td>
               </tr>
               {% else %}
               <tr><td colspan="10" class="text-muted text-center">No lines found.</td></tr>
