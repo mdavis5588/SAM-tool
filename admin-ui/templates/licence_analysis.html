@@ -136,10 +136,12 @@
     <div class="alert alert-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i> {{ result.error }}</div>
   {% else %}
 
-    <!-- Server / hardware summary banner -->
+    <!-- Server / hardware + licence summary banner -->
     <div class="card border-0 bg-light mb-4">
-      <div class="card-body py-2">
-        <div class="row align-items-center g-2">
+      <div class="card-body pt-3 pb-2">
+
+        <!-- Hardware headline row -->
+        <div class="row align-items-center g-2 mb-3">
           <div class="col-auto">
             <i class="bi bi-server fs-4 text-purple"></i>
           </div>
@@ -162,7 +164,7 @@
             <div class="fw-bold">{{ result.input_sockets }}</div>
           </div>
           <div class="col-auto text-center px-3 border-start">
-            <div class="text-muted small">Cores/Socket</div>
+            <div class="text-muted small">Cores / Socket</div>
             <div class="fw-bold">{{ result.input_cps }}</div>
           </div>
           <div class="col-auto text-center px-3 border-start">
@@ -180,9 +182,86 @@
           </div>
           {% endif %}
         </div>
-        <div class="text-muted small mt-1 ps-5">
+
+        <!-- Per-product licence requirements inline -->
+        {% if result.lines %}
+        <div class="table-responsive">
+          <table class="table table-sm table-borderless mb-1" style="background:transparent">
+            <thead>
+              <tr class="text-muted small">
+                <th class="py-1 ps-0">Feature / Product Required</th>
+                <th class="py-1 text-center">Metric</th>
+                <th class="py-1 text-end">On-Prem Units</th>
+                <th class="py-1 text-end">OCI OCPUs</th>
+                <th class="py-1 text-end">List Price / Unit</th>
+                <th class="py-1 text-end">Licence Cost</th>
+                <th class="py-1 text-end">Yr 1 Total</th>
+                <th class="py-1 text-end">Yr 2+ Annual</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for l in result.lines %}
+              <tr class="align-middle {% if l.price_missing %}text-warning{% endif %}">
+                <td class="py-1 ps-0 fw-semibold">
+                  {{ l.product_label }}
+                  {% if l.price_missing %}
+                    <span class="badge bg-warning text-dark ms-1 fw-normal small">no price</span>
+                  {% endif %}
+                </td>
+                <td class="py-1 text-center">
+                  <span class="badge {% if l.metric == 'processor' %}bg-purple{% else %}bg-secondary{% endif %} fw-normal">
+                    {{ l.metric|replace('_',' ')|title }}
+                  </span>
+                </td>
+                <td class="py-1 text-end fw-bold">{{ "{:,.2f}".format(l.units_required) }}</td>
+                <td class="py-1 text-end text-primary fw-bold">
+                  {% if l.metric == 'processor' %}
+                    {{ "{:,.0f}".format(l.units_required * 2) }} OCPUs
+                    <span class="text-muted fw-normal small">(×2)</span>
+                  {% else %}
+                    <span class="text-muted">N/A</span>
+                  {% endif %}
+                </td>
+                <td class="py-1 text-end">
+                  {% if l.unit_price is not none %}${{ "{:,.2f}".format(l.unit_price) }}
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="py-1 text-end">
+                  {% if l.licence_cost is not none %}${{ "{:,.0f}".format(l.licence_cost) }}
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="py-1 text-end">
+                  {% if l.yr1_total is not none %}${{ "{:,.0f}".format(l.yr1_total) }}
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="py-1 text-end">
+                  {% if l.yr2_annual is not none %}${{ "{:,.0f}".format(l.yr2_annual) }}
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+              <!-- Totals row -->
+              <tr class="border-top fw-semibold">
+                <td class="ps-0" colspan="2">Total</td>
+                <td></td>
+                <td class="text-end text-primary">{{ "{:,.0f}".format(result.ocpus) }} OCPUs</td>
+                <td></td>
+                <td class="text-end">${{ "{:,.0f}".format(result.total_licence_cost) }}</td>
+                <td class="text-end">${{ "{:,.0f}".format(result.onprem_yr1) }}</td>
+                <td class="text-end">${{ "{:,.0f}".format(result.onprem_yr2) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+
+        <div class="text-muted small mt-1">
           <i class="bi bi-info-circle me-1"></i>
-          OCI OCPU mapping: 1 physical core = 1 OCPU on x86 (Oracle x86 core factor 0.5 × 2 OCPUs per processor licence = 1:1).
+          OCI OCPU mapping: 1 processor licence = 2 OCPUs (Oracle x86 core factor 0.5, so
+          {{ "{:,.0f}".format(result.physical_cores) }} cores →
+          {{ "{:,.0f}".format(result.physical_cores // 2) }} proc. licences →
+          {{ "{:,.0f}".format(result.ocpus) }} OCPUs).
+          NUP licences have no direct OCPU equivalent — shown as N/A.
         </div>
       </div>
     </div>
