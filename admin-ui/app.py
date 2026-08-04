@@ -4998,12 +4998,24 @@ def oracle_price_list():
     if role not in ("superadmin", "contracting", "dba"):
         return abort(403)
 
-    prices = query(
-        "SELECT price_id, product_name, metric, list_price, currency, "
-        "       effective_date, is_current, notes "
-        "FROM shared.oracle_product_list_prices "
-        "ORDER BY product_name, metric, effective_date DESC"
-    )
+    try:
+        prices = query(
+            "SELECT price_id, product_name, metric, list_price, currency, "
+            "       effective_date, is_current, notes "
+            "FROM shared.oracle_product_list_prices "
+            "ORDER BY product_name, metric, effective_date DESC"
+        )
+    except Exception as e:
+        app.logger.error("oracle_price_list DB error: %s", e, exc_info=True)
+        prices = []
+        return render_template(
+            "oracle_price_list.html",
+            prices=prices,
+            db_error=str(e),
+            imported=None, skipped=None, import_err=None,
+            seeded=None, seed_err=None,
+            oracle_price_count=len(ORACLE_PUBLISHED_PRICES),
+        )
 
     if request.method == "POST":
         action = request.form.get("action", "")
@@ -5055,6 +5067,7 @@ def oracle_price_list():
     return render_template(
         "oracle_price_list.html",
         prices=prices,
+        db_error=None,
         imported=request.args.get("imported"),
         skipped=request.args.get("skipped"),
         import_err=request.args.get("import_err"),
