@@ -78,68 +78,114 @@
   .price-table td.col-actions { width: 80px; }
 </style>
 
-<div class="card shadow-sm">
-  {% if prices %}
-  <div class="table-responsive">
-    <table class="table table-sm table-hover mb-0 price-table" style="font-variant-numeric: tabular-nums;">
-      <thead class="table-light">
-        <tr>
-          <th>Product</th>
-          <th class="col-metric">Metric</th>
-          <th class="col-price text-end">List Price</th>
-          <th class="col-support text-end">Annual Support <span class="fw-normal">(22%)</span></th>
-          <th class="col-currency">CCY</th>
-          <th class="col-date">Effective</th>
-          <th class="col-current">Current</th>
-          <th class="col-notes">Notes</th>
-          <th class="col-actions"></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for p in prices %}
-        <tr>
-          <td class="col-product">{{ p.product_name }}</td>
-          <td class="col-metric"><span class="badge bg-secondary fw-normal">{{ p.metric|replace('_',' ')|title }}</span></td>
-          <td class="col-price text-end fw-semibold">${{ "{:,.2f}".format(p.list_price) }}</td>
-          <td class="col-support text-end text-muted">${{ "{:,.2f}".format(p.list_price * 22 / 100) }}</td>
-          <td class="col-currency text-muted small">{{ p.currency }}</td>
-          <td class="col-date text-muted small">{{ p.effective_date }}</td>
-          <td class="col-current">
-            {% if p.is_current %}
-              <span class="badge bg-success">Yes</span>
-            {% else %}
-              <span class="badge bg-secondary">No</span>
-            {% endif %}
-          </td>
-          <td class="col-notes text-muted small">{{ p.notes or '' }}</td>
-          <td class="col-actions text-end">
-            <button class="btn btn-sm btn-outline-secondary me-1"
-                    data-bs-toggle="modal" data-bs-target="#priceModal"
-                    onclick="openPriceModal({{ p.price_id }}, '{{ p.product_name|e }}', '{{ p.metric }}', {{ p.list_price }}, '{{ p.currency }}', '{{ p.effective_date }}', {{ p.is_current|lower }}, '{{ (p.notes or '')|e }}')">
-              <i class="bi bi-pencil"></i>
+{% set processor_prices = prices | selectattr('metric', 'equalto', 'processor') | list %}
+{% set nup_prices = prices | selectattr('metric', 'equalto', 'named_user_plus') | list %}
+{% set other_prices = prices | rejectattr('metric', 'in', ['processor', 'named_user_plus']) | list %}
+
+{% macro price_table(rows) %}
+<div class="table-responsive">
+  <table class="table table-sm table-hover mb-0 price-table" style="font-variant-numeric: tabular-nums;">
+    <thead class="table-light">
+      <tr>
+        <th>Product</th>
+        <th class="col-price text-end">List Price</th>
+        <th class="col-support text-end">Annual Support <span class="fw-normal">(22%)</span></th>
+        <th class="col-currency">CCY</th>
+        <th class="col-date">Effective</th>
+        <th class="col-current">Current</th>
+        <th class="col-notes">Notes</th>
+        <th class="col-actions"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in rows %}
+      <tr>
+        <td class="col-product">{{ p.product_name }}</td>
+        <td class="col-price text-end fw-semibold">${{ "{:,.2f}".format(p.list_price) }}</td>
+        <td class="col-support text-end text-muted">${{ "{:,.2f}".format(p.list_price * 22 / 100) }}</td>
+        <td class="col-currency text-muted small">{{ p.currency }}</td>
+        <td class="col-date text-muted small">{{ p.effective_date }}</td>
+        <td class="col-current">
+          {% if p.is_current %}
+            <span class="badge bg-success">Yes</span>
+          {% else %}
+            <span class="badge bg-secondary">No</span>
+          {% endif %}
+        </td>
+        <td class="col-notes text-muted small">{{ p.notes or '' }}</td>
+        <td class="col-actions text-end">
+          <button class="btn btn-sm btn-outline-secondary me-1"
+                  data-bs-toggle="modal" data-bs-target="#priceModal"
+                  onclick="openPriceModal({{ p.price_id }}, '{{ p.product_name|e }}', '{{ p.metric }}', {{ p.list_price }}, '{{ p.currency }}', '{{ p.effective_date }}', {{ p.is_current|lower }}, '{{ (p.notes or '')|e }}')">
+            <i class="bi bi-pencil"></i>
+          </button>
+          <form method="post" action="{{ url_for('oracle_price_list') }}"
+                style="display:inline"
+                onsubmit="return confirm('Delete this price entry?')">
+            <input type="hidden" name="action" value="delete_price">
+            <input type="hidden" name="price_id" value="{{ p.price_id }}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">
+              <i class="bi bi-trash"></i>
             </button>
-            <form method="post" action="{{ url_for('oracle_price_list') }}"
-                  style="display:inline"
-                  onsubmit="return confirm('Delete this price entry?')">
-              <input type="hidden" name="action" value="delete_price">
-              <input type="hidden" name="price_id" value="{{ p.price_id }}">
-              <button type="submit" class="btn btn-sm btn-outline-danger">
-                <i class="bi bi-trash"></i>
-              </button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{% if prices %}
+
+<!-- Processor Perpetual Licences -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header d-flex align-items-center gap-2 py-2">
+    <i class="bi bi-cpu text-primary"></i>
+    <span class="fw-semibold">Processor Perpetual Licences</span>
+    <span class="badge bg-secondary ms-auto">{{ processor_prices|length }}</span>
   </div>
+  {% if processor_prices %}
+    {{ price_table(processor_prices) }}
   {% else %}
+  <div class="card-body text-muted small"><i class="bi bi-inbox me-1"></i>No processor licence prices configured.</div>
+  {% endif %}
+</div>
+
+<!-- Named User Plus Licences -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header d-flex align-items-center gap-2 py-2">
+    <i class="bi bi-people text-primary"></i>
+    <span class="fw-semibold">Named User Plus Licences</span>
+    <span class="badge bg-secondary ms-auto">{{ nup_prices|length }}</span>
+  </div>
+  {% if nup_prices %}
+    {{ price_table(nup_prices) }}
+  {% else %}
+  <div class="card-body text-muted small"><i class="bi bi-inbox me-1"></i>No named user plus prices configured.</div>
+  {% endif %}
+</div>
+
+<!-- Other Licences -->
+{% if other_prices %}
+<div class="card shadow-sm mb-4">
+  <div class="card-header d-flex align-items-center gap-2 py-2">
+    <i class="bi bi-tag text-primary"></i>
+    <span class="fw-semibold">Other Licences</span>
+    <span class="badge bg-secondary ms-auto">{{ other_prices|length }}</span>
+  </div>
+  {{ price_table(other_prices) }}
+</div>
+{% endif %}
+
+{% else %}
+<div class="card shadow-sm">
   <div class="card-body text-muted">
     <i class="bi bi-inbox me-1"></i>
     No prices configured yet. Import an Oracle Technology Global Price List (.xlsx) or add entries manually.
   </div>
-  {% endif %}
 </div>
+{% endif %}
 
 <!-- Add / Edit price modal -->
 <div class="modal fade" id="priceModal" tabindex="-1">
