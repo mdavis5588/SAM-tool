@@ -82,7 +82,7 @@
           <td>{{ p.product_name }}</td>
           <td><span class="badge bg-secondary">{{ p.metric|replace('_',' ')|title }}</span></td>
           <td class="text-end fw-semibold">${{ "{:,.2f}".format(p.list_price) }}</td>
-          <td class="text-end text-muted">${{ "{:,.2f}".format(p.list_price * 0.22) }}</td>
+          <td class="text-end text-muted">${{ "{:,.2f}".format(p.list_price * 22 / 100) }}</td>
           <td>{{ p.currency }}</td>
           <td class="text-muted small">{{ p.effective_date }}</td>
           <td>
