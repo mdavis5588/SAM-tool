@@ -4965,22 +4965,30 @@ def oracle_price_list_seed():
     role = current_role()
     if role not in ("superadmin", "contracting", "dba"):
         return abort(403)
-    eff_date = "2026-04-16"   # April 2026 price list date
+    eff_date = "2026-04-16"
     updated_by = session.get("username", "seed")
-    count = 0
-    for product_name, metric, list_price in ORACLE_PUBLISHED_PRICES:
-        execute(
-            "INSERT INTO shared.oracle_product_list_prices "
-            "(product_name, metric, list_price, currency, effective_date, is_current, notes, updated_by) "
-            "VALUES (%s,%s,%s,'USD',%s::DATE,true,"
-            "'Oracle Technology Global Price List Apr-2026',%s) "
-            "ON CONFLICT (product_name, metric, effective_date) DO UPDATE SET "
-            "  list_price=EXCLUDED.list_price, is_current=true, "
-            "  notes=EXCLUDED.notes, updated_by=EXCLUDED.updated_by",
-            (product_name, metric, list_price, eff_date, updated_by)
-        )
-        count += 1
-    return redirect(url_for("oracle_price_list", seeded=count))
+    try:
+        conn = get_db()
+        try:
+            with conn.cursor() as cur:
+                for product_name, metric, list_price in ORACLE_PUBLISHED_PRICES:
+                    cur.execute(
+                        "INSERT INTO shared.oracle_product_list_prices "
+                        "(product_name, metric, list_price, currency, effective_date, is_current, notes, updated_by) "
+                        "VALUES (%s,%s,%s,'USD',%s::DATE,true,"
+                        "'Oracle Technology Global Price List Apr-2026',%s) "
+                        "ON CONFLICT (product_name, metric, effective_date) DO UPDATE SET "
+                        "  list_price=EXCLUDED.list_price, is_current=true, "
+                        "  notes=EXCLUDED.notes, updated_by=EXCLUDED.updated_by",
+                        (product_name, metric, list_price, eff_date, updated_by)
+                    )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        app.logger.error("oracle_price_list_seed error: %s", e)
+        return redirect(url_for("oracle_price_list", seed_err=str(e)))
+    return redirect(url_for("oracle_price_list", seeded=len(ORACLE_PUBLISHED_PRICES)))
 
 
 @app.route("/oracle-price-list", methods=["GET", "POST"])
@@ -5051,6 +5059,7 @@ def oracle_price_list():
         skipped=request.args.get("skipped"),
         import_err=request.args.get("import_err"),
         seeded=request.args.get("seeded"),
+        seed_err=request.args.get("seed_err"),
         oracle_price_count=len(ORACLE_PUBLISHED_PRICES),
     )
 

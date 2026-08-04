@@ -32,6 +32,12 @@
   Loaded <strong>{{ seeded }}</strong> Oracle Technology Global Price List entries (Apr 2026).
   <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
 </div>
+{% elif seed_err %}
+<div class="alert alert-danger alert-dismissible mb-4" role="alert">
+  <i class="bi bi-exclamation-triangle-fill me-1"></i>
+  Failed to load prices: <code>{{ seed_err }}</code>
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
 {% elif imported is not none %}
 <div class="alert alert-success alert-dismissible mb-4" role="alert">
   <i class="bi bi-check-circle-fill me-1"></i>
