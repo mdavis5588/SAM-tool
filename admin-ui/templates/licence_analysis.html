@@ -503,6 +503,18 @@
             Cloud costs exclude storage, networking, and negotiated discounts.
             BYOL Year 1 includes the on-prem perpetual licence purchase plus ongoing annual support.
           </div>
+
+          <!-- Breakeven chart -->
+          <div class="mt-4 mb-2">
+            <div class="d-flex align-items-baseline gap-2 mb-1">
+              <h6 class="fw-semibold mb-0">Cumulative Cost — Breakeven Analysis</h6>
+              <span class="text-muted small">On-prem perpetual vs cloud Licence Included options &nbsp;·&nbsp; dashed = Azure</span>
+            </div>
+            <div style="position:relative; height:340px;">
+              <canvas id="breakevenChart" aria-label="Cumulative cost breakeven chart"></canvas>
+            </div>
+            <div id="breakevenAnnotations" class="mt-2 small text-muted"></div>
+          </div>
         </div>{# end summary pane #}
 
 
@@ -1364,6 +1376,135 @@ function openPriceModal(id, name, metric, price, currency, effDate, isCurrent, n
         },
         y: {
           title: { display: true, text: 'Annual cost (USD)', font: { size: 11 }, color: '#6b7280' },
+          grid: { color: '#e5e7eb' },
+          ticks: {
+            font: { size: 11 }, color: '#6b7280',
+            callback: v => '$' + (v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v),
+          },
+          beginAtZero: true,
+        },
+      },
+    },
+  });
+})();
+</script>
+
+<script>
+(function () {
+  const canvas = document.getElementById('breakevenChart');
+  if (!canvas) return;
+
+  /* ── server-side values ──────────────────────────────────────────── */
+  {% set lc   = result.total_licence_cost | float %}
+  {% set yr2  = result.onprem_yr2 | float %}
+  {% set y1   = result.onprem_yr1 | float %}
+
+  const licenceCost = {{ lc | round | int }};
+  const onpremYr2   = {{ yr2 | round | int }};
+  const onpremYr1   = {{ y1 | round | int }};
+
+  /* cumulative on-prem at year y */
+  function opCum(y) { return onpremYr1 + (y - 1) * onpremYr2; }
+
+  /* LI options: { label, annual, color, dash } */
+  const liOptions = [];
+
+  {% if oci %}
+    {% set la  = oci.li_annual         | float if oci.li_annual         is not none else 0 %}
+    {% set ela = oci.exacc_li_annual   | float if oci.exacc_li_annual   is not none else 0 %}
+    {% if oci.li_sku and la > 0 %}
+  liOptions.push({ label: 'OCI — Lic. Included', annual: {{ la | round | int }}, color: '#16a34a', dash: [] });
+    {% endif %}
+    {% if oci.exacc_li_sku and ela > 0 %}
+  liOptions.push({ label: 'ExaCC — Lic. Included', annual: {{ ela | round | int }}, color: '#c2410c', dash: [] });
+    {% endif %}
+  {% endif %}
+  {% if az %}
+    {% set alia = az.li_annual | float if az.li_annual is not none else 0 %}
+    {% if az.li_sku and alia > 0 %}
+  liOptions.push({ label: 'Oracle@Azure', annual: {{ alia | round | int }}, color: '#b45309', dash: [7, 4] });
+    {% endif %}
+  {% endif %}
+
+  if (liOptions.length === 0) { canvas.closest('.mt-4').style.display = 'none'; return; }
+
+  /* ── compute horizon long enough to show all crossovers ─────────── */
+  /* breakeven year: lc / (la - yr2) when la > yr2 */
+  const breakYears = liOptions
+    .filter(o => o.annual > onpremYr2)
+    .map(o => licenceCost / (o.annual - onpremYr2));
+
+  const minHorizon = {{ result.horizon }};
+  const neededHorizon = breakYears.length
+    ? Math.min(Math.max(minHorizon, Math.ceil(Math.max(...breakYears)) + 3), 25)
+    : minHorizon;
+
+  const labels = Array.from({ length: neededHorizon }, (_, i) => 'Year ' + (i + 1));
+
+  /* ── datasets ────────────────────────────────────────────────────── */
+  const datasets = [
+    {
+      label: 'On-Premises (cumulative)',
+      data: labels.map((_, i) => opCum(i + 1)),
+      borderColor: '#9d174d',
+      backgroundColor: '#9d174d18',
+      borderWidth: 2, pointRadius: 4, pointHoverRadius: 6, tension: 0,
+    },
+  ];
+
+  liOptions.forEach(o => {
+    datasets.push({
+      label: o.label + ' (cumulative)',
+      data: labels.map((_, i) => o.annual * (i + 1)),
+      borderColor: o.color,
+      backgroundColor: o.color + '18',
+      borderWidth: 2,
+      borderDash: o.dash,
+      pointRadius: 4, pointHoverRadius: 6, tension: 0,
+    });
+  });
+
+  /* ── annotation text ─────────────────────────────────────────────── */
+  const annEl = document.getElementById('breakevenAnnotations');
+  if (annEl) {
+    const lines = liOptions.map(o => {
+      if (o.annual <= onpremYr2) {
+        return `<span class="me-4"><span style="color:${o.color}">&#9644;</span> <strong>${o.label}</strong>: on-prem is always cheaper (cloud annual cost is lower than on-prem support).</span>`;
+      }
+      const yr = licenceCost / (o.annual - onpremYr2);
+      return `<span class="me-4"><span style="color:${o.color}">&#9644;</span> On-prem becomes cheaper than <strong>${o.label}</strong> after <strong>year ${yr.toFixed(1)}</strong>.</span>`;
+    });
+    annEl.innerHTML = '<i class="bi bi-info-circle me-1"></i>' + lines.join('');
+  }
+
+  /* ── chart ───────────────────────────────────────────────────────── */
+  new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { usePointStyle: true, pointStyleWidth: 12, padding: 16, font: { size: 12 } },
+        },
+        tooltip: {
+          callbacks: {
+            title: items => items[0].label + ' cumulative total',
+            label: ctx => ' ' + ctx.dataset.label.replace(' (cumulative)', '') + ': $' +
+                          ctx.parsed.y.toLocaleString('en-US', { maximumFractionDigits: 0 }),
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: '#e5e7eb' },
+          ticks: { font: { size: 11 }, color: '#6b7280' },
+        },
+        y: {
+          title: { display: true, text: 'Cumulative cost (USD)', font: { size: 11 }, color: '#6b7280' },
           grid: { color: '#e5e7eb' },
           ticks: {
             font: { size: 11 }, color: '#6b7280',
