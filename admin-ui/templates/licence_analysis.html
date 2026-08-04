@@ -489,8 +489,8 @@
           <!-- Cumulative cost line chart -->
           <div class="mt-4 mb-2">
             <div class="d-flex align-items-baseline gap-2 mb-1">
-              <h6 class="fw-semibold mb-0">Cumulative Cost — {{ result.horizon }}-Year Horizon</h6>
-              <span class="text-muted small">solid = OCI / on-prem &nbsp;·&nbsp; dashed = Azure</span>
+              <h6 class="fw-semibold mb-0">Annual Cost per Year — {{ result.horizon }}-Year Horizon</h6>
+              <span class="text-muted small">Year 1 includes licence purchase for on-prem &amp; BYOL &nbsp;·&nbsp; solid = OCI / on-prem &nbsp;·&nbsp; dashed = Azure</span>
             </div>
             <div style="position:relative; height:340px;">
               <canvas id="summaryChart" aria-label="Cumulative cost line chart over {{ result.horizon }} years"></canvas>
@@ -1247,21 +1247,17 @@ function openPriceModal(id, name, metric, price, currency, effDate, isCurrent, n
     {% for yr in result.yearly_onprem %}"Year {{ yr.year }}"{% if not loop.last %},{% endif %}{% endfor %}
   ];
 
-  /* cumulative on-prem */
-  const onpremCum = [
-    {% for yr in result.yearly_onprem %}{{ yr.cum }}{% if not loop.last %},{% endif %}{% endfor %}
-  ];
+  /* ── annual cost per year (Year 1 = licence + compute/support; Year 2+ = ongoing only) ── */
+  {% set onprem_y1 = result.onprem_yr1 | float %}
 
   const datasets = [
     {
       label: 'On-Premises',
-      data: onpremCum,
+      /* Year 1: licence + support; Year 2+: support only */
+      data: [{{ onprem_y1 | round | int }}{% for yr in result.yearly_onprem %}{% if yr.year > 1 %},{{ yr2 | round | int }}{% endif %}{% endfor %}],
       borderColor: COLORS.onprem,
       backgroundColor: COLORS.onprem + '18',
-      borderWidth: 2,
-      pointRadius: 5,
-      pointHoverRadius: 7,
-      tension: 0.1,
+      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0,
     },
   ];
 
@@ -1274,40 +1270,42 @@ function openPriceModal(id, name, metric, price, currency, effDate, isCurrent, n
     {% if oci.byol_sku %}
     datasets.push({
       label: 'OCI — BYOL',
-      data: [{% for yr in result.yearly_onprem %}{{ (lc + ba * yr.year + yr2 * yr.year) | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
+      /* Year 1: licence + compute + support; Year 2+: compute + support */
+      data: [{{ (lc + ba + yr2) | round | int }}{% for yr in result.yearly_onprem %}{% if yr.year > 1 %},{{ (ba + yr2) | round | int }}{% endif %}{% endfor %}],
       borderColor: COLORS.oci_byol,
       backgroundColor: COLORS.oci_byol + '18',
-      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0.1,
+      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0,
     });
     {% endif %}
 
     {% if oci.li_sku %}
     datasets.push({
       label: 'OCI — Lic. Included',
-      data: [{% for yr in result.yearly_onprem %}{{ (la * yr.year) | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
+      /* Same every year — no separate licence purchase */
+      data: [{% for yr in result.yearly_onprem %}{{ la | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
       borderColor: COLORS.oci_li,
       backgroundColor: COLORS.oci_li + '18',
-      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0.1,
+      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0,
     });
     {% endif %}
 
     {% if oci.exacc_byol_sku %}
     datasets.push({
       label: 'ExaCC — BYOL',
-      data: [{% for yr in result.yearly_onprem %}{{ (lc + eba * yr.year + yr2 * yr.year) | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
+      data: [{{ (lc + eba + yr2) | round | int }}{% for yr in result.yearly_onprem %}{% if yr.year > 1 %},{{ (eba + yr2) | round | int }}{% endif %}{% endfor %}],
       borderColor: COLORS.exacc_byol,
       backgroundColor: COLORS.exacc_byol + '18',
-      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0.1,
+      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0,
     });
     {% endif %}
 
     {% if oci.exacc_li_sku %}
     datasets.push({
       label: 'ExaCC — Lic. Included',
-      data: [{% for yr in result.yearly_onprem %}{{ (ela * yr.year) | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
+      data: [{% for yr in result.yearly_onprem %}{{ ela | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
       borderColor: COLORS.exacc_li,
       backgroundColor: COLORS.exacc_li + '18',
-      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0.1,
+      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0,
     });
     {% endif %}
   {% endif %}
@@ -1319,22 +1317,22 @@ function openPriceModal(id, name, metric, price, currency, effDate, isCurrent, n
     {% if az.byol_sku %}
     datasets.push({
       label: 'Azure — BYOL',
-      data: [{% for yr in result.yearly_onprem %}{{ (lc + aba * yr.year + yr2 * yr.year) | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
+      data: [{{ (lc + aba + yr2) | round | int }}{% for yr in result.yearly_onprem %}{% if yr.year > 1 %},{{ (aba + yr2) | round | int }}{% endif %}{% endfor %}],
       borderColor: COLORS.az_byol,
       backgroundColor: COLORS.az_byol + '18',
       borderWidth: 2, borderDash: [7, 4],
-      pointRadius: 5, pointHoverRadius: 7, tension: 0.1,
+      pointRadius: 5, pointHoverRadius: 7, tension: 0,
     });
     {% endif %}
 
     {% if az.li_sku %}
     datasets.push({
       label: 'Oracle@Azure',
-      data: [{% for yr in result.yearly_onprem %}{{ (alia * yr.year) | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
+      data: [{% for yr in result.yearly_onprem %}{{ alia | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
       borderColor: COLORS.az_li,
       backgroundColor: COLORS.az_li + '18',
       borderWidth: 2, borderDash: [7, 4],
-      pointRadius: 5, pointHoverRadius: 7, tension: 0.1,
+      pointRadius: 5, pointHoverRadius: 7, tension: 0,
     });
     {% endif %}
   {% endif %}
@@ -1354,6 +1352,7 @@ function openPriceModal(id, name, metric, price, currency, effDate, isCurrent, n
         },
         tooltip: {
           callbacks: {
+            title: items => items[0].label + ' annual cost',
             label: ctx => ' ' + ctx.dataset.label + ': $' + ctx.parsed.y.toLocaleString('en-US', { maximumFractionDigits: 0 }),
           },
         },
@@ -1364,6 +1363,7 @@ function openPriceModal(id, name, metric, price, currency, effDate, isCurrent, n
           ticks: { font: { size: 11 }, color: '#6b7280' },
         },
         y: {
+          title: { display: true, text: 'Annual cost (USD)', font: { size: 11 }, color: '#6b7280' },
           grid: { color: '#e5e7eb' },
           ticks: {
             font: { size: 11 }, color: '#6b7280',
