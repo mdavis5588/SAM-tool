@@ -1041,12 +1041,12 @@
                       <div class="fw-bold">${{ "{:,.4f}".format(oci.byol_sku.unit_price) }}</div>
                     </div>
                     <div class="col-6 border-bottom pb-1">
-                      <div class="text-muted small">Annual compute</div>
-                      <div class="fw-bold text-primary">${{ "{:,.0f}".format(oci.byol_annual) }}</div>
+                      <div class="text-muted small">Annual compute only</div>
+                      <div class="fw-bold text-muted">${{ "{:,.0f}".format(oci.byol_annual) }}</div>
                     </div>
                     <div class="col-6 border-end pt-1">
                       <div class="text-muted small">Licence + compute Year 1</div>
-                      <div class="fw-bold text-dark">
+                      <div class="fw-bold text-primary">
                         ${{ "{:,.0f}".format(result.licence_yr1 + oci.byol_annual) }}
                       </div>
                     </div>
@@ -1121,12 +1121,12 @@
                       <div class="fw-bold">${{ "{:,.4f}".format(oci.exacc_byol_sku.unit_price) }}</div>
                     </div>
                     <div class="col-6 border-bottom pb-1">
-                      <div class="text-muted small">Annual compute</div>
-                      <div class="fw-bold" style="color:#7c5cbf;">${{ "{:,.0f}".format(oci.exacc_byol_annual) }}</div>
+                      <div class="text-muted small">Annual compute only</div>
+                      <div class="fw-bold text-muted">${{ "{:,.0f}".format(oci.exacc_byol_annual) }}</div>
                     </div>
                     <div class="col-6 border-end pt-1">
                       <div class="text-muted small">Licence + compute Year 1</div>
-                      <div class="fw-bold text-dark">
+                      <div class="fw-bold" style="color:#7c5cbf;">
                         ${{ "{:,.0f}".format(result.licence_yr1 + oci.exacc_byol_annual) }}
                       </div>
                     </div>
