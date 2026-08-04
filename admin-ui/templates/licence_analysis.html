@@ -321,7 +321,22 @@
       <div class="card-body p-0">
         {% set has_new = result.lines | selectattr('units_new', 'gt', 0) | list | length > 0 %}
         <div class="table-responsive">
-          <table class="table table-sm table-hover mb-0">
+          <table class="table table-sm table-hover mb-0" style="table-layout:fixed;font-variant-numeric:tabular-nums;">
+            <colgroup>
+              <col style="min-width:200px;"><!-- Feature / Product -->
+              <col style="width:130px;"><!-- Metric -->
+              <col style="width:90px;"><!-- Required -->
+              {% if result.pool_availability %}
+              <col style="width:90px;"><!-- From Pool -->
+              <col style="width:130px;"><!-- Pool Annual Cost -->
+              {% if has_new %}
+              <col style="width:80px;"><!-- To Buy -->
+              <col style="width:140px;"><!-- New Licence Cost -->
+              <col style="width:130px;"><!-- New Support/yr -->
+              {% endif %}
+              {% endif %}
+              <col style="width:110px;"><!-- OCI OCPUs -->
+            </colgroup>
             <thead style="background:#f3f0ff;">
               <tr class="small" style="color:#4c1d95;">
                 <th class="ps-3 py-2">Feature / Product Required</th>
