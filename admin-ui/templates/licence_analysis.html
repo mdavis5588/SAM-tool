@@ -1531,7 +1531,8 @@ svClient.addEventListener('change', function() {
   };
 
   /* ── raw data from server ─────────────────────────────────────────── */
-  {% set lc   = result.total_licence_cost | float %}
+  {% set lyr1 = result.licence_yr1 | float %}
+  {% set lyr2 = result.licence_yr2 | float %}
   {% set yr2  = result.onprem_yr2 | float %}
 
   const labels = [
@@ -1562,7 +1563,7 @@ svClient.addEventListener('change', function() {
     datasets.push({
       label: 'OCI — BYOL',
       /* Year 1: licence + compute + support; Year 2+: compute + support */
-      data: [{{ (lc + ba + yr2) | round | int }}{% for yr in result.yearly_onprem %}{% if yr.year > 1 %},{{ (ba + yr2) | round | int }}{% endif %}{% endfor %}],
+      data: [{{ (lyr1 + ba) | round | int }}{% for yr in result.yearly_onprem %}{% if yr.year > 1 %},{{ (lyr2 + ba) | round | int }}{% endif %}{% endfor %}],
       borderColor: COLORS.oci_byol,
       backgroundColor: COLORS.oci_byol + '18',
       borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0,
@@ -1583,7 +1584,7 @@ svClient.addEventListener('change', function() {
     {% if oci.exacc_byol_sku %}
     datasets.push({
       label: 'ExaCC — BYOL',
-      data: [{{ (lc + eba + yr2) | round | int }}{% for yr in result.yearly_onprem %}{% if yr.year > 1 %},{{ (eba + yr2) | round | int }}{% endif %}{% endfor %}],
+      data: [{{ (lyr1 + eba) | round | int }}{% for yr in result.yearly_onprem %}{% if yr.year > 1 %},{{ (lyr2 + eba) | round | int }}{% endif %}{% endfor %}],
       borderColor: COLORS.exacc_byol,
       backgroundColor: COLORS.exacc_byol + '18',
       borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0,
@@ -1608,7 +1609,7 @@ svClient.addEventListener('change', function() {
     {% if az.byol_sku %}
     datasets.push({
       label: 'Azure — BYOL',
-      data: [{{ (lc + aba + yr2) | round | int }}{% for yr in result.yearly_onprem %}{% if yr.year > 1 %},{{ (aba + yr2) | round | int }}{% endif %}{% endfor %}],
+      data: [{{ (lyr1 + aba) | round | int }}{% for yr in result.yearly_onprem %}{% if yr.year > 1 %},{{ (lyr2 + aba) | round | int }}{% endif %}{% endfor %}],
       borderColor: COLORS.az_byol,
       backgroundColor: COLORS.az_byol + '18',
       borderWidth: 2, borderDash: [7, 4],
@@ -1674,13 +1675,13 @@ svClient.addEventListener('change', function() {
   if (!canvas) return;
 
   /* ── server-side values ──────────────────────────────────────────── */
-  {% set lc   = result.total_licence_cost | float %}
-  {% set yr2  = result.onprem_yr2 | float %}
-  {% set y1   = result.onprem_yr1 | float %}
+  {% set lyr1b = result.licence_yr1 | float %}
+  {% set lyr2b = result.licence_yr2 | float %}
+  {% set y1    = result.onprem_yr1  | float %}
 
-  const licenceCost = {{ lc | round | int }};
-  const onpremYr2   = {{ yr2 | round | int }};
-  const onpremYr1   = {{ y1 | round | int }};
+  const licenceYr1  = {{ lyr1b | round | int }};
+  const licenceYr2  = {{ lyr2b | round | int }};
+  const onpremYr1   = {{ y1    | round | int }};
 
   /* cumulative on-prem at year y */
   function opCum(y) { return onpremYr1 + (y - 1) * onpremYr2; }
@@ -1719,17 +1720,17 @@ svClient.addEventListener('change', function() {
 
   if (allOptions.length === 0) { canvas.closest('.mt-4').style.display = 'none'; return; }
 
-  /* ── BYOL cumulative: Year 1 = lc + annual + yr2_support; Year 2+ = annual + yr2_support each year */
+  /* ── BYOL cumulative: Year 1 = licenceYr1 + annual; Year 2+ = licenceYr2 + annual each year */
   function byolCum(annual, y) {
-    const yr1 = licenceCost + annual + onpremYr2;
-    return y === 1 ? yr1 : yr1 + (y - 1) * (annual + onpremYr2);
+    const yr1 = licenceYr1 + annual;
+    return y === 1 ? yr1 : yr1 + (y - 1) * (licenceYr2 + annual);
   }
 
   /* ── compute horizon long enough to show all LI crossovers ──────── */
   const liOptions = allOptions.filter(o => !o.isByol);
   const breakYears = liOptions
-    .filter(o => o.annual > onpremYr2)
-    .map(o => licenceCost / (o.annual - onpremYr2));
+    .filter(o => o.annual > licenceYr2)
+    .map(o => (licenceYr1 - licenceYr2) / (o.annual - licenceYr2));
 
   const minHorizon = {{ result.horizon }};
   const neededHorizon = breakYears.length
