@@ -740,6 +740,11 @@
                       <div class="text-muted" style="font-size:.7rem;">support + managed service</div>
                     </div>
                   </div>
+                  {% if result.adjustments.exacc %}
+                  <div class="mt-2 pt-2 border-top" style="font-size:.7rem; color:#92400e;">
+                    <i class="bi bi-sliders me-1"></i>Managed service: +${{ "{:,.0f}".format(result.adjustments.exacc) }}/yr included
+                  </div>
+                  {% endif %}
                 </div>
               </div>
             </div>
