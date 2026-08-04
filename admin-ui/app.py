@@ -4815,17 +4815,42 @@ def licence_analysis():
     # ------------------------------------------------------------------
     mode = request.args.get("mode", "server")   # "server" or "manual"
 
+    def _adj(name):
+        """Parse an optional adjustment query param as float, default 0."""
+        try:
+            v = float(request.args.get(name, "") or 0)
+            return max(v, 0)
+        except (ValueError, TypeError):
+            return 0.0
+
+    adj_onprem         = _adj("adj_onprem")
+    adj_oci            = _adj("adj_oci")
+    adj_exacc          = _adj("adj_exacc")
+    adj_azure          = _adj("adj_azure")
+    adj_onprem_upfront = _adj("adj_onprem_upfront")
+    adj_exacc_upfront  = _adj("adj_exacc_upfront")
+    adj_any = any([adj_onprem, adj_oci, adj_exacc, adj_azure,
+                   adj_onprem_upfront, adj_exacc_upfront])
+
     form_vals = {
-        "mode":           mode,
-        "client_id":      request.args.get("client_id", ""),
-        "server_id":      request.args.get("server_id", ""),
+        "mode":                mode,
+        "client_id":           request.args.get("client_id", ""),
+        "server_id":           request.args.get("server_id", ""),
         # manual-entry fields
-        "m_hostname":     request.args.get("m_hostname", ""),
-        "m_cores":        request.args.get("m_cores", ""),
-        "m_sockets":      request.args.get("m_sockets", "1"),
-        "m_ram_gb":       request.args.get("m_ram_gb", ""),
-        "m_edition":      request.args.get("m_edition", "Enterprise Edition"),
-        "horizon_years":  request.args.get("horizon_years", "5"),
+        "m_hostname":          request.args.get("m_hostname", ""),
+        "m_cores":             request.args.get("m_cores", ""),
+        "m_sockets":           request.args.get("m_sockets", "1"),
+        "m_ram_gb":            request.args.get("m_ram_gb", ""),
+        "m_edition":           request.args.get("m_edition", "Enterprise Edition"),
+        "horizon_years":       request.args.get("horizon_years", "5"),
+        # vendor quote adjustments
+        "adj_onprem":          int(adj_onprem)         if adj_onprem         else "",
+        "adj_oci":             int(adj_oci)            if adj_oci            else "",
+        "adj_exacc":           int(adj_exacc)          if adj_exacc          else "",
+        "adj_azure":           int(adj_azure)          if adj_azure          else "",
+        "adj_onprem_upfront":  int(adj_onprem_upfront) if adj_onprem_upfront else "",
+        "adj_exacc_upfront":   int(adj_exacc_upfront)  if adj_exacc_upfront  else "",
+        "adj_any":             adj_any,
     }
 
     result      = None
@@ -5052,8 +5077,9 @@ def licence_analysis():
                     "price_missing":  unit_price is None,
                 })
 
-            onprem_yr1   = round(total_licence_cost + total_yr1_support, 2)
-            onprem_yr2   = round(total_yr2_annual, 2)
+            # Apply vendor quote adjustments to on-prem costs
+            onprem_yr1   = round(total_licence_cost + total_yr1_support + adj_onprem_upfront + adj_onprem, 2)
+            onprem_yr2   = round(total_yr2_annual + adj_onprem, 2)
 
             # Year-by-year on-prem cumulative
             yearly_onprem = []
@@ -5076,9 +5102,23 @@ def licence_analysis():
             oci_comparison    = build_oci_comparison(oci_skus, ocpus, horizon)
             if oci_comparison:
                 oci_comparison["prices_static"] = oci_prices_static
+                # Apply vendor quote adjustments to OCI and ExaCC annual costs
+                if adj_oci:
+                    for key in ("byol_annual", "li_annual"):
+                        if oci_comparison.get(key) is not None:
+                            oci_comparison[key] = round(oci_comparison[key] + adj_oci, 2)
+                if adj_exacc or adj_exacc_upfront:
+                    for key in ("exacc_byol_annual", "exacc_li_annual"):
+                        if oci_comparison.get(key) is not None:
+                            oci_comparison[key] = round(oci_comparison[key] + adj_exacc, 2)
+                    oci_comparison["exacc_upfront"] = adj_exacc_upfront
 
             azure_skus       = get_azure_prices()
             azure_comparison = build_azure_comparison(azure_skus, physical_cores, horizon)
+            if azure_comparison and adj_azure:
+                for key in ("byol_annual", "li_annual"):
+                    if azure_comparison.get(key) is not None:
+                        azure_comparison[key] = round(azure_comparison[key] + adj_azure, 2)
 
             any_missing_price = any(l["price_missing"] for l in lines)
 
@@ -5102,6 +5142,15 @@ def licence_analysis():
                 "yearly_onprem":     yearly_onprem,
                 "horizon":           horizon,
                 "any_missing_price": any_missing_price,
+                "adjustments": {
+                    "onprem":         adj_onprem,
+                    "oci":            adj_oci,
+                    "exacc":          adj_exacc,
+                    "azure":          adj_azure,
+                    "onprem_upfront": adj_onprem_upfront,
+                    "exacc_upfront":  adj_exacc_upfront,
+                    "any":            adj_any,
+                },
                 "oci":               oci_comparison,
                 "azure":             azure_comparison,
             }
