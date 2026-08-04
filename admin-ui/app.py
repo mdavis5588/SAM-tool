@@ -5550,8 +5550,11 @@ def licence_analysis():
 
             # Apply vendor quote adjustments to on-prem costs
             adj_onprem = round(onprem_per_core * physical_cores, 2) if onprem_per_core else 0.0
-            onprem_yr1   = round(total_licence_cost + total_yr1_support + pool_existing_support_yr1 + adj_onprem, 2)
-            onprem_yr2   = round(total_yr2_annual + pool_existing_support_yr2 + adj_onprem, 2)
+            # Pure licence costs (no platform adjustment) — reused by all BYOL options
+            licence_yr1  = round(total_licence_cost + total_yr1_support + pool_existing_support_yr1, 2)
+            licence_yr2  = round(total_yr2_annual + pool_existing_support_yr2, 2)
+            onprem_yr1   = round(licence_yr1 + adj_onprem, 2)
+            onprem_yr2   = round(licence_yr2 + adj_onprem, 2)
 
             # Year-by-year on-prem cumulative
             yearly_onprem = []
@@ -5610,6 +5613,8 @@ def licence_analysis():
                 "lines":             lines,
                 "support_rate_pct":  22,
                 "total_licence_cost": round(total_licence_cost, 2),
+                "licence_yr1":       licence_yr1,
+                "licence_yr2":       licence_yr2,
                 "onprem_yr1":        onprem_yr1,
                 "onprem_yr2":        onprem_yr2,
                 "yearly_onprem":     yearly_onprem,

@@ -662,14 +662,14 @@
                     <div class="col-6 border-end">
                       <div class="text-muted small">Year 1</div>
                       <div class="fw-bold fs-6 text-primary">
-                        ${{ "{:,.0f}".format(result.total_licence_cost + oci.byol_annual + result.onprem_yr2) }}
+                        ${{ "{:,.0f}".format(result.licence_yr1 + oci.byol_annual) }}
                       </div>
                       <div class="text-muted" style="font-size:.7rem;">lic. + compute + support</div>
                     </div>
                     <div class="col-6">
                       <div class="text-muted small">Year 2+</div>
                       <div class="fw-bold fs-6 text-primary">
-                        ${{ "{:,.0f}".format(oci.byol_annual + result.onprem_yr2) }}
+                        ${{ "{:,.0f}".format(result.licence_yr2 + oci.byol_annual) }}
                       </div>
                       <div class="text-muted" style="font-size:.7rem;">compute + support</div>
                     </div>
@@ -728,14 +728,14 @@
                     <div class="col-6 border-end">
                       <div class="text-muted small">Year 1</div>
                       <div class="fw-bold fs-6" style="color:#7c5cbf;">
-                        ${{ "{:,.0f}".format(result.total_licence_cost + oci.exacc_byol_annual + result.onprem_yr2) }}
+                        ${{ "{:,.0f}".format(result.licence_yr1 + oci.exacc_byol_annual) }}
                       </div>
                       <div class="text-muted" style="font-size:.7rem;">lic. + compute + support</div>
                     </div>
                     <div class="col-6">
                       <div class="text-muted small">Year 2+</div>
                       <div class="fw-bold fs-6" style="color:#7c5cbf;">
-                        ${{ "{:,.0f}".format(oci.exacc_byol_annual + result.onprem_yr2) }}
+                        ${{ "{:,.0f}".format(result.licence_yr2 + oci.exacc_byol_annual) }}
                       </div>
                       <div class="text-muted" style="font-size:.7rem;">compute + support</div>
                     </div>
@@ -870,14 +870,14 @@
                     <div class="col-6 border-end">
                       <div class="text-muted small">Year 1</div>
                       <div class="fw-bold fs-6 text-info">
-                        ${{ "{:,.0f}".format(result.total_licence_cost + az.byol_annual + result.onprem_yr2) }}
+                        ${{ "{:,.0f}".format(result.licence_yr1 + az.byol_annual) }}
                       </div>
                       <div class="text-muted" style="font-size:.7rem;">lic. + compute + support</div>
                     </div>
                     <div class="col-6">
                       <div class="text-muted small">Year 2+</div>
                       <div class="fw-bold fs-6 text-info">
-                        ${{ "{:,.0f}".format(az.byol_annual + result.onprem_yr2) }}
+                        ${{ "{:,.0f}".format(result.licence_yr2 + az.byol_annual) }}
                       </div>
                       <div class="text-muted" style="font-size:.7rem;">compute + support</div>
                     </div>
@@ -1103,16 +1103,16 @@
                       <div class="fw-bold text-primary">${{ "{:,.0f}".format(oci.byol_annual) }}</div>
                     </div>
                     <div class="col-6 border-end pt-1">
-                      <div class="text-muted small">Licence cost (BYOL)</div>
+                      <div class="text-muted small">Licence Year 1</div>
                       <div class="fw-bold text-dark">
-                        {% if result.total_licence_cost %}${{ "{:,.0f}".format(result.total_licence_cost) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                        ${{ "{:,.0f}".format(result.licence_yr1) }}
                       </div>
                     </div>
                     <div class="col-6 pt-1">
                       <div class="text-muted small">Year 2+ ongoing</div>
                       <div class="fw-bold text-primary">
-                        {% if oci.byol_annual is not none and result.onprem_yr2 is not none %}
-                          ${{ "{:,.0f}".format(oci.byol_annual + result.onprem_yr2) }}
+                        {% if oci.byol_annual is not none %}
+                          ${{ "{:,.0f}".format(result.licence_yr2 + oci.byol_annual) }}
                         {% else %}<span class="text-muted">—</span>{% endif %}
                       </div>
                     </div>
@@ -1175,16 +1175,16 @@
                       <div class="fw-bold" style="color:#7c5cbf;">${{ "{:,.0f}".format(oci.exacc_byol_annual) }}</div>
                     </div>
                     <div class="col-6 border-end pt-1">
-                      <div class="text-muted small">Licence cost (BYOL)</div>
+                      <div class="text-muted small">Licence Year 1</div>
                       <div class="fw-bold text-dark">
-                        {% if result.total_licence_cost %}${{ "{:,.0f}".format(result.total_licence_cost) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                        ${{ "{:,.0f}".format(result.licence_yr1) }}
                       </div>
                     </div>
                     <div class="col-6 pt-1">
                       <div class="text-muted small">Year 2+ ongoing</div>
                       <div class="fw-bold" style="color:#7c5cbf;">
-                        {% if oci.exacc_byol_annual is not none and result.onprem_yr2 is not none %}
-                          ${{ "{:,.0f}".format(oci.exacc_byol_annual + result.onprem_yr2) }}
+                        {% if oci.exacc_byol_annual is not none %}
+                          ${{ "{:,.0f}".format(result.licence_yr2 + oci.exacc_byol_annual) }}
                         {% else %}<span class="text-muted">—</span>{% endif %}
                       </div>
                     </div>
@@ -1355,16 +1355,16 @@
                       <div class="fw-bold text-info">${{ "{:,.0f}".format(az.byol_annual) }}</div>
                     </div>
                     <div class="col-6 border-end pt-1">
-                      <div class="text-muted small">Licence cost (BYOL)</div>
+                      <div class="text-muted small">Licence Year 1</div>
                       <div class="fw-bold text-dark">
-                        {% if result.total_licence_cost %}${{ "{:,.0f}".format(result.total_licence_cost) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                        ${{ "{:,.0f}".format(result.licence_yr1) }}
                       </div>
                     </div>
                     <div class="col-6 pt-1">
                       <div class="text-muted small">Year 2+ ongoing</div>
                       <div class="fw-bold text-info">
-                        {% if az.byol_annual is not none and result.onprem_yr2 is not none %}
-                          ${{ "{:,.0f}".format(az.byol_annual + result.onprem_yr2) }}
+                        {% if az.byol_annual is not none %}
+                          ${{ "{:,.0f}".format(result.licence_yr2 + az.byol_annual) }}
                         {% else %}<span class="text-muted">—</span>{% endif %}
                       </div>
                     </div>
