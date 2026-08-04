@@ -490,7 +490,7 @@
           <div class="mt-4 mb-2">
             <div class="d-flex align-items-baseline gap-2 mb-1">
               <h6 class="fw-semibold mb-0">Cumulative Cost — {{ result.horizon }}-Year Horizon</h6>
-              <span class="text-muted small">all options on the same scale</span>
+              <span class="text-muted small">solid = OCI / on-prem &nbsp;·&nbsp; dashed = Azure</span>
             </div>
             <div style="position:relative; height:340px;">
               <canvas id="summaryChart" aria-label="Cumulative cost line chart over {{ result.horizon }} years"></canvas>
@@ -1322,7 +1322,8 @@ function openPriceModal(id, name, metric, price, currency, effDate, isCurrent, n
       data: [{% for yr in result.yearly_onprem %}{{ (lc + aba * yr.year + yr2 * yr.year) | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
       borderColor: COLORS.az_byol,
       backgroundColor: COLORS.az_byol + '18',
-      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0.1,
+      borderWidth: 2, borderDash: [7, 4],
+      pointRadius: 5, pointHoverRadius: 7, tension: 0.1,
     });
     {% endif %}
 
@@ -1332,7 +1333,8 @@ function openPriceModal(id, name, metric, price, currency, effDate, isCurrent, n
       data: [{% for yr in result.yearly_onprem %}{{ (alia * yr.year) | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
       borderColor: COLORS.az_li,
       backgroundColor: COLORS.az_li + '18',
-      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0.1,
+      borderWidth: 2, borderDash: [7, 4],
+      pointRadius: 5, pointHoverRadius: 7, tension: 0.1,
     });
     {% endif %}
   {% endif %}
