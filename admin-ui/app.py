@@ -5459,10 +5459,27 @@ def licence_analysis():
                 pool_availability = [pa for pa in pool_availability
                                      if _pool_matches_req(pa["product_name"])]
 
-                # Build product_label -> total allocated from pool
+                # Map each pool entry to the req it belongs to (by name match)
+                # so cost model can look up allocations per req label.
+                def _matches_label(pname, req_label):
+                    pn_lower = pname.lower()
+                    if any(ex in pn_lower for ex in _EXCLUDE_FAMILIES):
+                        return False
+                    pn = _distinctive(pname)
+                    nd = _distinctive(req_label)
+                    return nd in pn or pn in nd
+
+                # req_label -> (total_allocated, total_annual_pool_support)
                 for pa in pool_availability:
-                    pf = pa["product_family"]
-                    pool_allocations[pf] = pool_allocations.get(pf, 0.0) + pa["allocated"]
+                    for r in reqs:
+                        if _matches_label(pa["product_name"], r["product_label"]):
+                            key = r["product_label"]
+                            prev_alloc, prev_supp = pool_allocations.get(key, (0.0, 0.0))
+                            pool_allocations[key] = (
+                                prev_alloc + pa["allocated"],
+                                prev_supp + pa["allocated"] * pa["support_per_unit"],
+                            )
+                            break
 
             # ----------------------------------------------------------
             # Cost model — perpetual on-prem
@@ -5486,8 +5503,10 @@ def licence_analysis():
 
             for req in reqs:
                 units_req  = float(req["units_required"] or 0)
-                # Units already covered by pool allocation
-                pool_alloc = min(pool_allocations.get(req["product_family"], 0.0), units_req)
+                # Units already covered by pool allocation (keyed by product_label)
+                _pool_entry = pool_allocations.get(req["product_label"], (0.0, 0.0))
+                pool_alloc  = min(_pool_entry[0], units_req)
+                pool_ann_support = round(_pool_entry[1], 2) if pool_alloc > 0 else 0.0
                 units_new  = max(units_req - pool_alloc, 0.0)   # units needing purchase
 
                 # Prefer unit price from assigned CSI lines; fall back to catalogue
@@ -5507,18 +5526,19 @@ def licence_analysis():
                     total_yr2_annual   += yr1_sup
 
                 lines.append({
-                    "product_label":  req["product_label"],
-                    "product_family": req["product_family"],
-                    "metric":         req["metric"],
-                    "units_required": units_req,
-                    "pool_alloc":     pool_alloc,
-                    "units_new":      units_new,
-                    "unit_price":     unit_price,
-                    "licence_cost":   licence_cost,
-                    "yr1_support":    yr1_sup,
-                    "yr1_total":      yr1_total,
-                    "yr2_annual":     yr1_sup,
-                    "price_missing":  unit_price is None and units_new > 0,
+                    "product_label":    req["product_label"],
+                    "product_family":   req["product_family"],
+                    "metric":           req["metric"],
+                    "units_required":   units_req,
+                    "pool_alloc":       pool_alloc,
+                    "pool_ann_support": pool_ann_support,
+                    "units_new":        units_new,
+                    "unit_price":       unit_price,
+                    "licence_cost":     licence_cost,
+                    "yr1_support":      yr1_sup,
+                    "yr1_total":        yr1_total,
+                    "yr2_annual":       yr1_sup,
+                    "price_missing":    unit_price is None and units_new > 0,
                 })
 
             # Support cost on pool-allocated licences (existing owned licences)

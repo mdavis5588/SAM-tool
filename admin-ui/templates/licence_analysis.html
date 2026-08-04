@@ -327,14 +327,23 @@
                 <th class="py-2 text-center">Metric</th>
                 <th class="py-2 text-end">Required</th>
                 {% if result.pool_availability %}
-                <th class="py-2 text-end text-success">From Pool</th>
-                <th class="py-2 text-end text-danger">To Buy</th>
+                <th class="py-2 text-end" style="color:#16a34a;">From Pool</th>
+                <th class="py-2 text-end" style="color:#16a34a;">Pool Annual Cost</th>
+                <th class="py-2 text-end" style="color:#dc2626;">To Buy</th>
+                <th class="py-2 text-end" style="color:#dc2626;">New Licence Cost</th>
+                <th class="py-2 text-end" style="color:#dc2626;">New Support/yr</th>
                 {% endif %}
                 <th class="py-2 text-end pe-3">OCI OCPUs</th>
               </tr>
             </thead>
             <tbody>
+              {% set ns = namespace(total_pool_support=0, total_new_cost=0, total_new_support=0) %}
               {% for l in result.lines %}
+              {% if result.pool_availability %}
+                {% set ns.total_pool_support = ns.total_pool_support + (l.pool_ann_support or 0) %}
+                {% set ns.total_new_cost     = ns.total_new_cost     + (l.licence_cost or 0) %}
+                {% set ns.total_new_support  = ns.total_new_support  + (l.yr1_support or 0) %}
+              {% endif %}
               <tr class="align-middle {% if l.price_missing %}table-warning{% endif %}">
                 <td class="ps-3 py-2 fw-semibold">{{ l.product_label }}
                   {% if l.price_missing %}<span class="badge bg-warning text-dark ms-1 fw-normal small">no price</span>{% endif %}
@@ -346,11 +355,23 @@
                 </td>
                 <td class="py-2 text-end fw-bold">{{ "{:,.0f}".format(l.units_required) }}</td>
                 {% if result.pool_availability %}
-                <td class="py-2 text-end fw-semibold text-success">
+                <td class="py-2 text-end fw-semibold" style="color:#16a34a;">
                   {% if l.pool_alloc %}{{ "{:,.0f}".format(l.pool_alloc) }}{% else %}<span class="text-muted">—</span>{% endif %}
                 </td>
-                <td class="py-2 text-end fw-semibold {% if l.units_new > 0 %}text-danger{% else %}text-success{% endif %}">
-                  {{ "{:,.0f}".format(l.units_new) }}
+                <td class="py-2 text-end" style="color:#16a34a;">
+                  {% if l.pool_ann_support %}<span class="fw-semibold">${{ "{:,.0f}".format(l.pool_ann_support) }}</span><span class="text-muted" style="font-size:.7rem;">/yr</span>
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="py-2 text-end fw-semibold {% if l.units_new > 0 %}text-danger{% else %}" style="color:#16a34a;{% endif %}">
+                  {% if l.units_new > 0 %}{{ "{:,.0f}".format(l.units_new) }}{% else %}<span style="color:#16a34a;">✓ all from pool</span>{% endif %}
+                </td>
+                <td class="py-2 text-end" style="color:#dc2626;">
+                  {% if l.licence_cost %}<span class="fw-semibold">${{ "{:,.0f}".format(l.licence_cost) }}</span><span class="text-muted" style="font-size:.7rem;"> one-off</span>
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="py-2 text-end" style="color:#dc2626;">
+                  {% if l.yr1_support %}<span class="fw-semibold">${{ "{:,.0f}".format(l.yr1_support) }}</span><span class="text-muted" style="font-size:.7rem;">/yr</span>
+                  {% else %}<span class="text-muted">—</span>{% endif %}
                 </td>
                 {% endif %}
                 <td class="py-2 text-end pe-3 text-primary fw-bold">
@@ -359,6 +380,37 @@
                 </td>
               </tr>
               {% endfor %}
+              {% if result.pool_availability %}
+              <tr class="table-light fw-semibold border-top" style="font-size:.85rem;">
+                <td class="ps-3 py-2" colspan="3">Total annual licence cost for this server</td>
+                <td colspan="2" class="py-2 text-end" style="color:#16a34a;">
+                  ${{ "{:,.0f}".format(ns.total_pool_support) }}/yr <span class="fw-normal text-muted" style="font-size:.75rem;">(existing support)</span>
+                </td>
+                <td colspan="2" class="py-2 text-end" style="color:#dc2626;">
+                  ${{ "{:,.0f}".format(ns.total_new_cost) }} <span class="fw-normal text-muted" style="font-size:.75rem;">(new purchase)</span>
+                </td>
+                <td class="py-2 text-end" style="color:#dc2626;">
+                  ${{ "{:,.0f}".format(ns.total_new_support) }}/yr <span class="fw-normal text-muted" style="font-size:.75rem;">(new support)</span>
+                </td>
+                <td></td>
+              </tr>
+              <tr class="fw-bold" style="background:#f0fdf4; font-size:.88rem;">
+                <td class="ps-3 py-2" colspan="3">Grand Total Year 1</td>
+                <td colspan="5" class="py-2 text-end">
+                  ${{ "{:,.0f}".format(ns.total_pool_support + ns.total_new_cost + ns.total_new_support) }}
+                  <span class="fw-normal text-muted" style="font-size:.75rem;">(existing support + new purchase + new support)</span>
+                </td>
+                <td></td>
+              </tr>
+              <tr class="fw-bold" style="background:#f0fdf4; font-size:.88rem;">
+                <td class="ps-3 py-2" colspan="3">Grand Total Year 2+</td>
+                <td colspan="5" class="py-2 text-end">
+                  ${{ "{:,.0f}".format(ns.total_pool_support + ns.total_new_support) }}
+                  <span class="fw-normal text-muted" style="font-size:.75rem;">(existing support + new support only)</span>
+                </td>
+                <td></td>
+              </tr>
+              {% endif %}
             </tbody>
           </table>
         </div>
