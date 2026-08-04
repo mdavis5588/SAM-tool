@@ -5442,15 +5442,19 @@ def licence_analysis():
                         if n.startswith(prefix):
                             n = n[len(prefix):]
                             break
-                    return n
+                    # normalise plural/singular per word: "diagnostics" == "diagnostic"
+                    return " ".join(w.rstrip("s") for w in n.split())
 
                 needed_distinctive = [_distinctive(r["product_label"]) for r in reqs]
+                # Products that are never DB server licences — always exclude
+                _EXCLUDE_FAMILIES = ("weblogic",)
+
                 def _pool_matches_req(pname):
+                    pn_lower = pname.lower()
+                    if any(ex in pn_lower for ex in _EXCLUDE_FAMILIES):
+                        return False
                     pn = _distinctive(pname)
-                    # Must match from the start of the distinctive name to avoid
-                    # "Enterprise Edition" matching "WebLogic Server Enterprise Edition"
-                    return any(pn.startswith(nd) or nd.startswith(pn)
-                               for nd in needed_distinctive)
+                    return any(nd in pn or pn in nd for nd in needed_distinctive)
 
                 pool_availability = [pa for pa in pool_availability
                                      if _pool_matches_req(pa["product_name"])]
