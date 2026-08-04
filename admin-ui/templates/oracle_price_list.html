@@ -55,6 +55,7 @@
           <th>Product</th>
           <th>Metric</th>
           <th class="text-end">List Price</th>
+          <th class="text-end">Annual Support <span class="text-muted fw-normal">(22%)</span></th>
           <th>Currency</th>
           <th>Effective</th>
           <th>Current</th>
@@ -68,6 +69,7 @@
           <td>{{ p.product_name }}</td>
           <td><span class="badge bg-secondary">{{ p.metric|replace('_',' ')|title }}</span></td>
           <td class="text-end fw-semibold">${{ "{:,.2f}".format(p.list_price) }}</td>
+          <td class="text-end text-muted">${{ "{:,.2f}".format(p.list_price * 0.22) }}</td>
           <td>{{ p.currency }}</td>
           <td class="text-muted small">{{ p.effective_date }}</td>
           <td>
