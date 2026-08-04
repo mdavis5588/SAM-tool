@@ -464,6 +464,81 @@
     </div>
     {% endif %}
 
+    {# ── Pool Allocation Panel (manual mode only) ─────────────── #}
+    {% if result.pool_availability is defined and result.pool_availability %}
+    <div class="card border-0 mb-4" style="background:#f0f9ff; border:1px solid #bae6fd !important;">
+      <div class="card-header py-2 d-flex align-items-center gap-2" style="background:#e0f2fe; border-bottom:1px solid #bae6fd;">
+        <i class="bi bi-archive text-info"></i>
+        <span class="fw-semibold small">Available Licences from Pool</span>
+        <span class="text-muted small ms-1">— allocate existing licences to reduce new purchase costs</span>
+      </div>
+      <div class="card-body py-2 px-3">
+        <form method="get" action="{{ url_for('licence_analysis') }}" id="form-pool-alloc">
+          <input type="hidden" name="mode"         value="{{ form_vals.mode }}">
+          <input type="hidden" name="m_client_id"  value="{{ form_vals.m_client_id }}">
+          <input type="hidden" name="m_hostname"   value="{{ form_vals.m_hostname }}">
+          <input type="hidden" name="m_cores"      value="{{ form_vals.m_cores }}">
+          <input type="hidden" name="m_sockets"    value="{{ form_vals.m_sockets }}">
+          <input type="hidden" name="m_ram_gb"     value="{{ form_vals.m_ram_gb }}">
+          <input type="hidden" name="m_edition"    value="{{ form_vals.m_edition }}">
+          <input type="hidden" name="horizon_years" value="{{ form_vals.horizon_years }}">
+          <input type="hidden" name="adj_onprem"   value="{{ form_vals.adj_onprem or '' }}">
+          <input type="hidden" name="adj_oci"      value="{{ form_vals.adj_oci or '' }}">
+          <input type="hidden" name="adj_exacc"    value="{{ form_vals.adj_exacc or '' }}">
+          <input type="hidden" name="adj_azure"    value="{{ form_vals.adj_azure or '' }}">
+          {% for param, _, _, _ in manual_db_options %}
+            {% if param in form_vals.m_options %}
+            <input type="hidden" name="{{ param }}" value="1">
+            {% endif %}
+          {% endfor %}
+
+          <table class="table table-sm mb-2" style="font-size:.83rem;">
+            <thead class="table-light">
+              <tr>
+                <th>Product</th>
+                <th>Contract</th>
+                <th class="text-center">Pool</th>
+                <th class="text-end">Available</th>
+                <th class="text-end">Allocate</th>
+                <th class="text-end">Support/unit/yr</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for pa in result.pool_availability %}
+              <tr>
+                <td>
+                  {{ pa.product_name }}
+                  {% if pa.sharing_policy == 'client_locked' %}
+                    <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">Client</span>
+                  {% else %}
+                    <span class="badge bg-info text-dark ms-1" style="font-size:.65rem;">Shared</span>
+                  {% endif %}
+                </td>
+                <td class="text-muted">
+                  {{ pa.contract_name }}
+                  {% if pa.csi_number %}<br><code style="font-size:.7rem;">{{ pa.csi_number }}</code>{% endif %}
+                </td>
+                <td class="text-center text-muted">{{ pa.quantity | int }}</td>
+                <td class="text-end fw-semibold text-success">{{ pa.available | int }}</td>
+                <td class="text-end" style="width:100px;">
+                  <input type="number" name="{{ pa.alloc_key }}" class="form-control form-control-sm text-end"
+                         min="0" max="{{ pa.available | int }}" step="1"
+                         value="{{ pa.allocated | int if pa.allocated else '' }}"
+                         style="width:80px; margin-left:auto;">
+                </td>
+                <td class="text-end text-muted">${{ "{:,.0f}".format(pa.support_per_unit) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <button type="submit" class="btn btn-sm btn-info text-white">
+            <i class="bi bi-arrow-clockwise me-1"></i>Apply Allocations &amp; Recalculate
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- ================================================================
          HOSTING-OPTION TABS
          ================================================================ -->
@@ -507,81 +582,6 @@
             Year 1 includes the one-time licence purchase where applicable. Year 2+ is the recurring annual cost.
             Click a tab above for the full breakdown of each option.
           </p>
-
-          {# ── Pool Allocation Panel (manual mode only) ─────────────── #}
-          {% if result.pool_availability is defined and result.pool_availability %}
-          <div class="card border-0 mb-4" style="background:#f0f9ff; border:1px solid #bae6fd !important;">
-            <div class="card-header py-2 d-flex align-items-center gap-2" style="background:#e0f2fe; border-bottom:1px solid #bae6fd;">
-              <i class="bi bi-archive text-info"></i>
-              <span class="fw-semibold small">Available Licences from Pool</span>
-              <span class="text-muted small ms-1">— allocate existing licences to reduce new purchase costs</span>
-            </div>
-            <div class="card-body py-2 px-3">
-              <form method="get" action="{{ url_for('licence_analysis') }}" id="form-pool-alloc">
-                <input type="hidden" name="mode"         value="{{ form_vals.mode }}">
-                <input type="hidden" name="m_client_id"  value="{{ form_vals.m_client_id }}">
-                <input type="hidden" name="m_hostname"   value="{{ form_vals.m_hostname }}">
-                <input type="hidden" name="m_cores"      value="{{ form_vals.m_cores }}">
-                <input type="hidden" name="m_sockets"    value="{{ form_vals.m_sockets }}">
-                <input type="hidden" name="m_ram_gb"     value="{{ form_vals.m_ram_gb }}">
-                <input type="hidden" name="m_edition"    value="{{ form_vals.m_edition }}">
-                <input type="hidden" name="horizon_years" value="{{ form_vals.horizon_years }}">
-                <input type="hidden" name="adj_onprem"   value="{{ form_vals.adj_onprem or '' }}">
-                <input type="hidden" name="adj_oci"      value="{{ form_vals.adj_oci or '' }}">
-                <input type="hidden" name="adj_exacc"    value="{{ form_vals.adj_exacc or '' }}">
-                <input type="hidden" name="adj_azure"    value="{{ form_vals.adj_azure or '' }}">
-                {% for param, _, _, _ in manual_db_options %}
-                  {% if param in form_vals.m_options %}
-                  <input type="hidden" name="{{ param }}" value="1">
-                  {% endif %}
-                {% endfor %}
-
-                <table class="table table-sm mb-2" style="font-size:.83rem;">
-                  <thead class="table-light">
-                    <tr>
-                      <th>Product</th>
-                      <th>Contract</th>
-                      <th class="text-center">Pool</th>
-                      <th class="text-end">Available</th>
-                      <th class="text-end">Allocate</th>
-                      <th class="text-end">Support/unit/yr</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for pa in result.pool_availability %}
-                    <tr>
-                      <td>
-                        {{ pa.product_name }}
-                        {% if pa.sharing_policy == 'client_locked' %}
-                          <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">Client</span>
-                        {% else %}
-                          <span class="badge bg-info text-dark ms-1" style="font-size:.65rem;">Shared</span>
-                        {% endif %}
-                      </td>
-                      <td class="text-muted">
-                        {{ pa.contract_name }}
-                        {% if pa.csi_number %}<br><code style="font-size:.7rem;">{{ pa.csi_number }}</code>{% endif %}
-                      </td>
-                      <td class="text-center text-muted">{{ pa.quantity | int }}</td>
-                      <td class="text-end fw-semibold text-success">{{ pa.available | int }}</td>
-                      <td class="text-end" style="width:100px;">
-                        <input type="number" name="{{ pa.alloc_key }}" class="form-control form-control-sm text-end"
-                               min="0" max="{{ pa.available | int }}" step="1"
-                               value="{{ pa.allocated | int if pa.allocated else '' }}"
-                               style="width:80px; margin-left:auto;">
-                      </td>
-                      <td class="text-end text-muted">${{ "{:,.0f}".format(pa.support_per_unit) }}</td>
-                    </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-                <button type="submit" class="btn btn-sm btn-info text-white">
-                  <i class="bi bi-arrow-clockwise me-1"></i>Apply Allocations &amp; Recalculate
-                </button>
-              </form>
-            </div>
-          </div>
-          {% endif %}
 
           {# ── Row 1: On-Premises (baseline) ──────────────────────────── #}
           <div class="row g-3 mb-1">
