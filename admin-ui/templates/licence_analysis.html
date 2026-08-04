@@ -185,18 +185,12 @@
                 <i class="bi bi-server me-1"></i>ExaCC (BYOL &amp; LI)
               </div>
               <label class="form-label mb-1" style="font-size:.75rem;">Infrastructure subscription — annual (USD)</label>
-              <div class="input-group input-group-sm mb-2">
-                <span class="input-group-text">$</span>
-                <input type="number" name="adj_exacc" class="form-control" min="0" step="1"
-                       placeholder="0" value="{{ form_vals.adj_exacc or '' }}" form="form-server">
-              </div>
-              <label class="form-label mb-1" style="font-size:.75rem;">Upfront / installation (USD)</label>
               <div class="input-group input-group-sm">
                 <span class="input-group-text">$</span>
-                <input type="number" name="adj_exacc_upfront" class="form-control" min="0" step="1"
-                       placeholder="0" value="{{ form_vals.adj_exacc_upfront or '' }}" form="form-server">
+                <input type="number" name="adj_exacc" class="form-control" min="0" step="1"
+                       placeholder="143000" value="{{ form_vals.adj_exacc }}" form="form-server">
               </div>
-              <div class="form-text mt-1">Enter Oracle quote — rack subscription not in public list price</div>
+              <div class="form-text mt-1">Defaults to $143,000/yr — update with Oracle quote</div>
             </div>
           </div>
         </div>
@@ -225,10 +219,9 @@
       <div style="display:none">
         <input type="number" name="adj_onprem"         form="form-manual" value="{{ form_vals.adj_onprem or '' }}">
         <input type="number" name="adj_oci"            form="form-manual" value="{{ form_vals.adj_oci or '' }}">
-        <input type="number" name="adj_exacc"          form="form-manual" value="{{ form_vals.adj_exacc or '' }}">
+        <input type="number" name="adj_exacc"          form="form-manual" value="{{ form_vals.adj_exacc }}">
         <input type="number" name="adj_azure"          form="form-manual" value="{{ form_vals.adj_azure or '' }}">
         <input type="number" name="adj_onprem_upfront" form="form-manual" value="{{ form_vals.adj_onprem_upfront or '' }}">
-        <input type="number" name="adj_exacc_upfront"  form="form-manual" value="{{ form_vals.adj_exacc_upfront or '' }}">
       </div>
     </div>
   </div>
@@ -558,20 +551,12 @@
                     <div style="font-size:.72rem;" class="text-muted mb-1">
                       <i class="bi bi-pencil me-1"></i>Enter Oracle quote to update ExaCC costs:
                     </div>
-                    <div class="mb-1">
+                    <div class="mb-2">
                       <label style="font-size:.72rem;">Annual subscription (USD/yr)</label>
                       <div class="input-group input-group-sm">
                         <span class="input-group-text">$</span>
                         <input type="number" name="adj_exacc" class="form-control" min="0" step="1"
-                               placeholder="0" value="{{ form_vals.adj_exacc or '' }}">
-                      </div>
-                    </div>
-                    <div class="mb-2">
-                      <label style="font-size:.72rem;">Upfront / one-time (USD)</label>
-                      <div class="input-group input-group-sm">
-                        <span class="input-group-text">$</span>
-                        <input type="number" name="adj_exacc_upfront" class="form-control" min="0" step="1"
-                               placeholder="0" value="{{ form_vals.adj_exacc_upfront or '' }}">
+                               placeholder="143000" value="{{ form_vals.adj_exacc }}">
                       </div>
                     </div>
                     <button type="submit" class="btn btn-sm w-100" style="background:#7c5cbf; color:#fff;">
@@ -629,20 +614,12 @@
                     <div style="font-size:.72rem;" class="text-muted mb-1">
                       <i class="bi bi-pencil me-1"></i>Enter Oracle quote to update ExaCC costs:
                     </div>
-                    <div class="mb-1">
+                    <div class="mb-2">
                       <label style="font-size:.72rem;">Annual subscription (USD/yr)</label>
                       <div class="input-group input-group-sm">
                         <span class="input-group-text">$</span>
                         <input type="number" name="adj_exacc" class="form-control" min="0" step="1"
-                               placeholder="0" value="{{ form_vals.adj_exacc or '' }}">
-                      </div>
-                    </div>
-                    <div class="mb-2">
-                      <label style="font-size:.72rem;">Upfront / one-time (USD)</label>
-                      <div class="input-group input-group-sm">
-                        <span class="input-group-text">$</span>
-                        <input type="number" name="adj_exacc_upfront" class="form-control" min="0" step="1"
-                               placeholder="0" value="{{ form_vals.adj_exacc_upfront or '' }}">
+                               placeholder="143000" value="{{ form_vals.adj_exacc }}">
                       </div>
                     </div>
                     <button type="submit" class="btn btn-sm w-100" style="background:#5b34a8; color:#fff;">

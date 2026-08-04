@@ -4826,7 +4826,9 @@ def licence_analysis():
 
     adj_onprem         = _adj("adj_onprem")
     adj_oci            = _adj("adj_oci")
-    adj_exacc          = _adj("adj_exacc")
+    # ExaCC annual subscription defaults to $143,000 unless the user explicitly sets it to 0
+    _exacc_raw = request.args.get("adj_exacc", None)
+    adj_exacc = max(float(_exacc_raw), 0) if _exacc_raw not in (None, "") else 143000.0
     adj_azure          = _adj("adj_azure")
     adj_onprem_upfront = _adj("adj_onprem_upfront")
     adj_exacc_upfront  = _adj("adj_exacc_upfront")
@@ -4847,7 +4849,7 @@ def licence_analysis():
         # vendor quote adjustments
         "adj_onprem":          int(adj_onprem)         if adj_onprem         else "",
         "adj_oci":             int(adj_oci)            if adj_oci            else "",
-        "adj_exacc":           int(adj_exacc)          if adj_exacc          else "",
+        "adj_exacc":           int(adj_exacc),  # always shown (default 143,000)
         "adj_azure":           int(adj_azure)          if adj_azure          else "",
         "adj_onprem_upfront":  int(adj_onprem_upfront) if adj_onprem_upfront else "",
         "adj_exacc_upfront":   int(adj_exacc_upfront)  if adj_exacc_upfront  else "",
