@@ -4779,7 +4779,7 @@ def _handle_price_import(req, sess):
 
     file = req.files.get("price_file")
     if not file or not file.filename:
-        return redirect(url_for("licence_analysis", import_err="no_file") + "#pricing")
+        return redirect(url_for("licence_analysis", tab="prices", import_err="no_file") + "#pricing")
 
     eff_date = req.form.get("import_date") or None
     mark_current = req.form.get("mark_current") == "1"
@@ -4789,7 +4789,7 @@ def _handle_price_import(req, sess):
         file_bytes = io.BytesIO(file.read())
         wb = load_workbook(filename=file_bytes, read_only=True, data_only=True)
     except Exception as e:
-        return redirect(url_for("licence_analysis", import_err=str(e)) + "#pricing")
+        return redirect(url_for("licence_analysis", tab="prices", import_err=str(e)) + "#pricing")
 
     # Oracle price list may have multiple sheets; find the one with product data.
     # Typically the main sheet is called "Technology" or "Database" or Sheet1.
@@ -4825,7 +4825,7 @@ def _handle_price_import(req, sess):
             break
 
     if header_row_idx is None:
-        return redirect(url_for("licence_analysis", import_err="no_header") + "#pricing")
+        return redirect(url_for("licence_analysis", tab="prices", import_err="no_header") + "#pricing")
 
     # Find key columns by fuzzy name matching
     def find_col(*candidates):
@@ -4842,7 +4842,7 @@ def _handle_price_import(req, sess):
     col_part      = find_col("part number", "part #", "part no", "ordering")
 
     if col_product is None or col_processor is None:
-        return redirect(url_for("licence_analysis", import_err="no_cols") + "#pricing")
+        return redirect(url_for("licence_analysis", tab="prices", import_err="no_cols") + "#pricing")
 
     # Reopen from the in-memory buffer (file.stream is already consumed)
     file_bytes.seek(0)
@@ -4900,7 +4900,7 @@ def _handle_price_import(req, sess):
             except Exception:
                 skipped += 1
 
-    return redirect(url_for("licence_analysis", imported=imported, skipped=skipped) + "#pricing")
+    return redirect(url_for("licence_analysis", tab="prices", imported=imported, skipped=skipped) + "#pricing")
 
 
 @app.route("/licence-analysis", methods=["GET", "POST"])

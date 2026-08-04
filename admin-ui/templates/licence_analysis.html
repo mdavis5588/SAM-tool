@@ -360,7 +360,7 @@
     <div class="alert alert-warning d-flex gap-2 mb-3">
       <i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
       <div>Some products have no matching price — those rows are excluded from cost totals.
-        Add prices in the <a href="#" class="alert-link" onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('htab-prices-tab')).show();return false;">Price List</a> tab.</div>
+        Add prices in the <a href="{{ url_for('licence_analysis', tab='prices') }}" class="alert-link">Oracle Price List</a>.</div>
     </div>
     {% endif %}
 
@@ -392,19 +392,6 @@
             <button class="nav-link" id="htab-azure-tab" data-bs-toggle="tab"
                     data-bs-target="#htab-azure" type="button" role="tab">
               <i class="bi bi-microsoft me-1"></i> Azure
-            </button>
-          </li>
-          <li class="nav-item ms-auto d-flex align-items-center pe-2 gap-2" role="presentation">
-            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#importPriceModal">
-              <i class="bi bi-file-earmark-excel me-1"></i> Import
-            </button>
-            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#priceModal"
-                    onclick="openPriceModal()">
-              <i class="bi bi-plus-lg me-1"></i> Add Price
-            </button>
-            <button class="nav-link" id="htab-prices-tab" data-bs-toggle="tab"
-                    data-bs-target="#htab-prices" type="button" role="tab">
-              <i class="bi bi-tag me-1"></i> Price List
             </button>
           </li>
         </ul>
@@ -1285,91 +1272,104 @@
 
         </div>{# end Azure pane #}
 
-        <!-- ============================================================
-             TAB: PRICE LIST
-             ============================================================ -->
-        <div class="tab-pane fade" id="htab-prices" role="tabpanel">
-
-          {% set _imp = request.args.get('imported') %}
-          {% set _imp_err = request.args.get('import_err') %}
-          {% if _imp is not none %}
-          <div class="alert alert-success alert-dismissible m-3 mb-0" role="alert">
-            <i class="bi bi-check-circle-fill me-1"></i>
-            Import complete — <strong>{{ _imp }}</strong> price(s) updated{% if request.args.get('skipped') %}, {{ request.args.get('skipped') }} skipped{% endif %}.
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-          </div>
-          {% elif _imp_err %}
-          <div class="alert alert-danger alert-dismissible m-3 mb-0" role="alert">
-            <i class="bi bi-exclamation-triangle-fill me-1"></i>
-            Import failed: <code>{{ _imp_err }}</code>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-          </div>
-          {% endif %}
-
-          {% if prices %}
-          <div class="table-responsive">
-            <table class="table table-sm table-hover align-middle mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th>Product</th>
-                  <th>Metric</th>
-                  <th class="text-end">List Price</th>
-                  <th>Currency</th>
-                  <th>Effective</th>
-                  <th>Current</th>
-                  <th>Notes</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for p in prices %}
-                <tr>
-                  <td>{{ p.product_name }}</td>
-                  <td><span class="badge bg-secondary">{{ p.metric|replace('_',' ')|title }}</span></td>
-                  <td class="text-end fw-semibold">${{ "{:,.2f}".format(p.list_price) }}</td>
-                  <td>{{ p.currency }}</td>
-                  <td class="text-muted small">{{ p.effective_date }}</td>
-                  <td>
-                    {% if p.is_current %}
-                      <span class="badge bg-success">Yes</span>
-                    {% else %}
-                      <span class="badge bg-secondary">No</span>
-                    {% endif %}
-                  </td>
-                  <td class="text-muted small">{{ p.notes or '' }}</td>
-                  <td class="text-end">
-                    <button class="btn btn-sm btn-outline-secondary me-1"
-                            data-bs-toggle="modal" data-bs-target="#priceModal"
-                            onclick="openPriceModal({{ p.price_id }}, '{{ p.product_name|e }}', '{{ p.metric }}', {{ p.list_price }}, '{{ p.currency }}', '{{ p.effective_date }}', {{ p.is_current|lower }}, '{{ (p.notes or '')|e }}')">
-                      <i class="bi bi-pencil"></i>
-                    </button>
-                    <form method="post" action="{{ url_for('licence_analysis') }}#pricing"
-                          style="display:inline"
-                          onsubmit="return confirm('Delete this price entry?')">
-                      <input type="hidden" name="action" value="delete_price">
-                      <input type="hidden" name="price_id" value="{{ p.price_id }}">
-                      <button type="submit" class="btn btn-sm btn-outline-danger">
-                        <i class="bi bi-trash"></i>
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-          {% else %}
-          <div class="p-4 text-muted small">
-            No prices configured. Import an Oracle Technology Global Price List (.xlsx) or add entries manually using the buttons above.
-          </div>
-          {% endif %}
-
-        </div>{# end Price List pane #}
-
       </div>{# end tab-content #}
     </div>{# end hosting tabs card #}
 
   {% endif %}
+{% endif %}
+
+<!-- ================================================================
+     PRICE LIST (shown when ?tab=prices, linked from FinOps sidebar)
+     ================================================================ -->
+{% if request.args.get('tab') == 'prices' or request.args.get('imported') is not none or request.args.get('import_err') %}
+<div class="card shadow-sm mt-3" id="pricing">
+  <div class="card-header fw-semibold d-flex align-items-center justify-content-between">
+    <span><i class="bi bi-tag me-1"></i> Oracle Product List Prices</span>
+    <div class="d-flex gap-2">
+      <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#importPriceModal">
+        <i class="bi bi-file-earmark-excel me-1"></i> Import from Excel
+      </button>
+      <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#priceModal"
+              onclick="openPriceModal()">
+        <i class="bi bi-plus-lg me-1"></i> Add Price
+      </button>
+    </div>
+  </div>
+
+  {% set _imp = request.args.get('imported') %}
+  {% set _imp_err = request.args.get('import_err') %}
+  {% if _imp is not none %}
+  <div class="alert alert-success alert-dismissible mb-0 rounded-0 border-0 border-bottom" role="alert">
+    <i class="bi bi-check-circle-fill me-1"></i>
+    Import complete — <strong>{{ _imp }}</strong> price(s) updated{% if request.args.get('skipped') %}, {{ request.args.get('skipped') }} skipped{% endif %}.
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% elif _imp_err %}
+  <div class="alert alert-danger alert-dismissible mb-0 rounded-0 border-0 border-bottom" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-1"></i>
+    Import failed: <code>{{ _imp_err }}</code>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endif %}
+
+  {% if prices %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Product</th>
+          <th>Metric</th>
+          <th class="text-end">List Price</th>
+          <th>Currency</th>
+          <th>Effective</th>
+          <th>Current</th>
+          <th>Notes</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in prices %}
+        <tr>
+          <td>{{ p.product_name }}</td>
+          <td><span class="badge bg-secondary">{{ p.metric|replace('_',' ')|title }}</span></td>
+          <td class="text-end fw-semibold">${{ "{:,.2f}".format(p.list_price) }}</td>
+          <td>{{ p.currency }}</td>
+          <td class="text-muted small">{{ p.effective_date }}</td>
+          <td>
+            {% if p.is_current %}
+              <span class="badge bg-success">Yes</span>
+            {% else %}
+              <span class="badge bg-secondary">No</span>
+            {% endif %}
+          </td>
+          <td class="text-muted small">{{ p.notes or '' }}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-secondary me-1"
+                    data-bs-toggle="modal" data-bs-target="#priceModal"
+                    onclick="openPriceModal({{ p.price_id }}, '{{ p.product_name|e }}', '{{ p.metric }}', {{ p.list_price }}, '{{ p.currency }}', '{{ p.effective_date }}', {{ p.is_current|lower }}, '{{ (p.notes or '')|e }}')">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <form method="post" action="{{ url_for('licence_analysis', tab='prices') }}"
+                  style="display:inline"
+                  onsubmit="return confirm('Delete this price entry?')">
+              <input type="hidden" name="action" value="delete_price">
+              <input type="hidden" name="price_id" value="{{ p.price_id }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body text-muted small">
+    No prices configured. Import an Oracle Technology Global Price List (.xlsx) or add entries manually.
+  </div>
+  {% endif %}
+</div>
 {% endif %}
 
 <!-- Import prices modal -->
@@ -1541,13 +1541,7 @@ function openPriceModal(id, name, metric, price, currency, effDate, isCurrent, n
   if (metric) metricSel.value = metric;
 }
 
-// Auto-activate Price List tab on import result
-{% if request.args.get('imported') is not none or request.args.get('import_err') %}
-(function() {
-  const priceTab = document.getElementById('htab-prices-tab');
-  if (priceTab) bootstrap.Tab.getOrCreateInstance(priceTab).show();
-})();
-{% endif %}
+
 </script>
 
 {% if result and not result.get('error') %}

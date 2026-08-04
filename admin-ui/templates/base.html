@@ -409,6 +409,10 @@
        href="{{ url_for('licence_analysis') }}">
       <i class="bi bi-calculator"></i>Options Analysis
     </a>
+    <a class="sidebar-flyout-item {% if request.endpoint == 'licence_analysis' and request.args.get('tab') == 'prices' %}active{% endif %}"
+       href="{{ url_for('licence_analysis', tab='prices') }}">
+      <i class="bi bi-tag"></i>Oracle Price List
+    </a>
   </div>
 
   <div id="billingReportsFlyoutPanel">
