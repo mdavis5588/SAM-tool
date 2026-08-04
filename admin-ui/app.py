@@ -5110,16 +5110,16 @@ def licence_analysis():
         except (ValueError, TypeError):
             return 0.0
 
-    adj_onprem         = _adj("adj_onprem")
+    onprem_per_core    = _adj("adj_onprem")   # per-core rate; total resolved after physical_cores known
     adj_oci            = _adj("adj_oci")
     _managed_raw = request.args.get("adj_exacc", None)
     managed_per_core = max(float(_managed_raw), 0) if _managed_raw not in (None, "") else 0.0
     adj_azure          = _adj("adj_azure")
-    adj_onprem_upfront = _adj("adj_onprem_upfront")
+    adj_onprem_upfront = 0.0  # removed from UI; kept at zero for downstream compat
     adj_exacc_upfront  = _adj("adj_exacc_upfront")
-    adj_exacc = 0.0  # resolved per-analysis once physical_cores is known
-    adj_any = any([adj_onprem, adj_oci, managed_per_core, adj_azure,
-                   adj_onprem_upfront, adj_exacc_upfront])
+    adj_onprem = 0.0   # resolved per-analysis once physical_cores is known
+    adj_exacc  = 0.0   # resolved per-analysis once physical_cores is known
+    adj_any = any([onprem_per_core, adj_oci, managed_per_core, adj_azure])
 
     form_vals = {
         "mode":                mode,
@@ -5133,7 +5133,7 @@ def licence_analysis():
         "m_edition":           request.args.get("m_edition", "Enterprise Edition"),
         "horizon_years":       request.args.get("horizon_years", "5"),
         # vendor quote adjustments
-        "adj_onprem":          int(adj_onprem)         if adj_onprem         else "",
+        "adj_onprem":          int(onprem_per_core)    if onprem_per_core    else "",
         "adj_oci":             int(adj_oci)            if adj_oci            else "",
         "adj_exacc":           int(managed_per_core) if managed_per_core else "",
         "adj_azure":           int(adj_azure)          if adj_azure          else "",
@@ -5379,7 +5379,8 @@ def licence_analysis():
                 })
 
             # Apply vendor quote adjustments to on-prem costs
-            onprem_yr1   = round(total_licence_cost + total_yr1_support + adj_onprem_upfront + adj_onprem, 2)
+            adj_onprem = round(onprem_per_core * physical_cores, 2) if onprem_per_core else 0.0
+            onprem_yr1   = round(total_licence_cost + total_yr1_support + adj_onprem, 2)
             onprem_yr2   = round(total_yr2_annual + adj_onprem, 2)
 
             # Year-by-year on-prem cumulative

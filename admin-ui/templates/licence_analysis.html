@@ -162,19 +162,13 @@
               <div class="fw-semibold small mb-2 text-secondary">
                 <i class="bi bi-building me-1"></i>On-Premises
               </div>
-              <label class="form-label mb-1" style="font-size:.75rem;">Extra annual cost (USD)</label>
-              <div class="input-group input-group-sm mb-2">
-                <span class="input-group-text">$</span>
-                <input type="number" name="adj_onprem" class="form-control" min="0" step="1"
-                       placeholder="0" value="{{ form_vals.adj_onprem or '' }}" form="form-server">
-              </div>
-              <label class="form-label mb-1" style="font-size:.75rem;">Upfront one-time cost (USD)</label>
+              <label class="form-label mb-1" style="font-size:.75rem;">Managed Service Cost per core (USD)</label>
               <div class="input-group input-group-sm">
                 <span class="input-group-text">$</span>
-                <input type="number" name="adj_onprem_upfront" class="form-control" min="0" step="1"
-                       placeholder="0" value="{{ form_vals.adj_onprem_upfront or '' }}" form="form-server">
+                <input type="number" name="adj_onprem" class="form-control" min="0" step="0.01"
+                       placeholder="0" value="{{ form_vals.adj_onprem or '' }}" form="form-server">
               </div>
-              <div class="form-text mt-1">e.g. hardware, facilities, migration</div>
+              <div class="form-text mt-1">Annual cost per physical core — multiplied by core count</div>
             </div>
           </div>
         </div>
@@ -237,11 +231,10 @@
 
       <!-- Hidden inputs to carry adjustments in manual-mode form -->
       <div style="display:none">
-        <input type="number" name="adj_onprem"         form="form-manual" value="{{ form_vals.adj_onprem or '' }}">
-        <input type="number" name="adj_oci"            form="form-manual" value="{{ form_vals.adj_oci or '' }}">
-        <input type="number" name="adj_exacc"          form="form-manual" value="{{ form_vals.adj_exacc }}">
-        <input type="number" name="adj_azure"          form="form-manual" value="{{ form_vals.adj_azure or '' }}">
-        <input type="number" name="adj_onprem_upfront" form="form-manual" value="{{ form_vals.adj_onprem_upfront or '' }}">
+        <input type="number" name="adj_onprem" form="form-manual" value="{{ form_vals.adj_onprem or '' }}">
+        <input type="number" name="adj_oci"    form="form-manual" value="{{ form_vals.adj_oci or '' }}">
+        <input type="number" name="adj_exacc"  form="form-manual" value="{{ form_vals.adj_exacc }}">
+        <input type="number" name="adj_azure"  form="form-manual" value="{{ form_vals.adj_azure or '' }}">
       </div>
     </div>
   </div>
@@ -434,11 +427,9 @@
                       <div class="text-muted" style="font-size:.7rem;">support only</div>
                     </div>
                   </div>
-                  {% if result.adjustments.onprem or result.adjustments.onprem_upfront %}
+                  {% if result.adjustments.onprem %}
                   <div class="mt-2 pt-2 border-top" style="font-size:.7rem; color:#92400e;">
-                    <i class="bi bi-sliders me-1"></i>Vendor adjustments included:
-                    {% if result.adjustments.onprem_upfront %} +${{ "{:,.0f}".format(result.adjustments.onprem_upfront) }} upfront{% endif %}
-                    {% if result.adjustments.onprem %} +${{ "{:,.0f}".format(result.adjustments.onprem) }}/yr{% endif %}
+                    <i class="bi bi-sliders me-1"></i>Managed service cost included: +${{ "{:,.0f}".format(result.adjustments.onprem) }}/yr
                   </div>
                   {% endif %}
                 </div>
@@ -565,7 +556,6 @@
                     <input type="hidden" name="m_edition"         value="{{ form_vals.m_edition }}">
                     <input type="hidden" name="horizon_years"     value="{{ form_vals.horizon_years }}">
                     <input type="hidden" name="adj_onprem"        value="{{ form_vals.adj_onprem or '' }}">
-                    <input type="hidden" name="adj_onprem_upfront" value="{{ form_vals.adj_onprem_upfront or '' }}">
                     <input type="hidden" name="adj_oci"           value="{{ form_vals.adj_oci or '' }}">
                     <input type="hidden" name="adj_azure"         value="{{ form_vals.adj_azure or '' }}">
                     <div style="font-size:.72rem;" class="text-muted mb-1">
@@ -628,7 +618,6 @@
                     <input type="hidden" name="m_edition"         value="{{ form_vals.m_edition }}">
                     <input type="hidden" name="horizon_years"     value="{{ form_vals.horizon_years }}">
                     <input type="hidden" name="adj_onprem"        value="{{ form_vals.adj_onprem or '' }}">
-                    <input type="hidden" name="adj_onprem_upfront" value="{{ form_vals.adj_onprem_upfront or '' }}">
                     <input type="hidden" name="adj_oci"           value="{{ form_vals.adj_oci or '' }}">
                     <input type="hidden" name="adj_azure"         value="{{ form_vals.adj_azure or '' }}">
                     <div style="font-size:.72rem;" class="text-muted mb-1">
