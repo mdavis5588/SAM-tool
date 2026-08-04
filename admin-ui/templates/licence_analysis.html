@@ -1045,13 +1045,13 @@
                       <div class="fw-bold text-primary">${{ "{:,.0f}".format(oci.byol_annual) }}</div>
                     </div>
                     <div class="col-6 border-end pt-1">
-                      <div class="text-muted small">Licence Year 1</div>
+                      <div class="text-muted small">Licence + compute Year 1</div>
                       <div class="fw-bold text-dark">
-                        ${{ "{:,.0f}".format(result.licence_yr1) }}
+                        ${{ "{:,.0f}".format(result.licence_yr1 + oci.byol_annual) }}
                       </div>
                     </div>
                     <div class="col-6 pt-1">
-                      <div class="text-muted small">Year 2+ ongoing</div>
+                      <div class="text-muted small">Support + compute Year 2+</div>
                       <div class="fw-bold text-primary">
                         {% if oci.byol_annual is not none %}
                           ${{ "{:,.0f}".format(result.licence_yr2 + oci.byol_annual) }}
@@ -1125,13 +1125,13 @@
                       <div class="fw-bold" style="color:#7c5cbf;">${{ "{:,.0f}".format(oci.exacc_byol_annual) }}</div>
                     </div>
                     <div class="col-6 border-end pt-1">
-                      <div class="text-muted small">Licence Year 1</div>
+                      <div class="text-muted small">Licence + compute Year 1</div>
                       <div class="fw-bold text-dark">
-                        ${{ "{:,.0f}".format(result.licence_yr1) }}
+                        ${{ "{:,.0f}".format(result.licence_yr1 + oci.exacc_byol_annual) }}
                       </div>
                     </div>
                     <div class="col-6 pt-1">
-                      <div class="text-muted small">Year 2+ ongoing</div>
+                      <div class="text-muted small">Support + compute Year 2+</div>
                       <div class="fw-bold" style="color:#7c5cbf;">
                         {% if oci.exacc_byol_annual is not none %}
                           ${{ "{:,.0f}".format(result.licence_yr2 + oci.exacc_byol_annual) }}
