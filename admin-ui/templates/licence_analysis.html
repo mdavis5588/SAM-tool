@@ -329,15 +329,18 @@
                 {% if result.pool_availability %}
                 <th class="py-2 text-end" style="color:#16a34a;">From Pool</th>
                 <th class="py-2 text-end" style="color:#16a34a;">Pool Annual Cost</th>
+                {% if has_new %}
                 <th class="py-2 text-end" style="color:#dc2626;">To Buy</th>
                 <th class="py-2 text-end" style="color:#dc2626;">New Licence Cost</th>
                 <th class="py-2 text-end" style="color:#dc2626;">New Support/yr</th>
+                {% endif %}
                 {% endif %}
                 <th class="py-2 text-end pe-3">OCI OCPUs</th>
               </tr>
             </thead>
             <tbody>
               {% set ns = namespace(total_pool_support=0, total_new_cost=0, total_new_support=0) %}
+              {% set has_new = result.lines | selectattr('units_new', 'gt', 0) | list | length > 0 %}
               {% for l in result.lines %}
               {% if result.pool_availability %}
                 {% set ns.total_pool_support = ns.total_pool_support + (l.pool_ann_support or 0) %}
@@ -362,8 +365,9 @@
                   {% if l.pool_ann_support %}<span class="fw-semibold">${{ "{:,.0f}".format(l.pool_ann_support) }}</span><span class="text-muted" style="font-size:.7rem;">/yr</span>
                   {% else %}<span class="text-muted">—</span>{% endif %}
                 </td>
-                <td class="py-2 text-end fw-semibold {% if l.units_new > 0 %}text-danger{% else %}" style="color:#16a34a;{% endif %}">
-                  {% if l.units_new > 0 %}{{ "{:,.0f}".format(l.units_new) }}{% else %}<span style="color:#16a34a;">✓ all from pool</span>{% endif %}
+                {% if has_new %}
+                <td class="py-2 text-end fw-semibold {% if l.units_new > 0 %}text-danger{% endif %}">
+                  {% if l.units_new > 0 %}{{ "{:,.0f}".format(l.units_new) }}{% else %}<span class="text-muted">—</span>{% endif %}
                 </td>
                 <td class="py-2 text-end" style="color:#dc2626;">
                   {% if l.licence_cost %}<span class="fw-semibold">${{ "{:,.0f}".format(l.licence_cost) }}</span><span class="text-muted" style="font-size:.7rem;"> one-off</span>
@@ -374,6 +378,7 @@
                   {% else %}<span class="text-muted">—</span>{% endif %}
                 </td>
                 {% endif %}
+                {% endif %}
                 <td class="py-2 text-end pe-3 text-primary fw-bold">
                   {% if l.metric in ('processor','processor_perpetual') %}{{ "{:,.0f}".format(l.units_required * 2) }} OCPUs
                   {% else %}<span class="text-muted">N/A</span>{% endif %}
@@ -381,6 +386,7 @@
               </tr>
               {% endfor %}
               {% if result.pool_availability %}
+              {% if has_new %}
               <tr class="table-light fw-semibold border-top" style="font-size:.85rem;">
                 <td class="ps-3 py-2" colspan="3">Total annual licence cost for this server</td>
                 <td colspan="2" class="py-2 text-end" style="color:#16a34a;">
@@ -410,6 +416,15 @@
                 </td>
                 <td></td>
               </tr>
+              {% else %}
+              <tr class="fw-bold border-top" style="background:#f0fdf4; font-size:.88rem;">
+                <td class="ps-3 py-2" colspan="3">Total Annual Cost (existing support)</td>
+                <td colspan="2" class="py-2 text-end" style="color:#16a34a;">
+                  ${{ "{:,.0f}".format(ns.total_pool_support) }}/yr
+                </td>
+                <td></td>
+              </tr>
+              {% endif %}
               {% endif %}
             </tbody>
           </table>
