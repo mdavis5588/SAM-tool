@@ -10,6 +10,12 @@
     </p>
   </div>
   <div class="d-flex gap-2">
+    <form method="post" action="{{ url_for('oracle_price_list_seed') }}"
+          onsubmit="return confirm('This will load {{ oracle_price_count }} Oracle published list prices (Apr 2026). Existing entries for the same product/metric/date will be updated. Continue?')">
+      <button type="submit" class="btn btn-outline-success">
+        <i class="bi bi-cloud-download me-1"></i> Load Oracle Published Prices
+      </button>
+    </form>
     <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#importPriceModal">
       <i class="bi bi-file-earmark-excel me-1"></i> Import from Excel
     </button>
@@ -20,7 +26,13 @@
   </div>
 </div>
 
-{% if imported is not none %}
+{% if seeded is not none %}
+<div class="alert alert-success alert-dismissible mb-4" role="alert">
+  <i class="bi bi-check-circle-fill me-1"></i>
+  Loaded <strong>{{ seeded }}</strong> Oracle Technology Global Price List entries (Apr 2026).
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% elif imported is not none %}
 <div class="alert alert-success alert-dismissible mb-4" role="alert">
   <i class="bi bi-check-circle-fill me-1"></i>
   Import complete — <strong>{{ imported }}</strong> price(s) updated{% if skipped %}, {{ skipped }} skipped{% endif %}.

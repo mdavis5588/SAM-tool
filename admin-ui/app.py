@@ -4903,6 +4903,86 @@ def _handle_price_import(req, sess):
     return redirect(url_for("oracle_price_list", imported=imported, skipped=skipped))
 
 
+# Oracle Technology Global Price List — April 2026 published prices (USD)
+# Source: oracle.com/us/corporate/pricing/technology-price-list-070617.pdf
+ORACLE_PUBLISHED_PRICES = [
+    # product_name, metric, list_price
+    # ── Database Editions ────────────────────────────────────────────────
+    ("Oracle Database Enterprise Edition",          "processor",       47500.00),
+    ("Oracle Database Enterprise Edition",          "named_user_plus",   950.00),
+    ("Oracle Database Standard Edition 2",          "processor",       17500.00),
+    ("Oracle Database Standard Edition 2",          "named_user_plus",   350.00),
+    ("Oracle Database Personal Edition",            "named_user_plus",   460.00),
+    # ── Database Options ─────────────────────────────────────────────────
+    ("Oracle Partitioning",                         "processor",       11500.00),
+    ("Oracle Partitioning",                         "named_user_plus",   230.00),
+    ("Oracle Real Application Clusters",            "processor",       23000.00),
+    ("Oracle Real Application Clusters",            "named_user_plus",   460.00),
+    ("Oracle Multitenant",                          "processor",       17500.00),
+    ("Oracle Multitenant",                          "named_user_plus",   350.00),
+    ("Oracle Active Data Guard",                    "processor",       11500.00),
+    ("Oracle Active Data Guard",                    "named_user_plus",   230.00),
+    ("Oracle Advanced Security",                    "processor",       15000.00),
+    ("Oracle Advanced Security",                    "named_user_plus",   300.00),
+    ("Oracle Label Security",                       "processor",        5000.00),
+    ("Oracle Label Security",                       "named_user_plus",   100.00),
+    ("Oracle Database Vault",                       "processor",       10000.00),
+    ("Oracle Database Vault",                       "named_user_plus",   200.00),
+    ("Oracle OLAP",                                 "processor",       11500.00),
+    ("Oracle OLAP",                                 "named_user_plus",   230.00),
+    ("Oracle Spatial and Graph",                    "processor",       17500.00),
+    ("Oracle Spatial and Graph",                    "named_user_plus",   350.00),
+    ("Oracle GoldenGate",                           "processor",       17500.00),
+    ("Oracle GoldenGate",                           "named_user_plus",   350.00),
+    ("Oracle RAC One Node",                         "processor",       10000.00),
+    ("Oracle RAC One Node",                         "named_user_plus",   200.00),
+    ("Oracle In-Memory",                            "processor",       23000.00),
+    ("Oracle In-Memory",                            "named_user_plus",   460.00),
+    # ── Management Packs ─────────────────────────────────────────────────
+    ("Oracle Database Diagnostics Pack",            "processor",        7500.00),
+    ("Oracle Database Diagnostics Pack",            "named_user_plus",   150.00),
+    ("Oracle Database Tuning Pack",                 "processor",        5000.00),
+    ("Oracle Database Tuning Pack",                 "named_user_plus",   100.00),
+    ("Oracle Database Lifecycle Management Pack",   "processor",        5000.00),
+    ("Oracle Database Lifecycle Management Pack",   "named_user_plus",   100.00),
+    ("Oracle Configuration Management Pack",        "processor",        5000.00),
+    ("Oracle Configuration Management Pack",        "named_user_plus",   100.00),
+    ("Oracle Provisioning and Patch Automation",    "processor",        5000.00),
+    ("Oracle Provisioning and Patch Automation",    "named_user_plus",   100.00),
+    # ── WebLogic ─────────────────────────────────────────────────────────
+    ("Oracle WebLogic Server Enterprise Edition",   "processor",       45000.00),
+    ("Oracle WebLogic Server Enterprise Edition",   "named_user_plus",   900.00),
+    ("Oracle WebLogic Server Standard Edition",     "processor",       15000.00),
+    ("Oracle WebLogic Server Standard Edition",     "named_user_plus",   300.00),
+    ("Oracle WebLogic Suite",                       "processor",       90000.00),
+    ("Oracle WebLogic Suite",                       "named_user_plus",  1800.00),
+]
+
+
+@app.route("/oracle-price-list/seed", methods=["POST"])
+@login_required
+def oracle_price_list_seed():
+    role = current_role()
+    if role not in ("superadmin", "contracting", "dba"):
+        return abort(403)
+    eff_date = "2026-04-16"   # April 2026 price list date
+    updated_by = session.get("username", "seed")
+    count = 0
+    for product_name, metric, list_price in ORACLE_PUBLISHED_PRICES:
+        execute(
+            "INSERT INTO shared.oracle_product_list_prices "
+            "(product_name, metric, list_price, currency, effective_date, is_current, notes, updated_by) "
+            "VALUES (%s,%s,%s,'USD',%s::DATE,true,"
+            "'Oracle Technology Global Price List Apr-2026',%s) "
+            "ON CONFLICT (product_name, metric, effective_date) DO UPDATE SET "
+            "  list_price=EXCLUDED.list_price, is_current=true, "
+            "  notes=EXCLUDED.notes, updated_by=EXCLUDED.updated_by",
+            (product_name, metric, list_price, eff_date, updated_by)
+        )
+        count += 1
+    return redirect(url_for("oracle_price_list", seeded=count))
+
+
 @app.route("/oracle-price-list", methods=["GET", "POST"])
 @login_required
 def oracle_price_list():
@@ -4970,6 +5050,8 @@ def oracle_price_list():
         imported=request.args.get("imported"),
         skipped=request.args.get("skipped"),
         import_err=request.args.get("import_err"),
+        seeded=request.args.get("seeded"),
+        oracle_price_count=len(ORACLE_PUBLISHED_PRICES),
     )
 
 
