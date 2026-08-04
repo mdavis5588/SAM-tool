@@ -492,6 +492,24 @@ def _edition_class(text):
     return None
 
 
+# Oracle Database options available for manual licence analysis.
+# Each entry: (param_name, display_label, product_label_for_price_lookup, metric)
+# product_label must match (or be a substring of) a row in oracle_product_list_prices.
+MANUAL_DB_OPTIONS = [
+    ("opt_diagnostics",     "Diagnostics Pack",              "Oracle Database Diagnostics Pack",              "processor"),
+    ("opt_tuning",          "Tuning Pack",                   "Oracle Database Tuning Pack",                   "processor"),
+    ("opt_partitioning",    "Partitioning",                  "Oracle Partitioning",                           "processor"),
+    ("opt_rac",             "Real Application Clusters (RAC)", "Oracle Real Application Clusters",            "processor"),
+    ("opt_multitenant",     "Multitenant",                   "Oracle Multitenant",                            "processor"),
+    ("opt_adg",             "Active Data Guard",             "Oracle Active Data Guard",                      "processor"),
+    ("opt_advanced_sec",    "Advanced Security",             "Oracle Advanced Security",                      "processor"),
+    ("opt_label_sec",       "Label Security",                "Oracle Label Security",                         "processor"),
+    ("opt_db_vault",        "Database Vault",                "Oracle Database Vault",                         "processor"),
+    ("opt_olap",            "OLAP",                          "Oracle OLAP",                                   "processor"),
+    ("opt_spatial",         "Spatial and Graph",             "Oracle Spatial and Graph",                      "processor"),
+    ("opt_goldengate",      "GoldenGate",                    "Oracle GoldenGate",                             "processor"),
+]
+
 _DB_ULA_KEYWORDS = frozenset([
     "database", "oracle db",
     "enterprise edition", "standard edition", "personal edition",
@@ -4854,6 +4872,9 @@ def licence_analysis():
         "adj_onprem_upfront":  int(adj_onprem_upfront) if adj_onprem_upfront else "",
         "adj_exacc_upfront":   int(adj_exacc_upfront)  if adj_exacc_upfront  else "",
         "adj_any":             adj_any,
+        # manual mode: which options are selected
+        "m_options": [p for p, _, _, _ in MANUAL_DB_OPTIONS
+                      if request.args.get(p)],
     }
 
     result      = None
@@ -5026,14 +5047,23 @@ def licence_analysis():
                 input_cps     = cps
                 input_ram_gb  = float(form_vals["m_ram_gb"]) if form_vals["m_ram_gb"] else None
 
-                # Synthetic requirements based on edition + core count
-                metric = "processor"
+                # Synthetic requirements: base edition + any selected options
                 reqs = [{
                     "product_family": edition,
                     "product_label":  edition,
-                    "metric":         metric,
+                    "metric":         "processor",
                     "units_required": physical_cores,
                 }]
+                selected_params = {p for p, _, _, _ in MANUAL_DB_OPTIONS
+                                   if request.args.get(p)}
+                for param, label, prod_label, metric in MANUAL_DB_OPTIONS:
+                    if param in selected_params:
+                        reqs.append({
+                            "product_family": prod_label,
+                            "product_label":  prod_label,
+                            "metric":         metric,
+                            "units_required": physical_cores,
+                        })
 
             # ----------------------------------------------------------
             # Cost model — perpetual on-prem
@@ -5168,6 +5198,7 @@ def licence_analysis():
         form_vals=form_vals,
         server_list=server_list,
         result=result,
+        manual_db_options=MANUAL_DB_OPTIONS,
     )
 
 
