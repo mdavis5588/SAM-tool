@@ -5130,6 +5130,7 @@ def licence_analysis():
         "client_id":           request.args.get("client_id", ""),
         "server_id":           request.args.get("server_id", ""),
         # manual-entry fields
+        "m_client_id":         request.args.get("m_client_id", ""),
         "m_hostname":          request.args.get("m_hostname", ""),
         "m_cores":             request.args.get("m_cores", ""),
         "m_sockets":           request.args.get("m_sockets", "1"),
@@ -5338,6 +5339,106 @@ def licence_analysis():
                         })
 
             # ----------------------------------------------------------
+            # Pool availability (manual mode only)
+            # ----------------------------------------------------------
+            pool_availability = []   # populated only in manual mode
+            pool_allocations  = {}   # product_label -> units allocated from pool
+
+            if not ready_server:
+                m_client_id = form_vals.get("m_client_id", "")
+
+                # Fetch all active, non-ULA entitlement lines with their CSI metadata
+                pool_rows = query("""
+                    SELECT
+                        l.line_id,
+                        l.csi_id,
+                        l.product_name,
+                        l.product_family::TEXT AS product_family,
+                        l.license_metric::TEXT AS license_metric,
+                        l.quantity,
+                        l.unit_price,
+                        l.annual_support_cost,
+                        cs.contract_name,
+                        cs.csi_number,
+                        cs.sharing_policy::TEXT AS sharing_policy,
+                        cs.owning_client_id
+                    FROM shared.license_entitlement_lines l
+                    JOIN shared.csi_contracts cs ON cs.csi_id = l.csi_id
+                    WHERE l.is_active
+                      AND cs.status NOT IN ('expired','terminated')
+                      AND NOT cs.is_ula
+                      AND l.license_metric = 'processor'
+                    ORDER BY cs.sharing_policy, l.product_name
+                """)
+
+                # Compute consumed counts across all active client schemas
+                consumed_map = {}  # (csi_id, product_family) -> total consumed
+                active_schemas = query(
+                    "SELECT schema_name FROM sam_admin.clients WHERE is_active"
+                )
+                for sc in active_schemas:
+                    s = sc["schema_name"]
+                    try:
+                        rows = query(f"""
+                            SELECT csi_id, product_family::TEXT AS product_family,
+                                   SUM(licences_consumed) AS consumed
+                            FROM {s}.server_csi_map
+                            GROUP BY csi_id, product_family
+                        """)
+                        for r in rows:
+                            key = (r["csi_id"], r["product_family"])
+                            consumed_map[key] = consumed_map.get(key, 0) + float(r["consumed"] or 0)
+                    except Exception:
+                        pass
+
+                for row in pool_rows:
+                    qty = float(row["quantity"] or 0)
+                    consumed = consumed_map.get((row["csi_id"], row["product_family"]), 0.0)
+                    available = max(qty - consumed, 0.0)
+                    if available <= 0:
+                        continue
+
+                    is_client_locked = row["sharing_policy"] == "client_locked"
+                    # Include shared pool always; client-locked only if client matches
+                    if is_client_locked and str(row["owning_client_id"]) != str(m_client_id):
+                        continue
+
+                    # Read allocation input (carried as alloc_{line_id})
+                    alloc_key = f"alloc_{row['line_id']}"
+                    raw_alloc = request.args.get(alloc_key, "")
+                    allocated = min(float(raw_alloc), available) if raw_alloc else 0.0
+
+                    # Per-unit annual support from the line (total / qty)
+                    if row["annual_support_cost"] and qty > 0:
+                        support_per_unit = float(row["annual_support_cost"]) / qty
+                    elif row["unit_price"]:
+                        support_per_unit = float(row["unit_price"]) * SUPPORT_RATE
+                    else:
+                        support_per_unit = 0.0
+
+                    pool_availability.append({
+                        "line_id":          row["line_id"],
+                        "csi_id":           row["csi_id"],
+                        "product_name":     row["product_name"],
+                        "product_family":   row["product_family"],
+                        "contract_name":    row["contract_name"],
+                        "csi_number":       row["csi_number"],
+                        "sharing_policy":   row["sharing_policy"],
+                        "quantity":         qty,
+                        "consumed":         consumed,
+                        "available":        available,
+                        "allocated":        allocated,
+                        "unit_price":       float(row["unit_price"] or 0),
+                        "support_per_unit": support_per_unit,
+                        "alloc_key":        alloc_key,
+                    })
+
+                # Build product_label -> total allocated from pool
+                for pa in pool_availability:
+                    pf = pa["product_family"]
+                    pool_allocations[pf] = pool_allocations.get(pf, 0.0) + pa["allocated"]
+
+            # ----------------------------------------------------------
             # Cost model — perpetual on-prem
             # ----------------------------------------------------------
             lines = []
@@ -5353,14 +5454,24 @@ def licence_analysis():
                 if pf and up is not None and pf not in assignment_prices:
                     assignment_prices[pf] = float(up)
 
+            # Pool support costs (from already-owned licences allocated from pool)
+            pool_existing_support_yr1 = 0.0   # annual support on pool-allocated licences
+            pool_existing_support_yr2 = 0.0
+
             for req in reqs:
                 units_req  = float(req["units_required"] or 0)
+                # Units already covered by pool allocation
+                pool_alloc = min(pool_allocations.get(req["product_family"], 0.0), units_req)
+                units_new  = max(units_req - pool_alloc, 0.0)   # units needing purchase
+
                 # Prefer unit price from assigned CSI lines; fall back to catalogue
                 unit_price = (
                     assignment_prices.get(req["product_family"])
                     or find_price(req["product_label"], req["metric"])
                 )
-                licence_cost = round(units_req * unit_price, 2) if unit_price is not None else None
+
+                # Cost of new licences only
+                licence_cost = round(units_new * unit_price, 2) if unit_price is not None else None
                 yr1_sup      = round(licence_cost * SUPPORT_RATE, 2) if licence_cost is not None else None
                 yr1_total    = round(licence_cost + yr1_sup, 2) if licence_cost is not None else None
 
@@ -5374,18 +5485,27 @@ def licence_analysis():
                     "product_family": req["product_family"],
                     "metric":         req["metric"],
                     "units_required": units_req,
+                    "pool_alloc":     pool_alloc,
+                    "units_new":      units_new,
                     "unit_price":     unit_price,
                     "licence_cost":   licence_cost,
                     "yr1_support":    yr1_sup,
                     "yr1_total":      yr1_total,
                     "yr2_annual":     yr1_sup,
-                    "price_missing":  unit_price is None,
+                    "price_missing":  unit_price is None and units_new > 0,
                 })
+
+            # Support cost on pool-allocated licences (existing owned licences)
+            for pa in pool_availability:
+                if pa["allocated"] > 0:
+                    ann_sup = round(pa["allocated"] * pa["support_per_unit"], 2)
+                    pool_existing_support_yr1 += ann_sup
+                    pool_existing_support_yr2 += ann_sup
 
             # Apply vendor quote adjustments to on-prem costs
             adj_onprem = round(onprem_per_core * physical_cores, 2) if onprem_per_core else 0.0
-            onprem_yr1   = round(total_licence_cost + total_yr1_support + adj_onprem, 2)
-            onprem_yr2   = round(total_yr2_annual + adj_onprem, 2)
+            onprem_yr1   = round(total_licence_cost + total_yr1_support + pool_existing_support_yr1 + adj_onprem, 2)
+            onprem_yr2   = round(total_yr2_annual + pool_existing_support_yr2 + adj_onprem, 2)
 
             # Year-by-year on-prem cumulative
             yearly_onprem = []
@@ -5449,6 +5569,11 @@ def licence_analysis():
                 "yearly_onprem":     yearly_onprem,
                 "horizon":           horizon,
                 "any_missing_price": any_missing_price,
+                "pool_availability": pool_availability,
+                "pool_existing_support_yr1": round(pool_existing_support_yr1, 2),
+                "pool_existing_support_yr2": round(pool_existing_support_yr2, 2),
+                "new_licence_cost":  round(total_licence_cost, 2),
+                "new_licence_support_yr1": round(total_yr1_support, 2),
                 "adjustments": {
                     "onprem":         adj_onprem,
                     "oci":            adj_oci,

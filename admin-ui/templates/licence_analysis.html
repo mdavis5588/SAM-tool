@@ -86,6 +86,19 @@
       <input type="hidden" name="mode" value="manual">
       <div class="row g-3 align-items-end">
         <div class="col-md-3">
+          <label class="form-label fw-semibold">Client <span class="text-muted fw-normal">(optional)</span></label>
+          <select name="m_client_id" class="form-select">
+            <option value="">— all / no client —</option>
+            {% for c in clients %}
+              <option value="{{ c.client_id }}"
+                {% if form_vals.m_client_id|string == c.client_id|string %}selected{% endif %}>
+                {{ c.client_name }}
+              </option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Selects client-locked licences in the pool</div>
+        </div>
+        <div class="col-md-3">
           <label class="form-label fw-semibold">Hostname / Label <span class="text-muted fw-normal">(optional)</span></label>
           <input type="text" name="m_hostname" class="form-control" placeholder="e.g. db-prod-01"
                  value="{{ form_vals.m_hostname }}">
@@ -312,7 +325,11 @@
               <tr class="small" style="color:#4c1d95;">
                 <th class="ps-3 py-2">Feature / Product Required</th>
                 <th class="py-2 text-center">Metric</th>
-                <th class="py-2 text-end">On-Prem Units</th>
+                <th class="py-2 text-end">Required</th>
+                {% if result.pool_availability %}
+                <th class="py-2 text-end text-success">From Pool</th>
+                <th class="py-2 text-end text-danger">To Buy</th>
+                {% endif %}
                 <th class="py-2 text-end pe-3">OCI OCPUs</th>
               </tr>
             </thead>
@@ -327,7 +344,15 @@
                     {{ l.metric|replace('_',' ')|title }}
                   </span>
                 </td>
-                <td class="py-2 text-end fw-bold">{{ "{:,.2f}".format(l.units_required) }}</td>
+                <td class="py-2 text-end fw-bold">{{ "{:,.0f}".format(l.units_required) }}</td>
+                {% if result.pool_availability %}
+                <td class="py-2 text-end fw-semibold text-success">
+                  {% if l.pool_alloc %}{{ "{:,.0f}".format(l.pool_alloc) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="py-2 text-end fw-semibold {% if l.units_new > 0 %}text-danger{% else %}text-success{% endif %}">
+                  {{ "{:,.0f}".format(l.units_new) }}
+                </td>
+                {% endif %}
                 <td class="py-2 text-end pe-3 text-primary fw-bold">
                   {% if l.metric in ('processor','processor_perpetual') %}{{ "{:,.0f}".format(l.units_required * 2) }} OCPUs
                   {% else %}<span class="text-muted">N/A</span>{% endif %}
@@ -401,6 +426,81 @@
             Click a tab above for the full breakdown of each option.
           </p>
 
+          {# ── Pool Allocation Panel (manual mode only) ─────────────── #}
+          {% if result.pool_availability is defined and result.pool_availability %}
+          <div class="card border-0 mb-4" style="background:#f0f9ff; border:1px solid #bae6fd !important;">
+            <div class="card-header py-2 d-flex align-items-center gap-2" style="background:#e0f2fe; border-bottom:1px solid #bae6fd;">
+              <i class="bi bi-archive text-info"></i>
+              <span class="fw-semibold small">Available Licences from Pool</span>
+              <span class="text-muted small ms-1">— allocate existing licences to reduce new purchase costs</span>
+            </div>
+            <div class="card-body py-2 px-3">
+              <form method="get" action="{{ url_for('licence_analysis') }}" id="form-pool-alloc">
+                <input type="hidden" name="mode"         value="{{ form_vals.mode }}">
+                <input type="hidden" name="m_client_id"  value="{{ form_vals.m_client_id }}">
+                <input type="hidden" name="m_hostname"   value="{{ form_vals.m_hostname }}">
+                <input type="hidden" name="m_cores"      value="{{ form_vals.m_cores }}">
+                <input type="hidden" name="m_sockets"    value="{{ form_vals.m_sockets }}">
+                <input type="hidden" name="m_ram_gb"     value="{{ form_vals.m_ram_gb }}">
+                <input type="hidden" name="m_edition"    value="{{ form_vals.m_edition }}">
+                <input type="hidden" name="horizon_years" value="{{ form_vals.horizon_years }}">
+                <input type="hidden" name="adj_onprem"   value="{{ form_vals.adj_onprem or '' }}">
+                <input type="hidden" name="adj_oci"      value="{{ form_vals.adj_oci or '' }}">
+                <input type="hidden" name="adj_exacc"    value="{{ form_vals.adj_exacc or '' }}">
+                <input type="hidden" name="adj_azure"    value="{{ form_vals.adj_azure or '' }}">
+                {% for param, _, _, _ in manual_db_options %}
+                  {% if param in form_vals.m_options %}
+                  <input type="hidden" name="{{ param }}" value="1">
+                  {% endif %}
+                {% endfor %}
+
+                <table class="table table-sm mb-2" style="font-size:.83rem;">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Product</th>
+                      <th>Contract</th>
+                      <th class="text-center">Pool</th>
+                      <th class="text-end">Available</th>
+                      <th class="text-end">Allocate</th>
+                      <th class="text-end">Support/unit/yr</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for pa in result.pool_availability %}
+                    <tr>
+                      <td>
+                        {{ pa.product_name }}
+                        {% if pa.sharing_policy == 'client_locked' %}
+                          <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">Client</span>
+                        {% else %}
+                          <span class="badge bg-info text-dark ms-1" style="font-size:.65rem;">Shared</span>
+                        {% endif %}
+                      </td>
+                      <td class="text-muted">
+                        {{ pa.contract_name }}
+                        {% if pa.csi_number %}<br><code style="font-size:.7rem;">{{ pa.csi_number }}</code>{% endif %}
+                      </td>
+                      <td class="text-center text-muted">{{ pa.quantity | int }}</td>
+                      <td class="text-end fw-semibold text-success">{{ pa.available | int }}</td>
+                      <td class="text-end" style="width:100px;">
+                        <input type="number" name="{{ pa.alloc_key }}" class="form-control form-control-sm text-end"
+                               min="0" max="{{ pa.available | int }}" step="1"
+                               value="{{ pa.allocated | int if pa.allocated else '' }}"
+                               style="width:80px; margin-left:auto;">
+                      </td>
+                      <td class="text-end text-muted">${{ "{:,.0f}".format(pa.support_per_unit) }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+                <button type="submit" class="btn btn-sm btn-info text-white">
+                  <i class="bi bi-arrow-clockwise me-1"></i>Apply Allocations &amp; Recalculate
+                </button>
+              </form>
+            </div>
+          </div>
+          {% endif %}
+
           {# ── Row 1: On-Premises (baseline) ──────────────────────────── #}
           <div class="row g-3 mb-1">
             <div class="col-12">
@@ -414,18 +514,39 @@
                   <i class="bi bi-building me-1"></i> On-Premises
                 </div>
                 <div class="card-body">
+                  {% if result.pool_existing_support_yr1 %}
+                  <div class="text-muted small mb-2">Split cost: existing owned + new purchase</div>
+                  <div class="row g-1 text-center mb-2" style="font-size:.78rem;">
+                    <div class="col-6 border-end">
+                      <div class="text-muted" style="font-size:.7rem;">Existing support</div>
+                      <div class="fw-semibold">${{ "{:,.0f}".format(result.pool_existing_support_yr1) }}/yr</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-muted" style="font-size:.7rem;">New purchase</div>
+                      <div class="fw-semibold">${{ "{:,.0f}".format(result.new_licence_cost) }}</div>
+                    </div>
+                  </div>
+                  <div class="border-top pt-2">
+                  {% else %}
                   <div class="text-muted small mb-1">Perpetual licence + 22% annual support</div>
+                  <div>
+                  {% endif %}
                   <div class="row g-2 text-center mt-1">
                     <div class="col-6 border-end">
                       <div class="text-muted small">Year 1</div>
                       <div class="fw-bold fs-6">${{ "{:,.0f}".format(result.onprem_yr1) }}</div>
-                      <div class="text-muted" style="font-size:.7rem;">licence + support</div>
+                      <div class="text-muted" style="font-size:.7rem;">
+                        {% if result.pool_existing_support_yr1 %}existing support + new licence + support{% else %}licence + support{% endif %}
+                      </div>
                     </div>
                     <div class="col-6">
                       <div class="text-muted small">Year 2+</div>
                       <div class="fw-bold fs-6">${{ "{:,.0f}".format(result.onprem_yr2) }}</div>
-                      <div class="text-muted" style="font-size:.7rem;">support only</div>
+                      <div class="text-muted" style="font-size:.7rem;">
+                        {% if result.pool_existing_support_yr1 %}existing + new support{% else %}support only{% endif %}
+                      </div>
                     </div>
+                  </div>
                   </div>
                   {% if result.adjustments.onprem %}
                   <div class="mt-2 pt-2 border-top" style="font-size:.7rem; color:#92400e;">
