@@ -486,7 +486,18 @@
 
           </div>{# end summary cards row #}
 
-          <div class="alert alert-secondary py-2 small mt-4 mb-0">
+          <!-- Cumulative cost line chart -->
+          <div class="mt-4 mb-2">
+            <div class="d-flex align-items-baseline gap-2 mb-1">
+              <h6 class="fw-semibold mb-0">Cumulative Cost — {{ result.horizon }}-Year Horizon</h6>
+              <span class="text-muted small">all options on the same scale</span>
+            </div>
+            <div style="position:relative; height:340px;">
+              <canvas id="summaryChart" aria-label="Cumulative cost line chart over {{ result.horizon }} years"></canvas>
+            </div>
+          </div>
+
+          <div class="alert alert-secondary py-2 small mt-3 mb-0">
             <i class="bi bi-info-circle me-1"></i>
             All costs are indicative list prices (24×7×365 compute where applicable).
             Cloud costs exclude storage, networking, and negotiated discounts.
@@ -1209,4 +1220,159 @@ function openPriceModal(id, name, metric, price, currency, effDate, isCurrent, n
   if (metric) metricSel.value = metric;
 }
 </script>
+
+{% if result and not result.get('error') %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  const canvas = document.getElementById('summaryChart');
+  if (!canvas) return;
+
+  /* ── validated categorical palette (7 slots, light mode) ─────────── */
+  const COLORS = {
+    onprem:      '#9d174d',
+    oci_byol:    '#2563eb',
+    oci_li:      '#16a34a',
+    exacc_byol:  '#7c3aed',
+    exacc_li:    '#c2410c',
+    az_byol:     '#0891b2',
+    az_li:       '#b45309',
+  };
+
+  /* ── raw data from server ─────────────────────────────────────────── */
+  {% set lc   = result.total_licence_cost | float %}
+  {% set yr2  = result.onprem_yr2 | float %}
+
+  const labels = [
+    {% for yr in result.yearly_onprem %}"Year {{ yr.year }}"{% if not loop.last %},{% endif %}{% endfor %}
+  ];
+
+  /* cumulative on-prem */
+  const onpremCum = [
+    {% for yr in result.yearly_onprem %}{{ yr.cum }}{% if not loop.last %},{% endif %}{% endfor %}
+  ];
+
+  const datasets = [
+    {
+      label: 'On-Premises',
+      data: onpremCum,
+      borderColor: COLORS.onprem,
+      backgroundColor: COLORS.onprem + '18',
+      borderWidth: 2,
+      pointRadius: 5,
+      pointHoverRadius: 7,
+      tension: 0.1,
+    },
+  ];
+
+  {% if oci %}
+    {% set ba  = oci.byol_annual | float if oci.byol_annual is not none else 0 %}
+    {% set la  = oci.li_annual   | float if oci.li_annual   is not none else 0 %}
+    {% set eba = oci.exacc_byol_annual | float if oci.exacc_byol_annual is not none else 0 %}
+    {% set ela = oci.exacc_li_annual   | float if oci.exacc_li_annual   is not none else 0 %}
+
+    {% if oci.byol_sku %}
+    datasets.push({
+      label: 'OCI — BYOL',
+      data: [{% for yr in result.yearly_onprem %}{{ (lc + ba * yr.year + yr2 * yr.year) | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
+      borderColor: COLORS.oci_byol,
+      backgroundColor: COLORS.oci_byol + '18',
+      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0.1,
+    });
+    {% endif %}
+
+    {% if oci.li_sku %}
+    datasets.push({
+      label: 'OCI — Lic. Included',
+      data: [{% for yr in result.yearly_onprem %}{{ (la * yr.year) | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
+      borderColor: COLORS.oci_li,
+      backgroundColor: COLORS.oci_li + '18',
+      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0.1,
+    });
+    {% endif %}
+
+    {% if oci.exacc_byol_sku %}
+    datasets.push({
+      label: 'ExaCC — BYOL',
+      data: [{% for yr in result.yearly_onprem %}{{ (lc + eba * yr.year + yr2 * yr.year) | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
+      borderColor: COLORS.exacc_byol,
+      backgroundColor: COLORS.exacc_byol + '18',
+      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0.1,
+    });
+    {% endif %}
+
+    {% if oci.exacc_li_sku %}
+    datasets.push({
+      label: 'ExaCC — Lic. Included',
+      data: [{% for yr in result.yearly_onprem %}{{ (ela * yr.year) | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
+      borderColor: COLORS.exacc_li,
+      backgroundColor: COLORS.exacc_li + '18',
+      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0.1,
+    });
+    {% endif %}
+  {% endif %}
+
+  {% if az %}
+    {% set aba  = az.byol_annual | float if az.byol_annual is not none else 0 %}
+    {% set alia = az.li_annual   | float if az.li_annual   is not none else 0 %}
+
+    {% if az.byol_sku %}
+    datasets.push({
+      label: 'Azure — BYOL',
+      data: [{% for yr in result.yearly_onprem %}{{ (lc + aba * yr.year + yr2 * yr.year) | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
+      borderColor: COLORS.az_byol,
+      backgroundColor: COLORS.az_byol + '18',
+      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0.1,
+    });
+    {% endif %}
+
+    {% if az.li_sku %}
+    datasets.push({
+      label: 'Oracle@Azure',
+      data: [{% for yr in result.yearly_onprem %}{{ (alia * yr.year) | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
+      borderColor: COLORS.az_li,
+      backgroundColor: COLORS.az_li + '18',
+      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0.1,
+    });
+    {% endif %}
+  {% endif %}
+
+  /* ── chart ────────────────────────────────────────────────────────── */
+  new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { usePointStyle: true, pointStyleWidth: 12, padding: 16, font: { size: 12 } },
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => ' ' + ctx.dataset.label + ': $' + ctx.parsed.y.toLocaleString('en-US', { maximumFractionDigits: 0 }),
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: '#e5e7eb' },
+          ticks: { font: { size: 11 }, color: '#6b7280' },
+        },
+        y: {
+          grid: { color: '#e5e7eb' },
+          ticks: {
+            font: { size: 11 }, color: '#6b7280',
+            callback: v => '$' + (v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v),
+          },
+          beginAtZero: true,
+        },
+      },
+    },
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}
