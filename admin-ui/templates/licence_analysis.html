@@ -618,14 +618,14 @@
                       <div class="text-muted small">Year 1</div>
                       <div class="fw-bold fs-6">${{ "{:,.0f}".format(result.onprem_yr1) }}</div>
                       <div class="text-muted" style="font-size:.7rem;">
-                        {% if result.pool_existing_support_yr1 %}existing support + new licence + support{% else %}licence + support{% endif %}
+                        {% if result.pool_existing_support_yr1 %}existing support + new licence + support + managed{% else %}licence + support + managed service{% endif %}
                       </div>
                     </div>
                     <div class="col-6">
                       <div class="text-muted small">Year 2+</div>
                       <div class="fw-bold fs-6">${{ "{:,.0f}".format(result.onprem_yr2) }}</div>
                       <div class="text-muted" style="font-size:.7rem;">
-                        {% if result.pool_existing_support_yr1 %}existing + new support{% else %}support only{% endif %}
+                        {% if result.pool_existing_support_yr1 %}existing + new support + managed{% else %}support + managed service{% endif %}
                       </div>
                     </div>
                   </div>
@@ -730,52 +730,16 @@
                       <div class="fw-bold fs-6" style="color:#7c5cbf;">
                         ${{ "{:,.0f}".format(result.licence_yr1 + oci.exacc_byol_annual) }}
                       </div>
-                      <div class="text-muted" style="font-size:.7rem;">lic. + compute + support</div>
+                      <div class="text-muted" style="font-size:.7rem;">lic. + support + managed service</div>
                     </div>
                     <div class="col-6">
                       <div class="text-muted small">Year 2+</div>
                       <div class="fw-bold fs-6" style="color:#7c5cbf;">
                         ${{ "{:,.0f}".format(result.licence_yr2 + oci.exacc_byol_annual) }}
                       </div>
-                      <div class="text-muted" style="font-size:.7rem;">compute + support</div>
+                      <div class="text-muted" style="font-size:.7rem;">support + managed service</div>
                     </div>
                   </div>
-                  {% if result.adjustments.exacc or result.adjustments.exacc_upfront %}
-                  <div class="mt-2 pt-2 border-top" style="font-size:.7rem; color:#92400e;">
-                    <i class="bi bi-sliders me-1"></i>Vendor adjustments included:
-                    {% if result.adjustments.exacc_upfront %} +${{ "{:,.0f}".format(result.adjustments.exacc_upfront) }} upfront{% endif %}
-                    {% if result.adjustments.exacc %} +${{ "{:,.0f}".format(result.adjustments.exacc) }}/yr{% endif %}
-                  </div>
-                  {% endif %}
-                  {# ── inline ExaCC subscription editor ── #}
-                  <form method="get" action="{{ url_for('licence_analysis') }}" class="mt-2 pt-2 border-top">
-                    <input type="hidden" name="mode"              value="{{ form_vals.mode }}">
-                    <input type="hidden" name="client_id"         value="{{ form_vals.client_id }}">
-                    <input type="hidden" name="server_id"         value="{{ form_vals.server_id }}">
-                    <input type="hidden" name="m_hostname"        value="{{ form_vals.m_hostname }}">
-                    <input type="hidden" name="m_cores"           value="{{ form_vals.m_cores }}">
-                    <input type="hidden" name="m_sockets"         value="{{ form_vals.m_sockets }}">
-                    <input type="hidden" name="m_ram_gb"          value="{{ form_vals.m_ram_gb }}">
-                    <input type="hidden" name="m_edition"         value="{{ form_vals.m_edition }}">
-                    <input type="hidden" name="horizon_years"     value="{{ form_vals.horizon_years }}">
-                    <input type="hidden" name="adj_onprem"        value="{{ form_vals.adj_onprem or '' }}">
-                    <input type="hidden" name="adj_oci"           value="{{ form_vals.adj_oci or '' }}">
-                    <input type="hidden" name="adj_azure"         value="{{ form_vals.adj_azure or '' }}">
-                    <div style="font-size:.72rem;" class="text-muted mb-1">
-                      <i class="bi bi-pencil me-1"></i>Managed Service Cost per core:
-                    </div>
-                    <div class="mb-2">
-                      <label style="font-size:.72rem;">Cost per physical core (USD/yr)</label>
-                      <div class="input-group input-group-sm">
-                        <span class="input-group-text">$</span>
-                        <input type="number" name="adj_exacc" class="form-control" min="0" step="0.01"
-                               placeholder="2175.58" value="{{ form_vals.adj_exacc }}">
-                      </div>
-                    </div>
-                    <button type="submit" class="btn btn-sm w-100" style="background:#7c5cbf; color:#fff;">
-                      <i class="bi bi-arrow-clockwise me-1"></i>Apply &amp; Recalculate
-                    </button>
-                  </form>
                 </div>
               </div>
             </div>
@@ -802,42 +766,11 @@
                       <div class="text-muted" style="font-size:.7rem;">compute + licence</div>
                     </div>
                   </div>
-                  {% if result.adjustments.exacc or result.adjustments.exacc_upfront %}
+                  {% if result.adjustments.exacc %}
                   <div class="mt-2 pt-2 border-top" style="font-size:.7rem; color:#92400e;">
-                    <i class="bi bi-sliders me-1"></i>Vendor adjustments included:
-                    {% if result.adjustments.exacc_upfront %} +${{ "{:,.0f}".format(result.adjustments.exacc_upfront) }} upfront (yr 1){% endif %}
-                    {% if result.adjustments.exacc %} +${{ "{:,.0f}".format(result.adjustments.exacc) }}/yr{% endif %}
+                    <i class="bi bi-sliders me-1"></i>Managed service: +${{ "{:,.0f}".format(result.adjustments.exacc) }}/yr included
                   </div>
                   {% endif %}
-                  {# ── inline ExaCC subscription editor ── #}
-                  <form method="get" action="{{ url_for('licence_analysis') }}" class="mt-2 pt-2 border-top">
-                    <input type="hidden" name="mode"              value="{{ form_vals.mode }}">
-                    <input type="hidden" name="client_id"         value="{{ form_vals.client_id }}">
-                    <input type="hidden" name="server_id"         value="{{ form_vals.server_id }}">
-                    <input type="hidden" name="m_hostname"        value="{{ form_vals.m_hostname }}">
-                    <input type="hidden" name="m_cores"           value="{{ form_vals.m_cores }}">
-                    <input type="hidden" name="m_sockets"         value="{{ form_vals.m_sockets }}">
-                    <input type="hidden" name="m_ram_gb"          value="{{ form_vals.m_ram_gb }}">
-                    <input type="hidden" name="m_edition"         value="{{ form_vals.m_edition }}">
-                    <input type="hidden" name="horizon_years"     value="{{ form_vals.horizon_years }}">
-                    <input type="hidden" name="adj_onprem"        value="{{ form_vals.adj_onprem or '' }}">
-                    <input type="hidden" name="adj_oci"           value="{{ form_vals.adj_oci or '' }}">
-                    <input type="hidden" name="adj_azure"         value="{{ form_vals.adj_azure or '' }}">
-                    <div style="font-size:.72rem;" class="text-muted mb-1">
-                      <i class="bi bi-pencil me-1"></i>Managed Service Cost per core:
-                    </div>
-                    <div class="mb-2">
-                      <label style="font-size:.72rem;">Cost per physical core (USD/yr)</label>
-                      <div class="input-group input-group-sm">
-                        <span class="input-group-text">$</span>
-                        <input type="number" name="adj_exacc" class="form-control" min="0" step="0.01"
-                               placeholder="2175.58" value="{{ form_vals.adj_exacc }}">
-                      </div>
-                    </div>
-                    <button type="submit" class="btn btn-sm w-100" style="background:#5b34a8; color:#fff;">
-                      <i class="bi bi-arrow-clockwise me-1"></i>Apply &amp; Recalculate
-                    </button>
-                  </form>
                 </div>
               </div>
             </div>
