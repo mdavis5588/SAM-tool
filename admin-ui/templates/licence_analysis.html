@@ -319,6 +319,7 @@
       </div>
       {% if result.lines %}
       <div class="card-body p-0">
+        {% set has_new = result.lines | selectattr('units_new', 'gt', 0) | list | length > 0 %}
         <div class="table-responsive">
           <table class="table table-sm table-hover mb-0">
             <thead style="background:#f3f0ff;">
@@ -340,7 +341,6 @@
             </thead>
             <tbody>
               {% set ns = namespace(total_pool_support=0, total_new_cost=0, total_new_support=0) %}
-              {% set has_new = result.lines | selectattr('units_new', 'gt', 0) | list | length > 0 %}
               {% for l in result.lines %}
               {% if result.pool_availability %}
                 {% set ns.total_pool_support = ns.total_pool_support + (l.pool_ann_support or 0) %}
