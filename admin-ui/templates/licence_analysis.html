@@ -1209,9 +1209,9 @@
                 {% for yr in result.yearly_onprem %}
                 {% set oci_yr = oci.yearly[loop.index0] %}
                 {% set byol_cum     = ((result.licence_yr1 + oci.byol_annual) + (yr.year - 1) * (result.licence_yr2 + oci.byol_annual))       if oci.byol_sku      else none %}
-                {% set li_cum       = oci_yr.li_cum         if oci.li_sku        else none %}
+                {% set li_cum       = (oci.li_annual * yr.year)                    if oci.li_sku        else none %}
                 {% set exacc_b_cum  = ((result.licence_yr1 + oci.exacc_byol_annual) + (yr.year - 1) * (result.licence_yr2 + oci.exacc_byol_annual)) if oci.exacc_byol_sku else none %}
-                {% set exacc_li_cum = oci_yr.exacc_li_cum   if oci.exacc_li_sku  else none %}
+                {% set exacc_li_cum = (oci.exacc_li_annual * yr.year)              if oci.exacc_li_sku  else none %}
                 {% set cloud_cheaper = (byol_cum is not none and byol_cum < yr.cum)
                                     or (li_cum is not none and li_cum < yr.cum)
                                     or (exacc_b_cum is not none and exacc_b_cum < yr.cum)
@@ -1230,7 +1230,7 @@
                   {% endif %}
                   {% if oci.li_sku %}
                   <td class="text-end text-success">${{ "{:,.0f}".format(oci.li_annual) }}</td>
-                  <td class="text-end text-success fw-semibold">${{ "{:,.0f}".format(oci_yr.li_cum) }}</td>
+                  <td class="text-end text-success fw-semibold">${{ "{:,.0f}".format(oci.li_annual * yr.year) }}</td>
                   {% endif %}
                   {% if oci.exacc_byol_sku %}
                   {% set exacc_byol_ann = (result.licence_yr1 + oci.exacc_byol_annual) if yr.year == 1 else (result.licence_yr2 + oci.exacc_byol_annual) %}
@@ -1240,7 +1240,7 @@
                   {% endif %}
                   {% if oci.exacc_li_sku %}
                   <td class="text-end" style="color:#5b34a8;">${{ "{:,.0f}".format(oci.exacc_li_annual) }}</td>
-                  <td class="text-end fw-semibold" style="color:#5b34a8;">${{ "{:,.0f}".format(oci_yr.exacc_li_cum) }}</td>
+                  <td class="text-end fw-semibold" style="color:#5b34a8;">${{ "{:,.0f}".format(oci.exacc_li_annual * yr.year) }}</td>
                   {% endif %}
                 </tr>
                 {% endfor %}
