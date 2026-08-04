@@ -1018,11 +1018,15 @@
             {% endif %}
           </div>
 
-          <div class="row g-3 mb-4">
+          <!-- OCI options -->
+          <p class="text-muted small fw-semibold text-uppercase mb-1" style="letter-spacing:.05em; font-size:.7rem;">
+            <i class="bi bi-cloud me-1"></i>OCI
+          </p>
+          <div class="row g-3 mb-3">
 
             <!-- OCI BYOL -->
             {% if oci.byol_sku %}
-            <div class="col-md-6 col-lg-4">
+            <div class="col-md-6">
               <div class="card border-primary h-100">
                 <div class="card-body">
                   <div class="d-flex justify-content-between align-items-start mb-1">
@@ -1065,7 +1069,7 @@
 
             <!-- OCI Licence Included -->
             {% if oci.li_sku %}
-            <div class="col-md-6 col-lg-4">
+            <div class="col-md-6">
               <div class="card border-success h-100">
                 <div class="card-body">
                   <div class="d-flex justify-content-between align-items-start mb-1">
@@ -1092,9 +1096,17 @@
             </div>
             {% endif %}
 
+          </div>{# end OCI row #}
+
+          <!-- ExaCC options -->
+          <p class="text-muted small fw-semibold text-uppercase mb-1" style="letter-spacing:.05em; font-size:.7rem;">
+            <i class="bi bi-server me-1"></i>ExaCC — Exadata Cloud at Customer
+          </p>
+          <div class="row g-3 mb-4">
+
             <!-- ExaCC BYOL -->
             {% if oci.exacc_byol_sku %}
-            <div class="col-md-6 col-lg-4">
+            <div class="col-md-6">
               <div class="card h-100" style="border-color:#7c5cbf;">
                 <div class="card-body">
                   <div class="d-flex justify-content-between align-items-start mb-1">
@@ -1137,7 +1149,7 @@
 
             <!-- ExaCC Licence Included -->
             {% if oci.exacc_li_sku %}
-            <div class="col-md-6 col-lg-4">
+            <div class="col-md-6">
               <div class="card h-100" style="border-color:#5b34a8;">
                 <div class="card-body">
                   <div class="d-flex justify-content-between align-items-start mb-1">
@@ -1164,7 +1176,7 @@
             </div>
             {% endif %}
 
-          </div>{# end OCI SKU cards #}
+          </div>{# end ExaCC row #}
 
           <!-- OCI year-by-year table -->
           <h6 class="fw-semibold mb-2">Cumulative Cost Comparison — {{ result.horizon }}-Year Horizon</h6>
