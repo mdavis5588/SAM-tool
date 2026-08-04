@@ -22,6 +22,7 @@ import threading
 import time
 
 app = Flask(__name__)
+app.config["PROPAGATE_EXCEPTIONS"] = True
 app.secret_key = os.environ.get("FLASK_SECRET", "change-me-in-production")
 
 # ---------------------------------------------------------------------------
@@ -7698,4 +7699,4 @@ def forbidden(e):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=5000, debug=True)
