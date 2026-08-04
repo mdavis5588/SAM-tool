@@ -1208,9 +1208,9 @@
               <tbody>
                 {% for yr in result.yearly_onprem %}
                 {% set oci_yr = oci.yearly[loop.index0] %}
-                {% set byol_cum     = oci_yr.byol_cum       if oci.byol_sku      else none %}
+                {% set byol_cum     = ((result.licence_yr1 + oci.byol_annual) + (yr.year - 1) * (result.licence_yr2 + oci.byol_annual))       if oci.byol_sku      else none %}
                 {% set li_cum       = oci_yr.li_cum         if oci.li_sku        else none %}
-                {% set exacc_b_cum  = oci_yr.exacc_byol_cum if oci.exacc_byol_sku else none %}
+                {% set exacc_b_cum  = ((result.licence_yr1 + oci.exacc_byol_annual) + (yr.year - 1) * (result.licence_yr2 + oci.exacc_byol_annual)) if oci.exacc_byol_sku else none %}
                 {% set exacc_li_cum = oci_yr.exacc_li_cum   if oci.exacc_li_sku  else none %}
                 {% set cloud_cheaper = (byol_cum is not none and byol_cum < yr.cum)
                                     or (li_cum is not none and li_cum < yr.cum)
@@ -1223,16 +1223,20 @@
                   <td class="text-end">${{ "{:,.0f}".format(yr.annual) }}</td>
                   <td class="text-end fw-semibold">${{ "{:,.0f}".format(yr.cum) }}</td>
                   {% if oci.byol_sku %}
-                  <td class="text-end text-primary">${{ "{:,.0f}".format(oci.byol_annual) }}</td>
-                  <td class="text-end text-primary fw-semibold">${{ "{:,.0f}".format(oci_yr.byol_cum) }}</td>
+                  {% set byol_ann = (result.licence_yr1 + oci.byol_annual) if yr.year == 1 else (result.licence_yr2 + oci.byol_annual) %}
+                  {% set byol_cum_total = (result.licence_yr1 + oci.byol_annual) + (yr.year - 1) * (result.licence_yr2 + oci.byol_annual) %}
+                  <td class="text-end text-primary">${{ "{:,.0f}".format(byol_ann) }}</td>
+                  <td class="text-end text-primary fw-semibold">${{ "{:,.0f}".format(byol_cum_total) }}</td>
                   {% endif %}
                   {% if oci.li_sku %}
                   <td class="text-end text-success">${{ "{:,.0f}".format(oci.li_annual) }}</td>
                   <td class="text-end text-success fw-semibold">${{ "{:,.0f}".format(oci_yr.li_cum) }}</td>
                   {% endif %}
                   {% if oci.exacc_byol_sku %}
-                  <td class="text-end" style="color:#7c5cbf;">${{ "{:,.0f}".format(oci.exacc_byol_annual) }}</td>
-                  <td class="text-end fw-semibold" style="color:#7c5cbf;">${{ "{:,.0f}".format(oci_yr.exacc_byol_cum) }}</td>
+                  {% set exacc_byol_ann = (result.licence_yr1 + oci.exacc_byol_annual) if yr.year == 1 else (result.licence_yr2 + oci.exacc_byol_annual) %}
+                  {% set exacc_byol_cum_total = (result.licence_yr1 + oci.exacc_byol_annual) + (yr.year - 1) * (result.licence_yr2 + oci.exacc_byol_annual) %}
+                  <td class="text-end" style="color:#7c5cbf;">${{ "{:,.0f}".format(exacc_byol_ann) }}</td>
+                  <td class="text-end fw-semibold" style="color:#7c5cbf;">${{ "{:,.0f}".format(exacc_byol_cum_total) }}</td>
                   {% endif %}
                   {% if oci.exacc_li_sku %}
                   <td class="text-end" style="color:#5b34a8;">${{ "{:,.0f}".format(oci.exacc_li_annual) }}</td>
