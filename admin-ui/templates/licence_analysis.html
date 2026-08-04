@@ -126,88 +126,109 @@
       </div>
     </form>
 
-    <!-- Vendor Quote Adjustments (shared, persists across both modes) -->
-    <div class="mt-3 border-top pt-3">
-      <a class="text-decoration-none small fw-semibold text-muted d-flex align-items-center gap-1"
-         data-bs-toggle="collapse" href="#vendorAdjustments" role="button"
-         aria-expanded="{{ 'true' if form_vals.adj_any else 'false' }}">
-        <i class="bi bi-sliders me-1"></i> Vendor Quote Adjustments
-        <span class="text-muted fw-normal ms-1">(optional — add costs from vendor quotes)</span>
-        <i class="bi bi-chevron-down ms-auto small"></i>
-      </a>
-      <div class="collapse {% if form_vals.adj_any %}show{% endif %}" id="vendorAdjustments">
-        <p class="text-muted small mt-2 mb-3">
-          Enter additional annual costs from vendor quotes (e.g. ExaCC infrastructure subscription, support contracts).
-          These are added on top of the published list prices in all calculations and charts.
-          Leave blank to use list prices only.
-        </p>
-        <div class="row g-3">
-          <div class="col-md-4">
-            <label class="form-label small fw-semibold">On-Premises — extra annual cost (USD)</label>
-            <div class="input-group input-group-sm">
-              <span class="input-group-text">$</span>
-              <input type="number" name="adj_onprem" class="form-control" min="0" step="1" placeholder="0"
-                     value="{{ form_vals.adj_onprem or '' }}" form="form-server">
-              <input type="number" name="adj_onprem" class="form-control" min="0" step="1" placeholder="0"
-                     value="{{ form_vals.adj_onprem or '' }}" form="form-manual" style="display:none">
+    <!-- Vendor Quote Adjustments -->
+    <div class="mt-4 border-top pt-3">
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <i class="bi bi-sliders text-muted"></i>
+        <span class="fw-semibold small">Vendor Quote Adjustments</span>
+        <span class="text-muted small">— enter costs from vendor quotes to add on top of list prices</span>
+      </div>
+      <div class="row g-2">
+
+        <!-- On-Premises -->
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="card border-0 bg-light h-100">
+            <div class="card-body py-2 px-3">
+              <div class="fw-semibold small mb-2 text-secondary">
+                <i class="bi bi-building me-1"></i>On-Premises
+              </div>
+              <label class="form-label mb-1" style="font-size:.75rem;">Extra annual cost (USD)</label>
+              <div class="input-group input-group-sm mb-2">
+                <span class="input-group-text">$</span>
+                <input type="number" name="adj_onprem" class="form-control" min="0" step="1"
+                       placeholder="0" value="{{ form_vals.adj_onprem or '' }}" form="form-server">
+              </div>
+              <label class="form-label mb-1" style="font-size:.75rem;">Upfront one-time cost (USD)</label>
+              <div class="input-group input-group-sm">
+                <span class="input-group-text">$</span>
+                <input type="number" name="adj_onprem_upfront" class="form-control" min="0" step="1"
+                       placeholder="0" value="{{ form_vals.adj_onprem_upfront or '' }}" form="form-server">
+              </div>
+              <div class="form-text mt-1">e.g. hardware, facilities, migration</div>
             </div>
-            <div class="form-text">e.g. hardware maintenance, facilities</div>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label small fw-semibold">OCI (BYOL &amp; LI) — extra annual cost (USD)</label>
-            <div class="input-group input-group-sm">
-              <span class="input-group-text">$</span>
-              <input type="number" name="adj_oci" class="form-control" min="0" step="1" placeholder="0"
-                     value="{{ form_vals.adj_oci or '' }}" form="form-server">
-            </div>
-            <div class="form-text">e.g. networking, storage, support</div>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label small fw-semibold">ExaCC (BYOL &amp; LI) — extra annual cost (USD)</label>
-            <div class="input-group input-group-sm">
-              <span class="input-group-text">$</span>
-              <input type="number" name="adj_exacc" class="form-control" min="0" step="1" placeholder="0"
-                     value="{{ form_vals.adj_exacc or '' }}" form="form-server">
-            </div>
-            <div class="form-text">e.g. infrastructure subscription from Oracle quote</div>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label small fw-semibold">Azure (BYOL &amp; LI) — extra annual cost (USD)</label>
-            <div class="input-group input-group-sm">
-              <span class="input-group-text">$</span>
-              <input type="number" name="adj_azure" class="form-control" min="0" step="1" placeholder="0"
-                     value="{{ form_vals.adj_azure or '' }}" form="form-server">
-            </div>
-            <div class="form-text">e.g. networking, storage, support</div>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label small fw-semibold">On-Premises — upfront one-time cost (USD)</label>
-            <div class="input-group input-group-sm">
-              <span class="input-group-text">$</span>
-              <input type="number" name="adj_onprem_upfront" class="form-control" min="0" step="1" placeholder="0"
-                     value="{{ form_vals.adj_onprem_upfront or '' }}" form="form-server">
-            </div>
-            <div class="form-text">e.g. hardware purchase, migration costs</div>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label small fw-semibold">ExaCC — upfront one-time cost (USD)</label>
-            <div class="input-group input-group-sm">
-              <span class="input-group-text">$</span>
-              <input type="number" name="adj_exacc_upfront" class="form-control" min="0" step="1" placeholder="0"
-                     value="{{ form_vals.adj_exacc_upfront or '' }}" form="form-server">
-            </div>
-            <div class="form-text">e.g. rack installation, site prep</div>
           </div>
         </div>
-        <!-- Hidden inputs to carry adjustments in manual-mode form -->
-        <div id="manualAdjInputs" style="display:none">
-          <input type="number" name="adj_onprem"         form="form-manual" value="{{ form_vals.adj_onprem or '' }}">
-          <input type="number" name="adj_oci"            form="form-manual" value="{{ form_vals.adj_oci or '' }}">
-          <input type="number" name="adj_exacc"          form="form-manual" value="{{ form_vals.adj_exacc or '' }}">
-          <input type="number" name="adj_azure"          form="form-manual" value="{{ form_vals.adj_azure or '' }}">
-          <input type="number" name="adj_onprem_upfront" form="form-manual" value="{{ form_vals.adj_onprem_upfront or '' }}">
-          <input type="number" name="adj_exacc_upfront"  form="form-manual" value="{{ form_vals.adj_exacc_upfront or '' }}">
+
+        <!-- OCI -->
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="card border-0 bg-light h-100">
+            <div class="card-body py-2 px-3">
+              <div class="fw-semibold small mb-2" style="color:#1d4ed8;">
+                <i class="bi bi-cloud me-1"></i>OCI (BYOL &amp; LI)
+              </div>
+              <label class="form-label mb-1" style="font-size:.75rem;">Extra annual cost (USD)</label>
+              <div class="input-group input-group-sm mb-2">
+                <span class="input-group-text">$</span>
+                <input type="number" name="adj_oci" class="form-control" min="0" step="1"
+                       placeholder="0" value="{{ form_vals.adj_oci or '' }}" form="form-server">
+              </div>
+              <div class="form-text mt-1">e.g. storage, networking, support tiers</div>
+            </div>
+          </div>
         </div>
+
+        <!-- ExaCC -->
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="card h-100" style="border:1px solid #c4b5e0; background:#faf8ff;">
+            <div class="card-body py-2 px-3">
+              <div class="fw-semibold small mb-2" style="color:#6d28d9;">
+                <i class="bi bi-server me-1"></i>ExaCC (BYOL &amp; LI)
+              </div>
+              <label class="form-label mb-1" style="font-size:.75rem;">Infrastructure subscription — annual (USD)</label>
+              <div class="input-group input-group-sm mb-2">
+                <span class="input-group-text">$</span>
+                <input type="number" name="adj_exacc" class="form-control" min="0" step="1"
+                       placeholder="0" value="{{ form_vals.adj_exacc or '' }}" form="form-server">
+              </div>
+              <label class="form-label mb-1" style="font-size:.75rem;">Upfront / installation (USD)</label>
+              <div class="input-group input-group-sm">
+                <span class="input-group-text">$</span>
+                <input type="number" name="adj_exacc_upfront" class="form-control" min="0" step="1"
+                       placeholder="0" value="{{ form_vals.adj_exacc_upfront or '' }}" form="form-server">
+              </div>
+              <div class="form-text mt-1">Enter Oracle quote — rack subscription not in public list price</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Azure -->
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="card border-0 bg-light h-100">
+            <div class="card-body py-2 px-3">
+              <div class="fw-semibold small mb-2" style="color:#0369a1;">
+                <i class="bi bi-cloud me-1"></i>Azure (BYOL &amp; LI)
+              </div>
+              <label class="form-label mb-1" style="font-size:.75rem;">Extra annual cost (USD)</label>
+              <div class="input-group input-group-sm mb-2">
+                <span class="input-group-text">$</span>
+                <input type="number" name="adj_azure" class="form-control" min="0" step="1"
+                       placeholder="0" value="{{ form_vals.adj_azure or '' }}" form="form-server">
+              </div>
+              <div class="form-text mt-1">e.g. storage, networking, support tiers</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Hidden inputs to carry adjustments in manual-mode form -->
+      <div style="display:none">
+        <input type="number" name="adj_onprem"         form="form-manual" value="{{ form_vals.adj_onprem or '' }}">
+        <input type="number" name="adj_oci"            form="form-manual" value="{{ form_vals.adj_oci or '' }}">
+        <input type="number" name="adj_exacc"          form="form-manual" value="{{ form_vals.adj_exacc or '' }}">
+        <input type="number" name="adj_azure"          form="form-manual" value="{{ form_vals.adj_azure or '' }}">
+        <input type="number" name="adj_onprem_upfront" form="form-manual" value="{{ form_vals.adj_onprem_upfront or '' }}">
+        <input type="number" name="adj_exacc_upfront"  form="form-manual" value="{{ form_vals.adj_exacc_upfront or '' }}">
       </div>
     </div>
   </div>
