@@ -1284,11 +1284,31 @@
 <div class="card shadow-sm" id="pricing">
   <div class="card-header fw-semibold d-flex align-items-center justify-content-between">
     <span><i class="bi bi-tag me-1"></i> Oracle Product List Prices</span>
-    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#priceModal"
-            onclick="openPriceModal()">
-      <i class="bi bi-plus-lg me-1"></i> Add Price
-    </button>
+    <div class="d-flex gap-2">
+      <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#importPriceModal">
+        <i class="bi bi-file-earmark-excel me-1"></i> Import from Excel
+      </button>
+      <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#priceModal"
+              onclick="openPriceModal()">
+        <i class="bi bi-plus-lg me-1"></i> Add Price
+      </button>
+    </div>
   </div>
+  {% set _imp = request.args.get('imported') %}
+  {% set _imp_err = request.args.get('import_err') %}
+  {% if _imp is not none %}
+  <div class="alert alert-success alert-dismissible mb-0 rounded-0 border-0 border-bottom" role="alert">
+    <i class="bi bi-check-circle-fill me-1"></i>
+    Import complete — <strong>{{ _imp }}</strong> price(s) updated{% if request.args.get('skipped') %}, {{ request.args.get('skipped') }} skipped{% endif %}.
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% elif _imp_err %}
+  <div class="alert alert-danger alert-dismissible mb-0 rounded-0 border-0 border-bottom" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-1"></i>
+    Import failed: <code>{{ _imp_err }}</code>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endif %}
   {% if prices %}
   <div class="table-responsive">
     <table class="table table-sm table-hover align-middle mb-0">
@@ -1346,6 +1366,53 @@
     No prices configured. Add Oracle product list prices to enable cost calculations.
   </div>
   {% endif %}
+</div>
+
+<!-- Import prices modal -->
+<div class="modal fade" id="importPriceModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('licence_analysis') }}" enctype="multipart/form-data">
+        <input type="hidden" name="action" value="import_prices">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-file-earmark-excel me-1"></i> Import Oracle Price List</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small mb-3">
+            Upload an Oracle Technology Global Price List spreadsheet (.xlsx).
+            Rows with a recognised product name and processor or NUP price will be upserted
+            into the price catalogue.
+          </p>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Price List File <span class="text-danger">*</span></label>
+            <input type="file" name="price_file" class="form-control" accept=".xlsx,.xls" required>
+            <div class="form-text">Oracle Technology Price List — .xlsx format</div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Effective Date</label>
+              <input type="date" name="import_date" class="form-control">
+              <div class="form-text">Leave blank to use today's date</div>
+            </div>
+            <div class="col-md-6 d-flex align-items-end pb-1">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="mark_current" value="1"
+                       id="imp-mark-current" checked>
+                <label class="form-check-label fw-semibold" for="imp-mark-current">Mark as current prices</label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-upload me-1"></i> Import
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
 <!-- Price modal -->

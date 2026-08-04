@@ -4762,6 +4762,147 @@ def licence_analysis_servers_api():
     return jsonify([dict(r) for r in rows])
 
 
+def _handle_price_import(req, sess):
+    """
+    Parse an uploaded Oracle Technology Global Price List Excel file and
+    upsert matching rows into shared.oracle_product_list_prices.
+
+    The Oracle price list Excel has varied column layouts across versions.
+    We scan the header row for recognisable column names rather than using
+    fixed column indices.
+
+    Returns a Flask redirect with a session flash-style query param so the
+    template can show a result banner.
+    """
+    import openpyxl
+    from openpyxl import load_workbook
+
+    file = req.files.get("price_file")
+    if not file or not file.filename:
+        return redirect(url_for("licence_analysis", import_err="no_file") + "#pricing")
+
+    eff_date = req.form.get("import_date") or None
+    mark_current = req.form.get("mark_current") == "1"
+    updated_by   = sess.get("username", "import")
+
+    try:
+        file_bytes = io.BytesIO(file.read())
+        wb = load_workbook(filename=file_bytes, read_only=True, data_only=True)
+    except Exception as e:
+        return redirect(url_for("licence_analysis", import_err=str(e)) + "#pricing")
+
+    # Oracle price list may have multiple sheets; find the one with product data.
+    # Typically the main sheet is called "Technology" or "Database" or Sheet1.
+    target_sheet = None
+    for name in wb.sheetnames:
+        nl = name.lower()
+        if any(k in nl for k in ("technology", "database", "product", "price")):
+            target_sheet = wb[name]
+            break
+    if target_sheet is None:
+        target_sheet = wb.active
+
+    # Scan rows to find the header row (contains "Part" or "Product" etc.)
+    # We allow the header to appear anywhere in the first 20 rows.
+    HEADER_KEYWORDS = {"part", "product", "license", "licence", "metric", "processor", "named user"}
+    header_row_idx  = None
+    col_map         = {}   # col name → 0-based column index
+
+    rows_iter = target_sheet.iter_rows(values_only=True)
+    raw_rows  = []
+    for i, row in enumerate(rows_iter):
+        raw_rows.append(row)
+        if i > 19:  # only search first 20 rows for header
+            break
+
+    for i, row in enumerate(raw_rows):
+        cells = [str(c).lower().strip() if c is not None else "" for c in row]
+        hits  = sum(1 for c in cells if any(k in c for k in HEADER_KEYWORDS))
+        if hits >= 2:
+            header_row_idx = i
+            for j, c in enumerate(cells):
+                col_map[c] = j
+            break
+
+    if header_row_idx is None:
+        return redirect(url_for("licence_analysis", import_err="no_header") + "#pricing")
+
+    # Find key columns by fuzzy name matching
+    def find_col(*candidates):
+        for cand in candidates:
+            for key, idx in col_map.items():
+                if cand in key:
+                    return idx
+        return None
+
+    col_product   = find_col("product", "description", "name")
+    col_processor = find_col("processor license", "processor lic", "full use", "processor")
+    col_nup       = find_col("named user plus", "named user", "nup")
+    col_metric    = find_col("license metric", "licence metric", "metric")
+    col_part      = find_col("part number", "part #", "part no", "ordering")
+
+    if col_product is None or col_processor is None:
+        return redirect(url_for("licence_analysis", import_err="no_cols") + "#pricing")
+
+    # Reopen from the in-memory buffer (file.stream is already consumed)
+    file_bytes.seek(0)
+    wb2 = load_workbook(filename=file_bytes, read_only=True, data_only=True)
+    sheet2 = wb2[target_sheet.title]
+
+    imported = 0
+    skipped  = 0
+
+    for row_i, row in enumerate(sheet2.iter_rows(values_only=True)):
+        if row_i <= header_row_idx:
+            continue  # skip header and anything before it
+
+        product_name = str(row[col_product]).strip() if row[col_product] is not None else ""
+        if not product_name or product_name.lower() in ("none", "nan", ""):
+            continue
+
+        # Skip section headers / totals / blank rows
+        proc_raw = row[col_processor] if col_processor < len(row) else None
+        nup_raw  = row[col_nup]       if col_nup is not None and col_nup < len(row) else None
+
+        def to_price(val):
+            if val is None:
+                return None
+            try:
+                return float(str(val).replace(",", "").replace("$", "").strip())
+            except (ValueError, TypeError):
+                return None
+
+        proc_price = to_price(proc_raw)
+        nup_price  = to_price(nup_raw)
+
+        if proc_price is None and nup_price is None:
+            skipped += 1
+            continue
+
+        rows_to_upsert = []
+        if proc_price is not None:
+            rows_to_upsert.append((product_name, "processor", proc_price))
+        if nup_price is not None:
+            rows_to_upsert.append((product_name, "named user plus", nup_price))
+
+        for pname, metric, price in rows_to_upsert:
+            try:
+                execute(
+                    "INSERT INTO shared.oracle_product_list_prices "
+                    "(product_name, metric, list_price, currency, effective_date, is_current, notes, updated_by) "
+                    "VALUES (%s,%s,%s,'USD',COALESCE(%s::DATE,CURRENT_DATE),%s,'Imported from Oracle price list',%s) "
+                    "ON CONFLICT (product_name, metric, effective_date) DO UPDATE SET "
+                    "  list_price=EXCLUDED.list_price, is_current=EXCLUDED.is_current, "
+                    "  notes=EXCLUDED.notes, updated_by=EXCLUDED.updated_by",
+                    (pname, metric, price, eff_date, mark_current, updated_by)
+                )
+                imported += 1
+            except Exception:
+                skipped += 1
+
+    return redirect(url_for("licence_analysis", imported=imported, skipped=skipped) + "#pricing")
+
+
 @app.route("/licence-analysis", methods=["GET", "POST"])
 @login_required
 def licence_analysis():
@@ -4828,6 +4969,9 @@ def licence_analysis():
             if pid:
                 execute("DELETE FROM shared.oracle_product_list_prices WHERE price_id=%s", (int(pid),))
             return redirect(url_for("licence_analysis") + "#pricing")
+
+        if action == "import_prices":
+            return _handle_price_import(request, session)
 
     # ------------------------------------------------------------------
     # Analysis form values
