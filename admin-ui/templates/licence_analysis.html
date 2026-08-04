@@ -402,62 +402,40 @@
               {% endfor %}
               {% if result.pool_availability %}
               {% if has_new %}
-              <!-- Subtotals row: one cell per column -->
               <tr class="table-light fw-semibold border-top" style="font-size:.85rem;">
-                <td class="ps-3 py-2" colspan="3" style="color:#374151;">Totals</td>
-                <td class="py-2 text-end text-muted">—</td><!-- From Pool (count, no total) -->
-                <td class="py-2 text-end" style="color:#16a34a;">
-                  ${{ "{:,.0f}".format(ns.total_pool_support) }}<span class="fw-normal text-muted" style="font-size:.7rem;">/yr</span>
+                <td class="ps-3 py-2" colspan="3">Total annual licence cost for this server</td>
+                <td colspan="2" class="py-2 text-end" style="color:#16a34a;">
+                  ${{ "{:,.0f}".format(ns.total_pool_support) }}/yr <span class="fw-normal text-muted" style="font-size:.75rem;">(existing support)</span>
                 </td>
-                <td class="py-2 text-end text-muted">—</td><!-- To Buy (count, no total) -->
-                <td class="py-2 text-end" style="color:#dc2626;">
-                  ${{ "{:,.0f}".format(ns.total_new_cost) }}<span class="fw-normal text-muted" style="font-size:.7rem;"> one-off</span>
+                <td colspan="2" class="py-2 text-end" style="color:#dc2626;">
+                  ${{ "{:,.0f}".format(ns.total_new_cost) }} <span class="fw-normal text-muted" style="font-size:.75rem;">(new purchase)</span>
                 </td>
                 <td class="py-2 text-end" style="color:#dc2626;">
-                  ${{ "{:,.0f}".format(ns.total_new_support) }}<span class="fw-normal text-muted" style="font-size:.7rem;">/yr</span>
+                  ${{ "{:,.0f}".format(ns.total_new_support) }}/yr <span class="fw-normal text-muted" style="font-size:.75rem;">(new support)</span>
                 </td>
                 <td></td>
               </tr>
-              <!-- Grand Total Year 1 -->
-              <tr class="fw-bold border-top" style="background:#f0fdf4; font-size:.88rem;">
+              <tr class="fw-bold" style="background:#f0fdf4; font-size:.88rem;">
                 <td class="ps-3 py-2" colspan="3">Grand Total Year 1</td>
-                <td class="py-2 text-end text-muted">—</td>
-                <td class="py-2 text-end" style="color:#16a34a;">
-                  ${{ "{:,.0f}".format(ns.total_pool_support) }}<span class="fw-normal text-muted" style="font-size:.7rem;">/yr</span>
-                </td>
-                <td class="py-2 text-end text-muted">—</td>
-                <td class="py-2 text-end" style="color:#dc2626;">
-                  ${{ "{:,.0f}".format(ns.total_new_cost) }}<span class="fw-normal text-muted" style="font-size:.7rem;"> one-off</span>
-                </td>
-                <td class="py-2 text-end" style="color:#dc2626;">
-                  ${{ "{:,.0f}".format(ns.total_new_support) }}<span class="fw-normal text-muted" style="font-size:.7rem;">/yr</span>
-                </td>
-                <td class="py-2 text-end pe-3 fw-bold">
+                <td colspan="5" class="py-2 text-end">
                   ${{ "{:,.0f}".format(ns.total_pool_support + ns.total_new_cost + ns.total_new_support) }}
+                  <span class="fw-normal text-muted" style="font-size:.75rem;">(existing support + new purchase + new support)</span>
                 </td>
+                <td></td>
               </tr>
-              <!-- Grand Total Year 2+ -->
               <tr class="fw-bold" style="background:#f0fdf4; font-size:.88rem;">
                 <td class="ps-3 py-2" colspan="3">Grand Total Year 2+</td>
-                <td class="py-2 text-end text-muted">—</td>
-                <td class="py-2 text-end" style="color:#16a34a;">
-                  ${{ "{:,.0f}".format(ns.total_pool_support) }}<span class="fw-normal text-muted" style="font-size:.7rem;">/yr</span>
-                </td>
-                <td class="py-2 text-end text-muted">—</td>
-                <td class="py-2 text-end text-muted">—</td>
-                <td class="py-2 text-end" style="color:#dc2626;">
-                  ${{ "{:,.0f}".format(ns.total_new_support) }}<span class="fw-normal text-muted" style="font-size:.7rem;">/yr</span>
-                </td>
-                <td class="py-2 text-end pe-3 fw-bold">
+                <td colspan="5" class="py-2 text-end">
                   ${{ "{:,.0f}".format(ns.total_pool_support + ns.total_new_support) }}
+                  <span class="fw-normal text-muted" style="font-size:.75rem;">(existing support + new support only)</span>
                 </td>
+                <td></td>
               </tr>
               {% else %}
               <tr class="fw-bold border-top" style="background:#f0fdf4; font-size:.88rem;">
                 <td class="ps-3 py-2" colspan="3">Total Annual Cost (existing support)</td>
-                <td class="py-2 text-end text-muted">—</td>
-                <td class="py-2 text-end" style="color:#16a34a;">
-                  ${{ "{:,.0f}".format(ns.total_pool_support) }}<span class="fw-normal text-muted" style="font-size:.7rem;">/yr</span>
+                <td colspan="2" class="py-2 text-end" style="color:#16a34a;">
+                  ${{ "{:,.0f}".format(ns.total_pool_support) }}/yr
                 </td>
                 <td></td>
               </tr>
