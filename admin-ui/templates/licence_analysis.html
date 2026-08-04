@@ -395,9 +395,13 @@
             Click a tab above for the full breakdown of each option.
           </p>
 
-          <div class="row g-3">
-
-            <!-- On-Premises -->
+          {# ── Row 1: On-Premises (baseline) ──────────────────────────── #}
+          <div class="row g-3 mb-1">
+            <div class="col-12">
+              <span class="text-muted small fw-semibold text-uppercase" style="letter-spacing:.05em; font-size:.7rem;">
+                <i class="bi bi-building me-1"></i>On-Premises
+              </span>
+            </div>
             <div class="col-md-4 col-lg-3">
               <div class="card border-secondary h-100">
                 <div class="card-header bg-secondary text-white py-2 fw-semibold small">
@@ -427,8 +431,16 @@
                 </div>
               </div>
             </div>
+          </div>
 
-            {% if oci %}
+          {% if oci %}
+          {# ── Row 2: OCI ──────────────────────────────────────────────── #}
+          <div class="row g-3 mb-1 mt-2">
+            <div class="col-12">
+              <span class="text-muted small fw-semibold text-uppercase" style="letter-spacing:.05em; font-size:.7rem;">
+                <i class="bi bi-cloud me-1"></i>Oracle Cloud Infrastructure (OCI)
+              </span>
+            </div>
 
             <!-- OCI BYOL -->
             {% if oci.byol_sku %}
@@ -485,6 +497,16 @@
               </div>
             </div>
             {% endif %}
+          </div>
+
+          {# ── Row 3: ExaCC ────────────────────────────────────────────── #}
+          {% if oci.exacc_byol_sku or oci.exacc_li_sku %}
+          <div class="row g-3 mb-1 mt-2">
+            <div class="col-12">
+              <span class="fw-semibold text-uppercase" style="letter-spacing:.05em; font-size:.7rem; color:#6d28d9;">
+                <i class="bi bi-server me-1"></i>Exadata Cloud@Customer (ExaCC)
+              </span>
+            </div>
 
             <!-- ExaCC BYOL -->
             {% if oci.exacc_byol_sku %}
@@ -632,9 +654,19 @@
             </div>
             {% endif %}
 
-            {% endif %}{# end if oci #}
+          </div>{# end ExaCC row #}
+          {% endif %}{# end exacc_byol or exacc_li #}
 
-            {% if az %}
+          {% endif %}{# end if oci #}
+
+          {% if az %}
+          {# ── Row 4: Azure ────────────────────────────────────────────── #}
+          <div class="row g-3 mb-1 mt-2">
+            <div class="col-12">
+              <span class="text-muted small fw-semibold text-uppercase" style="letter-spacing:.05em; font-size:.7rem; color:#0369a1;">
+                <i class="bi bi-microsoft me-1"></i>Oracle on Azure
+              </span>
+            </div>
 
             <!-- Azure BYOL -->
             {% if az.byol_sku %}
@@ -692,9 +724,8 @@
             </div>
             {% endif %}
 
-            {% endif %}{# end if az #}
-
-          </div>{# end summary cards row #}
+          </div>{# end Azure row #}
+          {% endif %}{# end if az #}
 
           <!-- Cumulative cost line chart -->
           <div class="mt-4 mb-2">
