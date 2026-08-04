@@ -5114,10 +5114,12 @@ def licence_analysis():
         except (ValueError, TypeError):
             return 0.0
 
-    onprem_per_core    = _adj("adj_onprem")   # per-core rate; total resolved after physical_cores known
+    _DEFAULT_MANAGED_PER_CORE = 2175.58
+    _onprem_raw = request.args.get("adj_onprem", None)
+    onprem_per_core = max(float(_onprem_raw), 0) if _onprem_raw not in (None, "") else _DEFAULT_MANAGED_PER_CORE
     adj_oci            = _adj("adj_oci")
     _managed_raw = request.args.get("adj_exacc", None)
-    managed_per_core = max(float(_managed_raw), 0) if _managed_raw not in (None, "") else 0.0
+    managed_per_core = max(float(_managed_raw), 0) if _managed_raw not in (None, "") else _DEFAULT_MANAGED_PER_CORE
     adj_azure          = _adj("adj_azure")
     adj_onprem_upfront = 0.0  # removed from UI; kept at zero for downstream compat
     adj_exacc_upfront  = _adj("adj_exacc_upfront")
@@ -5138,9 +5140,9 @@ def licence_analysis():
         "m_edition":           request.args.get("m_edition", "Enterprise Edition"),
         "horizon_years":       request.args.get("horizon_years", "5"),
         # vendor quote adjustments
-        "adj_onprem":          int(onprem_per_core)    if onprem_per_core    else "",
-        "adj_oci":             int(adj_oci)            if adj_oci            else "",
-        "adj_exacc":           int(managed_per_core) if managed_per_core else "",
+        "adj_onprem":          onprem_per_core    if onprem_per_core    else "",
+        "adj_oci":             int(adj_oci)       if adj_oci            else "",
+        "adj_exacc":           managed_per_core   if managed_per_core   else "",
         "adj_azure":           int(adj_azure)          if adj_azure          else "",
         "adj_onprem_upfront":  int(adj_onprem_upfront) if adj_onprem_upfront else "",
         "adj_exacc_upfront":   int(adj_exacc_upfront)  if adj_exacc_upfront  else "",
