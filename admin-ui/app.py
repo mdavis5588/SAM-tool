@@ -5097,6 +5097,10 @@ def licence_analysis():
         "SELECT client_id, client_code, client_name FROM sam_admin.clients "
         "WHERE is_active ORDER BY client_name"
     )
+    prices = query(
+        "SELECT product_name, metric, list_price, is_current "
+        "FROM shared.oracle_product_list_prices"
+    )
     # ------------------------------------------------------------------
     # Analysis form values
     # ------------------------------------------------------------------
