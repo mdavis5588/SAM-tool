@@ -5112,13 +5112,13 @@ def licence_analysis():
 
     adj_onprem         = _adj("adj_onprem")
     adj_oci            = _adj("adj_oci")
-    # ExaCC annual subscription defaults to $143,000 unless the user explicitly sets it to 0
-    _exacc_raw = request.args.get("adj_exacc", None)
-    adj_exacc = max(float(_exacc_raw), 0) if _exacc_raw not in (None, "") else 143000.0
+    _managed_raw = request.args.get("adj_exacc", None)
+    managed_per_core = max(float(_managed_raw), 0) if _managed_raw not in (None, "") else 0.0
     adj_azure          = _adj("adj_azure")
     adj_onprem_upfront = _adj("adj_onprem_upfront")
     adj_exacc_upfront  = _adj("adj_exacc_upfront")
-    adj_any = any([adj_onprem, adj_oci, adj_exacc, adj_azure,
+    adj_exacc = 0.0  # resolved per-analysis once physical_cores is known
+    adj_any = any([adj_onprem, adj_oci, managed_per_core, adj_azure,
                    adj_onprem_upfront, adj_exacc_upfront])
 
     form_vals = {
@@ -5135,7 +5135,7 @@ def licence_analysis():
         # vendor quote adjustments
         "adj_onprem":          int(adj_onprem)         if adj_onprem         else "",
         "adj_oci":             int(adj_oci)            if adj_oci            else "",
-        "adj_exacc":           int(adj_exacc),  # always shown (default 143,000)
+        "adj_exacc":           int(managed_per_core) if managed_per_core else "",
         "adj_azure":           int(adj_azure)          if adj_azure          else "",
         "adj_onprem_upfront":  int(adj_onprem_upfront) if adj_onprem_upfront else "",
         "adj_exacc_upfront":   int(adj_exacc_upfront)  if adj_exacc_upfront  else "",
@@ -5408,6 +5408,7 @@ def licence_analysis():
                     for key in ("byol_annual", "li_annual"):
                         if oci_comparison.get(key) is not None:
                             oci_comparison[key] = round(oci_comparison[key] + adj_oci, 2)
+                adj_exacc = round(managed_per_core * physical_cores, 2) if managed_per_core else 0.0
                 if adj_exacc or adj_exacc_upfront:
                     for key in ("exacc_byol_annual", "exacc_li_annual"):
                         if oci_comparison.get(key) is not None:

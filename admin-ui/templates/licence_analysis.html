@@ -204,13 +204,13 @@
               <div class="fw-semibold small mb-2" style="color:#6d28d9;">
                 <i class="bi bi-server me-1"></i>ExaCC (BYOL &amp; LI)
               </div>
-              <label class="form-label mb-1" style="font-size:.75rem;">Infrastructure subscription — annual (USD)</label>
+              <label class="form-label mb-1" style="font-size:.75rem;">Managed Service Cost per core (USD)</label>
               <div class="input-group input-group-sm">
                 <span class="input-group-text">$</span>
-                <input type="number" name="adj_exacc" class="form-control" min="0" step="1"
-                       placeholder="143000" value="{{ form_vals.adj_exacc }}" form="form-server">
+                <input type="number" name="adj_exacc" class="form-control" min="0" step="0.01"
+                       placeholder="0" value="{{ form_vals.adj_exacc }}" form="form-server">
               </div>
-              <div class="form-text mt-1">Defaults to $143,000/yr — update with Oracle quote</div>
+              <div class="form-text mt-1">Annual cost per physical core — multiplied by core count</div>
             </div>
           </div>
         </div>
@@ -569,14 +569,14 @@
                     <input type="hidden" name="adj_oci"           value="{{ form_vals.adj_oci or '' }}">
                     <input type="hidden" name="adj_azure"         value="{{ form_vals.adj_azure or '' }}">
                     <div style="font-size:.72rem;" class="text-muted mb-1">
-                      <i class="bi bi-pencil me-1"></i>Enter Oracle quote to update ExaCC costs:
+                      <i class="bi bi-pencil me-1"></i>Managed Service Cost per core:
                     </div>
                     <div class="mb-2">
-                      <label style="font-size:.72rem;">Annual subscription (USD/yr)</label>
+                      <label style="font-size:.72rem;">Cost per physical core (USD/yr)</label>
                       <div class="input-group input-group-sm">
                         <span class="input-group-text">$</span>
-                        <input type="number" name="adj_exacc" class="form-control" min="0" step="1"
-                               placeholder="143000" value="{{ form_vals.adj_exacc }}">
+                        <input type="number" name="adj_exacc" class="form-control" min="0" step="0.01"
+                               placeholder="0" value="{{ form_vals.adj_exacc }}">
                       </div>
                     </div>
                     <button type="submit" class="btn btn-sm w-100" style="background:#7c5cbf; color:#fff;">
@@ -632,14 +632,14 @@
                     <input type="hidden" name="adj_oci"           value="{{ form_vals.adj_oci or '' }}">
                     <input type="hidden" name="adj_azure"         value="{{ form_vals.adj_azure or '' }}">
                     <div style="font-size:.72rem;" class="text-muted mb-1">
-                      <i class="bi bi-pencil me-1"></i>Enter Oracle quote to update ExaCC costs:
+                      <i class="bi bi-pencil me-1"></i>Managed Service Cost per core:
                     </div>
                     <div class="mb-2">
-                      <label style="font-size:.72rem;">Annual subscription (USD/yr)</label>
+                      <label style="font-size:.72rem;">Cost per physical core (USD/yr)</label>
                       <div class="input-group input-group-sm">
                         <span class="input-group-text">$</span>
-                        <input type="number" name="adj_exacc" class="form-control" min="0" step="1"
-                               placeholder="143000" value="{{ form_vals.adj_exacc }}">
+                        <input type="number" name="adj_exacc" class="form-control" min="0" step="0.01"
+                               placeholder="0" value="{{ form_vals.adj_exacc }}">
                       </div>
                     </div>
                     <button type="submit" class="btn btn-sm w-100" style="background:#5b34a8; color:#fff;">
