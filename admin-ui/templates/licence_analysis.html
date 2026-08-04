@@ -417,19 +417,31 @@
                   <div class="text-muted small mb-1">{{ oci.byol_sku.name }}</div>
                   <div class="text-muted small mb-3">Bring existing licences — pay compute only</div>
                   <div class="row g-1 text-center">
-                    <div class="col-4 border-end">
+                    <div class="col-6 border-end border-bottom pb-1">
                       <div class="text-muted small">Per OCPU/hr</div>
                       <div class="fw-bold">${{ "{:,.4f}".format(oci.byol_sku.unit_price) }}</div>
                     </div>
-                    <div class="col-4 border-end">
+                    <div class="col-6 border-bottom pb-1">
                       <div class="text-muted small">Annual compute</div>
                       <div class="fw-bold text-primary">${{ "{:,.0f}".format(oci.byol_annual) }}</div>
                     </div>
-                    <div class="col-4">
+                    <div class="col-6 border-end pt-1">
                       <div class="text-muted small">Licence cost (BYOL)</div>
                       <div class="fw-bold text-dark">
                         {% if result.total_licence_cost %}
                           ${{ "{:,.0f}".format(result.total_licence_cost) }}
+                        {% else %}
+                          <span class="text-muted">—</span>
+                        {% endif %}
+                      </div>
+                    </div>
+                    <div class="col-6 pt-1">
+                      <div class="text-muted small">Year 2+ ongoing</div>
+                      <div class="fw-bold text-primary">
+                        {% if oci.byol_annual is not none and result.onprem_yr2 is not none %}
+                          ${{ "{:,.0f}".format(oci.byol_annual + result.onprem_yr2) }}
+                        {% elif oci.byol_annual is not none %}
+                          ${{ "{:,.0f}".format(oci.byol_annual) }}
                         {% else %}
                           <span class="text-muted">—</span>
                         {% endif %}
@@ -485,19 +497,31 @@
                   <div class="text-muted small mb-1">{{ oci.exacc_byol_sku.name }}</div>
                   <div class="text-muted small mb-3">Exadata on-premises, Oracle-managed — bring your licence</div>
                   <div class="row g-1 text-center">
-                    <div class="col-4 border-end">
+                    <div class="col-6 border-end border-bottom pb-1">
                       <div class="text-muted small">Per OCPU/hr</div>
                       <div class="fw-bold">${{ "{:,.4f}".format(oci.exacc_byol_sku.unit_price) }}</div>
                     </div>
-                    <div class="col-4 border-end">
+                    <div class="col-6 border-bottom pb-1">
                       <div class="text-muted small">Annual compute</div>
                       <div class="fw-bold" style="color:#7c5cbf;">${{ "{:,.0f}".format(oci.exacc_byol_annual) }}</div>
                     </div>
-                    <div class="col-4">
+                    <div class="col-6 border-end pt-1">
                       <div class="text-muted small">Licence cost (BYOL)</div>
                       <div class="fw-bold text-dark">
                         {% if result.total_licence_cost %}
                           ${{ "{:,.0f}".format(result.total_licence_cost) }}
+                        {% else %}
+                          <span class="text-muted">—</span>
+                        {% endif %}
+                      </div>
+                    </div>
+                    <div class="col-6 pt-1">
+                      <div class="text-muted small">Year 2+ ongoing</div>
+                      <div class="fw-bold" style="color:#7c5cbf;">
+                        {% if oci.exacc_byol_annual is not none and result.onprem_yr2 is not none %}
+                          ${{ "{:,.0f}".format(oci.exacc_byol_annual + result.onprem_yr2) }}
+                        {% elif oci.exacc_byol_annual is not none %}
+                          ${{ "{:,.0f}".format(oci.exacc_byol_annual) }}
                         {% else %}
                           <span class="text-muted">—</span>
                         {% endif %}
@@ -683,19 +707,31 @@
                   <div class="text-muted small mb-1">{{ az.byol_sku.name }}</div>
                   <div class="text-muted small mb-3">Bring existing licences — pay compute only</div>
                   <div class="row g-1 text-center">
-                    <div class="col-4 border-end">
+                    <div class="col-6 border-end border-bottom pb-1">
                       <div class="text-muted small">Per vCPU/hr</div>
                       <div class="fw-bold">${{ "{:,.4f}".format(az.byol_sku.unit_price) }}</div>
                     </div>
-                    <div class="col-4 border-end">
+                    <div class="col-6 border-bottom pb-1">
                       <div class="text-muted small">Annual compute</div>
                       <div class="fw-bold text-info">${{ "{:,.0f}".format(az.byol_annual) }}</div>
                     </div>
-                    <div class="col-4">
+                    <div class="col-6 border-end pt-1">
                       <div class="text-muted small">Licence cost (BYOL)</div>
                       <div class="fw-bold text-dark">
                         {% if result.total_licence_cost %}
                           ${{ "{:,.0f}".format(result.total_licence_cost) }}
+                        {% else %}
+                          <span class="text-muted">—</span>
+                        {% endif %}
+                      </div>
+                    </div>
+                    <div class="col-6 pt-1">
+                      <div class="text-muted small">Year 2+ ongoing</div>
+                      <div class="fw-bold text-info">
+                        {% if az.byol_annual is not none and result.onprem_yr2 is not none %}
+                          ${{ "{:,.0f}".format(az.byol_annual + result.onprem_yr2) }}
+                        {% elif az.byol_annual is not none %}
+                          ${{ "{:,.0f}".format(az.byol_annual) }}
                         {% else %}
                           <span class="text-muted">—</span>
                         {% endif %}
