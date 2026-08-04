@@ -1121,7 +1121,7 @@
                       <div class="fw-bold">${{ "{:,.4f}".format(oci.exacc_byol_sku.unit_price) }}</div>
                     </div>
                     <div class="col-6 border-bottom pb-1">
-                      <div class="text-muted small">Annual compute only</div>
+                      <div class="text-muted small">Annual compute + managed svc</div>
                       <div class="fw-bold text-muted">${{ "{:,.0f}".format(oci.exacc_byol_annual) }}</div>
                     </div>
                     <div class="col-6 border-end pt-1">
@@ -1142,6 +1142,11 @@
                   <div class="alert py-1 px-2 mt-2 small mb-0" style="background:#f3f0ff;border-color:#c4b5e0;color:#4c1d95;">
                     Infrastructure subscription fees apply separately on top of this compute rate.
                   </div>
+                  {% if result.adjustments.exacc %}
+                  <div class="mt-2 pt-2 border-top" style="font-size:.7rem; color:#92400e;">
+                    <i class="bi bi-sliders me-1"></i>Managed service: +${{ "{:,.0f}".format(result.adjustments.exacc) }}/yr included in compute + managed svc figure
+                  </div>
+                  {% endif %}
                 </div>
               </div>
             </div>
@@ -1171,6 +1176,11 @@
                   <div class="alert py-1 px-2 mt-2 small mb-0" style="background:#f3f0ff;border-color:#c4b5e0;color:#4c1d95;">
                     Infrastructure subscription fees apply separately. No separate Oracle support contract needed.
                   </div>
+                  {% if result.adjustments.exacc %}
+                  <div class="mt-2 pt-2 border-top" style="font-size:.7rem; color:#92400e;">
+                    <i class="bi bi-sliders me-1"></i>Managed service: +${{ "{:,.0f}".format(result.adjustments.exacc) }}/yr included in annual figure
+                  </div>
+                  {% endif %}
                 </div>
               </div>
             </div>
