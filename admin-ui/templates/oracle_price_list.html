@@ -137,46 +137,59 @@
 {% endmacro %}
 
 {% if prices %}
-
-<!-- Processor Perpetual Licences -->
-<div class="card shadow-sm mb-4">
-  <div class="card-header d-flex align-items-center gap-2 py-2">
-    <i class="bi bi-cpu text-primary"></i>
-    <span class="fw-semibold">Processor Perpetual Licences</span>
-    <span class="badge bg-secondary ms-auto">{{ processor_prices|length }}</span>
+<div class="card shadow-sm">
+  <!-- Tab nav -->
+  <div class="card-header pb-0 pt-2 border-bottom-0">
+    <ul class="nav nav-tabs card-header-tabs" id="priceTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="tab-proc-btn" data-bs-toggle="tab"
+                data-bs-target="#tab-proc" type="button" role="tab">
+          <i class="bi bi-cpu me-1"></i>Processor Perpetual
+          <span class="badge bg-secondary ms-1" style="font-size:.7rem">{{ processor_prices|length }}</span>
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-nup-btn" data-bs-toggle="tab"
+                data-bs-target="#tab-nup" type="button" role="tab">
+          <i class="bi bi-people me-1"></i>Named User Plus
+          <span class="badge bg-secondary ms-1" style="font-size:.7rem">{{ nup_prices|length }}</span>
+        </button>
+      </li>
+      {% if other_prices %}
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-other-btn" data-bs-toggle="tab"
+                data-bs-target="#tab-other" type="button" role="tab">
+          <i class="bi bi-tag me-1"></i>Other
+          <span class="badge bg-secondary ms-1" style="font-size:.7rem">{{ other_prices|length }}</span>
+        </button>
+      </li>
+      {% endif %}
+    </ul>
   </div>
-  {% if processor_prices %}
-    {{ price_table(processor_prices) }}
-  {% else %}
-  <div class="card-body text-muted small"><i class="bi bi-inbox me-1"></i>No processor licence prices configured.</div>
-  {% endif %}
-</div>
 
-<!-- Named User Plus Licences -->
-<div class="card shadow-sm mb-4">
-  <div class="card-header d-flex align-items-center gap-2 py-2">
-    <i class="bi bi-people text-primary"></i>
-    <span class="fw-semibold">Named User Plus Licences</span>
-    <span class="badge bg-secondary ms-auto">{{ nup_prices|length }}</span>
+  <!-- Tab content -->
+  <div class="tab-content" id="priceTabContent">
+    <div class="tab-pane fade show active" id="tab-proc" role="tabpanel">
+      {% if processor_prices %}
+        {{ price_table(processor_prices) }}
+      {% else %}
+      <div class="p-3 text-muted small"><i class="bi bi-inbox me-1"></i>No processor licence prices configured.</div>
+      {% endif %}
+    </div>
+    <div class="tab-pane fade" id="tab-nup" role="tabpanel">
+      {% if nup_prices %}
+        {{ price_table(nup_prices) }}
+      {% else %}
+      <div class="p-3 text-muted small"><i class="bi bi-inbox me-1"></i>No named user plus prices configured.</div>
+      {% endif %}
+    </div>
+    {% if other_prices %}
+    <div class="tab-pane fade" id="tab-other" role="tabpanel">
+      {{ price_table(other_prices) }}
+    </div>
+    {% endif %}
   </div>
-  {% if nup_prices %}
-    {{ price_table(nup_prices) }}
-  {% else %}
-  <div class="card-body text-muted small"><i class="bi bi-inbox me-1"></i>No named user plus prices configured.</div>
-  {% endif %}
 </div>
-
-<!-- Other Licences -->
-{% if other_prices %}
-<div class="card shadow-sm mb-4">
-  <div class="card-header d-flex align-items-center gap-2 py-2">
-    <i class="bi bi-tag text-primary"></i>
-    <span class="fw-semibold">Other Licences</span>
-    <span class="badge bg-secondary ms-auto">{{ other_prices|length }}</span>
-  </div>
-  {{ price_table(other_prices) }}
-</div>
-{% endif %}
 
 {% else %}
 <div class="card shadow-sm">

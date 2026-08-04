@@ -4910,6 +4910,18 @@ ORACLE_PUBLISHED_PRICES = [
     # ── Database Editions ────────────────────────────────────────────────
     ("Oracle Database Enterprise Edition",          "processor",       47500.00),
     ("Oracle Database Enterprise Edition",          "named_user_plus",   950.00),
+    # ── Management Packs ─────────────────────────────────────────────────
+    ("Oracle Database Diagnostics Pack",            "processor",        7500.00),
+    ("Oracle Database Diagnostics Pack",            "named_user_plus",   150.00),
+    ("Oracle Database Tuning Pack",                 "processor",        5000.00),
+    ("Oracle Database Tuning Pack",                 "named_user_plus",   100.00),
+    ("Oracle Database Lifecycle Management Pack",   "processor",        5000.00),
+    ("Oracle Database Lifecycle Management Pack",   "named_user_plus",   100.00),
+    ("Oracle Configuration Management Pack",        "processor",        5000.00),
+    ("Oracle Configuration Management Pack",        "named_user_plus",   100.00),
+    ("Oracle Provisioning and Patch Automation",    "processor",        5000.00),
+    ("Oracle Provisioning and Patch Automation",    "named_user_plus",   100.00),
+    # ── Database Editions (continued) ────────────────────────────────────
     ("Oracle Database Standard Edition 2",          "processor",       17500.00),
     ("Oracle Database Standard Edition 2",          "named_user_plus",   350.00),
     ("Oracle Database Personal Edition",            "named_user_plus",   460.00),
@@ -4938,17 +4950,6 @@ ORACLE_PUBLISHED_PRICES = [
     ("Oracle RAC One Node",                         "named_user_plus",   200.00),
     ("Oracle In-Memory",                            "processor",       23000.00),
     ("Oracle In-Memory",                            "named_user_plus",   460.00),
-    # ── Management Packs ─────────────────────────────────────────────────
-    ("Oracle Database Diagnostics Pack",            "processor",        7500.00),
-    ("Oracle Database Diagnostics Pack",            "named_user_plus",   150.00),
-    ("Oracle Database Tuning Pack",                 "processor",        5000.00),
-    ("Oracle Database Tuning Pack",                 "named_user_plus",   100.00),
-    ("Oracle Database Lifecycle Management Pack",   "processor",        5000.00),
-    ("Oracle Database Lifecycle Management Pack",   "named_user_plus",   100.00),
-    ("Oracle Configuration Management Pack",        "processor",        5000.00),
-    ("Oracle Configuration Management Pack",        "named_user_plus",   100.00),
-    ("Oracle Provisioning and Patch Automation",    "processor",        5000.00),
-    ("Oracle Provisioning and Patch Automation",    "named_user_plus",   100.00),
     # ── WebLogic ─────────────────────────────────────────────────────────
     ("Oracle WebLogic Server Enterprise Edition",   "processor",       45000.00),
     ("Oracle WebLogic Server Enterprise Edition",   "named_user_plus",   900.00),
@@ -5003,8 +5004,14 @@ def oracle_price_list():
             "SELECT price_id, product_name, metric, list_price, currency, "
             "       effective_date, is_current, notes "
             "FROM shared.oracle_product_list_prices "
-            "ORDER BY product_name, metric, effective_date DESC"
+            "ORDER BY effective_date DESC, product_name, metric"
         )
+        _seen, _ordered = set(), []
+        for pn, _, _ in ORACLE_PUBLISHED_PRICES:
+            if pn not in _seen:
+                _ordered.append(pn)
+                _seen.add(pn)
+        prices = sorted(prices, key=lambda p: _ordered.index(p["product_name"]) if p["product_name"] in _seen else len(_ordered))
     except Exception as e:
         app.logger.error("oracle_price_list DB error: %s", e, exc_info=True)
         prices = []
