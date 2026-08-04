@@ -621,7 +621,7 @@
           <div class="mt-4 mb-2">
             <div class="d-flex align-items-baseline gap-2 mb-1">
               <h6 class="fw-semibold mb-0">Cumulative Cost — Breakeven Analysis</h6>
-              <span class="text-muted small">On-prem perpetual vs cloud Licence Included options &nbsp;·&nbsp; dashed = Azure</span>
+              <span class="text-muted small">All options vs on-prem &nbsp;·&nbsp; BYOL includes licence purchase in Year 1 &nbsp;·&nbsp; dashed = Azure</span>
             </div>
             <div style="position:relative; height:340px;">
               <canvas id="breakevenChart" aria-label="Cumulative cost breakeven chart"></canvas>
@@ -1519,30 +1519,48 @@ function openPriceModal(id, name, metric, price, currency, effDate, isCurrent, n
   /* cumulative on-prem at year y */
   function opCum(y) { return onpremYr1 + (y - 1) * onpremYr2; }
 
-  /* LI options: { label, annual, color, dash } */
-  const liOptions = [];
+  /* LI options: { label, annual, color, dash, isByol } */
+  const allOptions = [];
 
   {% if oci %}
+    {% set ba  = oci.byol_annual       | float if oci.byol_annual       is not none else 0 %}
     {% set la  = oci.li_annual         | float if oci.li_annual         is not none else 0 %}
+    {% set eba = oci.exacc_byol_annual | float if oci.exacc_byol_annual is not none else 0 %}
     {% set ela = oci.exacc_li_annual   | float if oci.exacc_li_annual   is not none else 0 %}
+    {% if oci.byol_sku and ba > 0 %}
+  allOptions.push({ label: 'OCI — BYOL',           annual: {{ ba  | round | int }}, color: '#2563eb', dash: [],     isByol: true });
+    {% endif %}
     {% if oci.li_sku and la > 0 %}
-  liOptions.push({ label: 'OCI — Lic. Included', annual: {{ la | round | int }}, color: '#16a34a', dash: [] });
+  allOptions.push({ label: 'OCI — Lic. Included',  annual: {{ la  | round | int }}, color: '#16a34a', dash: [],     isByol: false });
+    {% endif %}
+    {% if oci.exacc_byol_sku and eba > 0 %}
+  allOptions.push({ label: 'ExaCC — BYOL',          annual: {{ eba | round | int }}, color: '#7c3aed', dash: [],     isByol: true });
     {% endif %}
     {% if oci.exacc_li_sku and ela > 0 %}
-  liOptions.push({ label: 'ExaCC — Lic. Included', annual: {{ ela | round | int }}, color: '#c2410c', dash: [] });
+  allOptions.push({ label: 'ExaCC — Lic. Included', annual: {{ ela | round | int }}, color: '#c2410c', dash: [],     isByol: false });
     {% endif %}
   {% endif %}
   {% if az %}
-    {% set alia = az.li_annual | float if az.li_annual is not none else 0 %}
+    {% set aba  = az.byol_annual | float if az.byol_annual is not none else 0 %}
+    {% set alia = az.li_annual   | float if az.li_annual   is not none else 0 %}
+    {% if az.byol_sku and aba > 0 %}
+  allOptions.push({ label: 'Azure — BYOL',   annual: {{ aba  | round | int }}, color: '#0891b2', dash: [7, 4], isByol: true });
+    {% endif %}
     {% if az.li_sku and alia > 0 %}
-  liOptions.push({ label: 'Oracle@Azure', annual: {{ alia | round | int }}, color: '#b45309', dash: [7, 4] });
+  allOptions.push({ label: 'Oracle@Azure',   annual: {{ alia | round | int }}, color: '#b45309', dash: [7, 4], isByol: false });
     {% endif %}
   {% endif %}
 
-  if (liOptions.length === 0) { canvas.closest('.mt-4').style.display = 'none'; return; }
+  if (allOptions.length === 0) { canvas.closest('.mt-4').style.display = 'none'; return; }
 
-  /* ── compute horizon long enough to show all crossovers ─────────── */
-  /* breakeven year: lc / (la - yr2) when la > yr2 */
+  /* ── BYOL cumulative: Year 1 = lc + annual + yr2_support; Year 2+ = annual + yr2_support each year */
+  function byolCum(annual, y) {
+    const yr1 = licenceCost + annual + onpremYr2;
+    return y === 1 ? yr1 : yr1 + (y - 1) * (annual + onpremYr2);
+  }
+
+  /* ── compute horizon long enough to show all LI crossovers ──────── */
+  const liOptions = allOptions.filter(o => !o.isByol);
   const breakYears = liOptions
     .filter(o => o.annual > onpremYr2)
     .map(o => licenceCost / (o.annual - onpremYr2));
@@ -1561,14 +1579,14 @@ function openPriceModal(id, name, metric, price, currency, effDate, isCurrent, n
       data: labels.map((_, i) => opCum(i + 1)),
       borderColor: '#9d174d',
       backgroundColor: '#9d174d18',
-      borderWidth: 2, pointRadius: 4, pointHoverRadius: 6, tension: 0,
+      borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 6, tension: 0,
     },
   ];
 
-  liOptions.forEach(o => {
+  allOptions.forEach(o => {
     datasets.push({
       label: o.label + ' (cumulative)',
-      data: labels.map((_, i) => o.annual * (i + 1)),
+      data: labels.map((_, i) => o.isByol ? byolCum(o.annual, i + 1) : o.annual * (i + 1)),
       borderColor: o.color,
       backgroundColor: o.color + '18',
       borderWidth: 2,
@@ -1577,7 +1595,7 @@ function openPriceModal(id, name, metric, price, currency, effDate, isCurrent, n
     });
   });
 
-  /* ── annotation text ─────────────────────────────────────────────── */
+  /* ── annotation text (LI crossovers only) ───────────────────────── */
   const annEl = document.getElementById('breakevenAnnotations');
   if (annEl) {
     const lines = liOptions.map(o => {
