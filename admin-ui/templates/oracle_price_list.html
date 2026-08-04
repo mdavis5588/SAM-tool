@@ -137,58 +137,55 @@
 {% endmacro %}
 
 {% if prices %}
-<div class="card shadow-sm">
-  <!-- Tab nav -->
-  <div class="card-header pb-0 pt-2">
-    <ul class="nav nav-tabs card-header-tabs border-bottom-0" id="priceTabs" role="tablist">
-      <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="tab-proc-btn" data-bs-toggle="tab"
-                data-bs-target="#tab-proc" type="button" role="tab">
-          <i class="bi bi-cpu me-1"></i>Processor Perpetual
-          <span class="badge bg-secondary ms-1" style="font-size:.7rem">{{ processor_prices|length }}</span>
-        </button>
-      </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link" id="tab-nup-btn" data-bs-toggle="tab"
-                data-bs-target="#tab-nup" type="button" role="tab">
-          <i class="bi bi-people me-1"></i>Named User Plus
-          <span class="badge bg-secondary ms-1" style="font-size:.7rem">{{ nup_prices|length }}</span>
-        </button>
-      </li>
-      {% if other_prices %}
-      <li class="nav-item" role="presentation">
-        <button class="nav-link" id="tab-other-btn" data-bs-toggle="tab"
-                data-bs-target="#tab-other" type="button" role="tab">
-          <i class="bi bi-tag me-1"></i>Other
-          <span class="badge bg-secondary ms-1" style="font-size:.7rem">{{ other_prices|length }}</span>
-        </button>
-      </li>
-      {% endif %}
-    </ul>
-  </div>
 
-  <!-- Tab content -->
-  <div class="tab-content" id="priceTabContent">
-    <div class="tab-pane fade show active" id="tab-proc" role="tabpanel">
-      {% if processor_prices %}
-        {{ price_table(processor_prices) }}
-      {% else %}
-      <div class="p-3 text-muted small"><i class="bi bi-inbox me-1"></i>No processor licence prices configured.</div>
-      {% endif %}
-    </div>
-    <div class="tab-pane fade" id="tab-nup" role="tabpanel">
-      {% if nup_prices %}
-        {{ price_table(nup_prices) }}
-      {% else %}
-      <div class="p-3 text-muted small"><i class="bi bi-inbox me-1"></i>No named user plus prices configured.</div>
-      {% endif %}
-    </div>
-    {% if other_prices %}
-    <div class="tab-pane fade" id="tab-other" role="tabpanel">
-      {{ price_table(other_prices) }}
-    </div>
+<!-- Tab nav (outside card to avoid overlap) -->
+<ul class="nav nav-tabs mb-0" id="priceTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="tab-proc-btn" data-bs-toggle="tab"
+            data-bs-target="#tab-proc" type="button" role="tab">
+      <i class="bi bi-cpu me-1"></i>Processor Perpetual
+      <span class="badge bg-secondary ms-1" style="font-size:.7rem">{{ processor_prices|length }}</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="tab-nup-btn" data-bs-toggle="tab"
+            data-bs-target="#tab-nup" type="button" role="tab">
+      <i class="bi bi-people me-1"></i>Named User Plus
+      <span class="badge bg-secondary ms-1" style="font-size:.7rem">{{ nup_prices|length }}</span>
+    </button>
+  </li>
+  {% if other_prices %}
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="tab-other-btn" data-bs-toggle="tab"
+            data-bs-target="#tab-other" type="button" role="tab">
+      <i class="bi bi-tag me-1"></i>Other
+      <span class="badge bg-secondary ms-1" style="font-size:.7rem">{{ other_prices|length }}</span>
+    </button>
+  </li>
+  {% endif %}
+</ul>
+
+<!-- Tab content in a card, border-top removed so it joins the tab bar -->
+<div class="tab-content card shadow-sm" id="priceTabContent" style="border-top-left-radius:0">
+  <div class="tab-pane fade show active" id="tab-proc" role="tabpanel">
+    {% if processor_prices %}
+      {{ price_table(processor_prices) }}
+    {% else %}
+    <div class="p-3 text-muted small"><i class="bi bi-inbox me-1"></i>No processor licence prices configured.</div>
     {% endif %}
   </div>
+  <div class="tab-pane fade" id="tab-nup" role="tabpanel">
+    {% if nup_prices %}
+      {{ price_table(nup_prices) }}
+    {% else %}
+    <div class="p-3 text-muted small"><i class="bi bi-inbox me-1"></i>No named user plus prices configured.</div>
+    {% endif %}
+  </div>
+  {% if other_prices %}
+  <div class="tab-pane fade" id="tab-other" role="tabpanel">
+    {{ price_table(other_prices) }}
+  </div>
+  {% endif %}
 </div>
 
 {% else %}
