@@ -5433,11 +5433,22 @@ def licence_analysis():
                         "alloc_key":        alloc_key,
                     })
 
-                # Filter pool to only products actually needed for this analysis
-                needed_labels = [r["product_label"].lower() for r in reqs]
+                # Filter pool to only products actually needed for this analysis.
+                # Match on the most distinctive part of the product label — strip
+                # the generic "Oracle Database " / "Oracle " prefix before comparing.
+                def _distinctive(name):
+                    n = name.lower()
+                    for prefix in ("oracle database ", "oracle "):
+                        if n.startswith(prefix):
+                            n = n[len(prefix):]
+                            break
+                    return n
+
+                needed_distinctive = [_distinctive(r["product_label"]) for r in reqs]
                 def _pool_matches_req(pname):
-                    pn = pname.lower()
-                    return any(nl in pn or pn in nl for nl in needed_labels)
+                    pn = _distinctive(pname)
+                    return any(nd in pn or pn in nd for nd in needed_distinctive)
+
                 pool_availability = [pa for pa in pool_availability
                                      if _pool_matches_req(pa["product_name"])]
 
