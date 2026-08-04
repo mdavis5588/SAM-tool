@@ -59,41 +59,56 @@
 </div>
 {% endif %}
 
+<style>
+  .price-table th, .price-table td { white-space: nowrap; vertical-align: middle; }
+  .price-table th { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: #6c757d; }
+  .price-table td.col-product { white-space: normal; min-width: 220px; }
+  .price-table td.col-price, .price-table th.col-price { width: 130px; }
+  .price-table td.col-support, .price-table th.col-support { width: 140px; }
+  .price-table td.col-metric { width: 140px; }
+  .price-table td.col-currency { width: 70px; }
+  .price-table td.col-date { width: 110px; }
+  .price-table td.col-current { width: 70px; text-align: center; }
+  .price-table th.col-current { width: 70px; text-align: center; }
+  .price-table td.col-notes { min-width: 150px; }
+  .price-table td.col-actions { width: 80px; }
+</style>
+
 <div class="card shadow-sm">
   {% if prices %}
   <div class="table-responsive">
-    <table class="table table-sm table-hover align-middle mb-0">
+    <table class="table table-sm table-hover mb-0 price-table" style="font-variant-numeric: tabular-nums;">
       <thead class="table-light">
         <tr>
           <th>Product</th>
-          <th>Metric</th>
-          <th class="text-end">List Price</th>
-          <th class="text-end">Annual Support <span class="text-muted fw-normal">(22%)</span></th>
-          <th>Currency</th>
-          <th>Effective</th>
-          <th>Current</th>
-          <th>Notes</th>
-          <th></th>
+          <th class="col-metric">Metric</th>
+          <th class="col-price text-end">List Price</th>
+          <th class="col-support text-end">Annual Support <span class="fw-normal">(22%)</span></th>
+          <th class="col-currency">CCY</th>
+          <th class="col-date">Effective</th>
+          <th class="col-current">Current</th>
+          <th class="col-notes">Notes</th>
+          <th class="col-actions"></th>
         </tr>
       </thead>
       <tbody>
         {% for p in prices %}
         <tr>
-          <td>{{ p.product_name }}</td>
-          <td><span class="badge bg-secondary">{{ p.metric|replace('_',' ')|title }}</span></td>
-          <td class="text-end fw-semibold">${{ "{:,.2f}".format(p.list_price) }}</td>
-          <td class="text-end text-muted">${{ "{:,.2f}".format(p.list_price * 22 / 100) }}</td>
-          <td>{{ p.currency }}</td>
-          <td class="text-muted small">{{ p.effective_date }}</td>
-          <td>
+          <td class="col-product">{{ p.product_name }}</td>
+          <td class="col-metric"><span class="badge bg-secondary fw-normal">{{ p.metric|replace('_',' ')|title }}</span></td>
+          <td class="col-price text-end fw-semibold">${{ "{:,.2f}".format(p.list_price) }}</td>
+          <td class="col-support text-end text-muted">${{ "{:,.2f}".format(p.list_price * 22 / 100) }}</td>
+          <td class="col-currency text-muted small">{{ p.currency }}</td>
+          <td class="col-date text-muted small">{{ p.effective_date }}</td>
+          <td class="col-current">
             {% if p.is_current %}
               <span class="badge bg-success">Yes</span>
             {% else %}
               <span class="badge bg-secondary">No</span>
             {% endif %}
           </td>
-          <td class="text-muted small">{{ p.notes or '' }}</td>
-          <td class="text-end">
+          <td class="col-notes text-muted small">{{ p.notes or '' }}</td>
+          <td class="col-actions text-end">
             <button class="btn btn-sm btn-outline-secondary me-1"
                     data-bs-toggle="modal" data-bs-target="#priceModal"
                     onclick="openPriceModal({{ p.price_id }}, '{{ p.product_name|e }}', '{{ p.metric }}', {{ p.list_price }}, '{{ p.currency }}', '{{ p.effective_date }}', {{ p.is_current|lower }}, '{{ (p.notes or '')|e }}')">
