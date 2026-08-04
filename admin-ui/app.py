@@ -4779,7 +4779,7 @@ def _handle_price_import(req, sess):
 
     file = req.files.get("price_file")
     if not file or not file.filename:
-        return redirect(url_for("licence_analysis", tab="prices", import_err="no_file") + "#pricing")
+        return redirect(url_for("oracle_price_list", import_err="no_file"))
 
     eff_date = req.form.get("import_date") or None
     mark_current = req.form.get("mark_current") == "1"
@@ -4789,7 +4789,7 @@ def _handle_price_import(req, sess):
         file_bytes = io.BytesIO(file.read())
         wb = load_workbook(filename=file_bytes, read_only=True, data_only=True)
     except Exception as e:
-        return redirect(url_for("licence_analysis", tab="prices", import_err=str(e)) + "#pricing")
+        return redirect(url_for("oracle_price_list", import_err=str(e)))
 
     # Oracle price list may have multiple sheets; find the one with product data.
     # Typically the main sheet is called "Technology" or "Database" or Sheet1.
@@ -4825,7 +4825,7 @@ def _handle_price_import(req, sess):
             break
 
     if header_row_idx is None:
-        return redirect(url_for("licence_analysis", tab="prices", import_err="no_header") + "#pricing")
+        return redirect(url_for("oracle_price_list", import_err="no_header"))
 
     # Find key columns by fuzzy name matching
     def find_col(*candidates):
@@ -4842,7 +4842,7 @@ def _handle_price_import(req, sess):
     col_part      = find_col("part number", "part #", "part no", "ordering")
 
     if col_product is None or col_processor is None:
-        return redirect(url_for("licence_analysis", tab="prices", import_err="no_cols") + "#pricing")
+        return redirect(url_for("oracle_price_list", import_err="no_cols"))
 
     # Reopen from the in-memory buffer (file.stream is already consumed)
     file_bytes.seek(0)
@@ -4900,22 +4900,16 @@ def _handle_price_import(req, sess):
             except Exception:
                 skipped += 1
 
-    return redirect(url_for("licence_analysis", tab="prices", imported=imported, skipped=skipped) + "#pricing")
+    return redirect(url_for("oracle_price_list", imported=imported, skipped=skipped))
 
 
-@app.route("/licence-analysis", methods=["GET", "POST"])
+@app.route("/oracle-price-list", methods=["GET", "POST"])
 @login_required
-def licence_analysis():
+def oracle_price_list():
     role = current_role()
     if role not in ("superadmin", "contracting", "dba"):
         return abort(403)
 
-    SUPPORT_RATE = 0.22  # Oracle standard annual support rate — locked
-
-    clients = query(
-        "SELECT client_id, client_code, client_name FROM sam_admin.clients "
-        "WHERE is_active ORDER BY client_name"
-    )
     prices = query(
         "SELECT price_id, product_name, metric, list_price, currency, "
         "       effective_date, is_current, notes "
@@ -4923,9 +4917,6 @@ def licence_analysis():
         "ORDER BY product_name, metric, effective_date DESC"
     )
 
-    # ------------------------------------------------------------------
-    # Price catalogue management (POST)
-    # ------------------------------------------------------------------
     if request.method == "POST":
         action = request.form.get("action", "")
 
@@ -4962,17 +4953,39 @@ def licence_analysis():
                          eff_date, is_current, notes,
                          session.get("username", "system"))
                     )
-            return redirect(url_for("licence_analysis") + "#pricing")
+            return redirect(url_for("oracle_price_list"))
 
         if action == "delete_price":
             pid = request.form.get("price_id")
             if pid:
                 execute("DELETE FROM shared.oracle_product_list_prices WHERE price_id=%s", (int(pid),))
-            return redirect(url_for("licence_analysis") + "#pricing")
+            return redirect(url_for("oracle_price_list"))
 
         if action == "import_prices":
             return _handle_price_import(request, session)
 
+    return render_template(
+        "oracle_price_list.html",
+        prices=prices,
+        imported=request.args.get("imported"),
+        skipped=request.args.get("skipped"),
+        import_err=request.args.get("import_err"),
+    )
+
+
+@app.route("/licence-analysis", methods=["GET", "POST"])
+@login_required
+def licence_analysis():
+    role = current_role()
+    if role not in ("superadmin", "contracting", "dba"):
+        return abort(403)
+
+    SUPPORT_RATE = 0.22  # Oracle standard annual support rate — locked
+
+    clients = query(
+        "SELECT client_id, client_code, client_name FROM sam_admin.clients "
+        "WHERE is_active ORDER BY client_name"
+    )
     # ------------------------------------------------------------------
     # Analysis form values
     # ------------------------------------------------------------------
@@ -5338,7 +5351,6 @@ def licence_analysis():
     return render_template(
         "licence_analysis.html",
         clients=clients,
-        prices=prices,
         form_vals=form_vals,
         server_list=server_list,
         result=result,
