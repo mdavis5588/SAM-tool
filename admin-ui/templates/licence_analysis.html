@@ -518,6 +518,44 @@
                     {% if result.adjustments.exacc %} +${{ "{:,.0f}".format(result.adjustments.exacc) }}/yr{% endif %}
                   </div>
                   {% endif %}
+                  {# ── inline ExaCC subscription editor ── #}
+                  <form method="get" action="{{ url_for('licence_analysis') }}" class="mt-2 pt-2 border-top">
+                    <input type="hidden" name="mode"              value="{{ form_vals.mode }}">
+                    <input type="hidden" name="client_id"         value="{{ form_vals.client_id }}">
+                    <input type="hidden" name="server_id"         value="{{ form_vals.server_id }}">
+                    <input type="hidden" name="m_hostname"        value="{{ form_vals.m_hostname }}">
+                    <input type="hidden" name="m_cores"           value="{{ form_vals.m_cores }}">
+                    <input type="hidden" name="m_sockets"         value="{{ form_vals.m_sockets }}">
+                    <input type="hidden" name="m_ram_gb"          value="{{ form_vals.m_ram_gb }}">
+                    <input type="hidden" name="m_edition"         value="{{ form_vals.m_edition }}">
+                    <input type="hidden" name="horizon_years"     value="{{ form_vals.horizon_years }}">
+                    <input type="hidden" name="adj_onprem"        value="{{ form_vals.adj_onprem or '' }}">
+                    <input type="hidden" name="adj_onprem_upfront" value="{{ form_vals.adj_onprem_upfront or '' }}">
+                    <input type="hidden" name="adj_oci"           value="{{ form_vals.adj_oci or '' }}">
+                    <input type="hidden" name="adj_azure"         value="{{ form_vals.adj_azure or '' }}">
+                    <div style="font-size:.72rem;" class="text-muted mb-1">
+                      <i class="bi bi-pencil me-1"></i>Enter Oracle quote to update ExaCC costs:
+                    </div>
+                    <div class="mb-1">
+                      <label style="font-size:.72rem;">Annual subscription (USD/yr)</label>
+                      <div class="input-group input-group-sm">
+                        <span class="input-group-text">$</span>
+                        <input type="number" name="adj_exacc" class="form-control" min="0" step="1"
+                               placeholder="0" value="{{ form_vals.adj_exacc or '' }}">
+                      </div>
+                    </div>
+                    <div class="mb-2">
+                      <label style="font-size:.72rem;">Upfront / one-time (USD)</label>
+                      <div class="input-group input-group-sm">
+                        <span class="input-group-text">$</span>
+                        <input type="number" name="adj_exacc_upfront" class="form-control" min="0" step="1"
+                               placeholder="0" value="{{ form_vals.adj_exacc_upfront or '' }}">
+                      </div>
+                    </div>
+                    <button type="submit" class="btn btn-sm w-100" style="background:#7c5cbf; color:#fff;">
+                      <i class="bi bi-arrow-clockwise me-1"></i>Apply &amp; Recalculate
+                    </button>
+                  </form>
                 </div>
               </div>
             </div>
@@ -551,6 +589,44 @@
                     {% if result.adjustments.exacc %} +${{ "{:,.0f}".format(result.adjustments.exacc) }}/yr{% endif %}
                   </div>
                   {% endif %}
+                  {# ── inline ExaCC subscription editor ── #}
+                  <form method="get" action="{{ url_for('licence_analysis') }}" class="mt-2 pt-2 border-top">
+                    <input type="hidden" name="mode"              value="{{ form_vals.mode }}">
+                    <input type="hidden" name="client_id"         value="{{ form_vals.client_id }}">
+                    <input type="hidden" name="server_id"         value="{{ form_vals.server_id }}">
+                    <input type="hidden" name="m_hostname"        value="{{ form_vals.m_hostname }}">
+                    <input type="hidden" name="m_cores"           value="{{ form_vals.m_cores }}">
+                    <input type="hidden" name="m_sockets"         value="{{ form_vals.m_sockets }}">
+                    <input type="hidden" name="m_ram_gb"          value="{{ form_vals.m_ram_gb }}">
+                    <input type="hidden" name="m_edition"         value="{{ form_vals.m_edition }}">
+                    <input type="hidden" name="horizon_years"     value="{{ form_vals.horizon_years }}">
+                    <input type="hidden" name="adj_onprem"        value="{{ form_vals.adj_onprem or '' }}">
+                    <input type="hidden" name="adj_onprem_upfront" value="{{ form_vals.adj_onprem_upfront or '' }}">
+                    <input type="hidden" name="adj_oci"           value="{{ form_vals.adj_oci or '' }}">
+                    <input type="hidden" name="adj_azure"         value="{{ form_vals.adj_azure or '' }}">
+                    <div style="font-size:.72rem;" class="text-muted mb-1">
+                      <i class="bi bi-pencil me-1"></i>Enter Oracle quote to update ExaCC costs:
+                    </div>
+                    <div class="mb-1">
+                      <label style="font-size:.72rem;">Annual subscription (USD/yr)</label>
+                      <div class="input-group input-group-sm">
+                        <span class="input-group-text">$</span>
+                        <input type="number" name="adj_exacc" class="form-control" min="0" step="1"
+                               placeholder="0" value="{{ form_vals.adj_exacc or '' }}">
+                      </div>
+                    </div>
+                    <div class="mb-2">
+                      <label style="font-size:.72rem;">Upfront / one-time (USD)</label>
+                      <div class="input-group input-group-sm">
+                        <span class="input-group-text">$</span>
+                        <input type="number" name="adj_exacc_upfront" class="form-control" min="0" step="1"
+                               placeholder="0" value="{{ form_vals.adj_exacc_upfront or '' }}">
+                      </div>
+                    </div>
+                    <button type="submit" class="btn btn-sm w-100" style="background:#5b34a8; color:#fff;">
+                      <i class="bi bi-arrow-clockwise me-1"></i>Apply &amp; Recalculate
+                    </button>
+                  </form>
                 </div>
               </div>
             </div>
