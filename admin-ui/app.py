@@ -331,9 +331,10 @@ def build_oci_comparison(oci_skus: list, total_processor_cores: float,
         if sku["metric"] not in _OCI_OCPU_METRICS:
             continue
         name_l = sku["name"].lower()
-        if "enterprise" not in name_l:
-            continue
         is_exacc = sku.get("is_exacc", False)
+        # ExaCC SKUs don't carry "enterprise" in their name; standard OCI ones do
+        if not is_exacc and "enterprise" not in name_l:
+            continue
         if is_exacc:
             if sku["is_byol"] and exacc_byol_sku is None:
                 exacc_byol_sku = sku
