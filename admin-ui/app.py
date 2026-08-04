@@ -5433,6 +5433,14 @@ def licence_analysis():
                         "alloc_key":        alloc_key,
                     })
 
+                # Filter pool to only products actually needed for this analysis
+                needed_labels = [r["product_label"].lower() for r in reqs]
+                def _pool_matches_req(pname):
+                    pn = pname.lower()
+                    return any(nl in pn or pn in nl for nl in needed_labels)
+                pool_availability = [pa for pa in pool_availability
+                                     if _pool_matches_req(pa["product_name"])]
+
                 # Build product_label -> total allocated from pool
                 for pa in pool_availability:
                     pf = pa["product_family"]
