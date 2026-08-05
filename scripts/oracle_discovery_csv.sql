@@ -10,14 +10,15 @@
 -- For CDB databases, connect to CDB$ROOT to capture all PDBs.
 --
 -- Output files (all prefixed with hostname_dbname_date):
---   <host>_<db>_<date>_server.csv          — server, OS, CPU, RAM, virt detection
---   <host>_<db>_<date>_instances.csv       — Oracle instances and editions
---   <host>_<db>_<date>_product_usage.csv   — licence obligation by product (PRIMARY OUTPUT)
---   <host>_<db>_<date>_feature_usage.csv   — feature-level detail with product mapping
---   <host>_<db>_<date>_users.csv           — Named User Plus counts
---   <host>_<db>_<date>_pdbs.csv            — PDB topology with NUP counts and pack access
---   <host>_<db>_<date>_rac_nodes.csv       — RAC cluster nodes (RAC only)
---   <host>_<db>_<date>_mgmt_packs.csv      — management pack parameter settings per container
+--   <host>_<db>_<date>_server.csv              — server, OS, CPU, RAM, virt detection
+--   <host>_<db>_<date>_instances.csv           — Oracle instances and editions
+--   <host>_<db>_<date>_product_usage.csv       — licence obligation by product (PRIMARY OUTPUT)
+--   <host>_<db>_<date>_feature_usage.csv       — CDB-level feature detail with product mapping
+--   <host>_<db>_<date>_pdb_feature_usage.csv   — per-PDB feature detail (CDB only)
+--   <host>_<db>_<date>_users.csv               — Named User Plus counts
+--   <host>_<db>_<date>_pdbs.csv                — PDB topology (name, con_id, open_mode, restricted)
+--   <host>_<db>_<date>_rac_nodes.csv           — RAC cluster nodes (RAC only)
+--   <host>_<db>_<date>_mgmt_packs.csv          — management pack parameter settings per container
 --
 -- product_usage.csv is the primary licence review output:
 --   CURRENT_USAGE         — used in last sample period; licence required now
@@ -591,64 +592,70 @@ SELECT 'Expired',        COUNT(*) FROM dba_users WHERE oracle_maintained = 'N' A
 SPOOL OFF
 
 -- =============================================================================
--- 6. PDBs (only populated for CDB databases)
---    Includes NUP user counts and management pack parameter per PDB.
+-- 6. PDBs (only populated for CDB databases) — topology only
 -- =============================================================================
 SPOOL &sam_prefix._pdbs.csv
 
-PROMPT pdb_name,con_id,open_mode,restricted,nup_active_users,nup_total_users,mgmt_pack_access,ddl_logging
+PROMPT pdb_name,con_id,open_mode,restricted
 
-WITH pdb_params AS (
-  SELECT
-    con_id,
-    MAX(CASE WHEN LOWER(name) = 'control_management_pack_access'
-             THEN UPPER(SUBSTR(value, 1, 64)) END) AS mgmt_pack,
-    MAX(CASE WHEN LOWER(name) = 'enable_ddl_logging'
-             THEN UPPER(SUBSTR(value, 1, 10)) END) AS ddl_log
-  FROM   gv$parameter
-  WHERE  LOWER(name) IN ('control_management_pack_access', 'enable_ddl_logging')
-    AND  inst_id = 1
-  GROUP  BY con_id
-),
-cdb_defaults AS (
-  SELECT
-    MAX(CASE WHEN LOWER(name) = 'control_management_pack_access'
-             THEN UPPER(SUBSTR(value, 1, 64)) END) AS mgmt_pack,
-    MAX(CASE WHEN LOWER(name) = 'enable_ddl_logging'
-             THEN UPPER(SUBSTR(value, 1, 10)) END) AS ddl_log
-  FROM   gv$parameter
-  WHERE  LOWER(name) IN ('control_management_pack_access', 'enable_ddl_logging')
-    AND  inst_id = 1
-    AND  con_id IN (0, 1)
-),
-pdb_nup AS (
-  SELECT
-    con_id,
-    SUM(CASE WHEN account_status = 'OPEN' AND oracle_maintained = 'N' THEN 1 ELSE 0 END) AS nup_active,
-    SUM(CASE WHEN oracle_maintained = 'N' THEN 1 ELSE 0 END)                              AS nup_total
-  FROM   cdb_users
-  GROUP  BY con_id
-)
 SELECT
-  p.name                                                         AS pdb_name,
+  p.name                  AS pdb_name,
   p.con_id,
   p.open_mode,
-  NVL(p.restricted, 'NO')                                       AS restricted,
-  NVL(n.nup_active, 0)                                          AS nup_active_users,
-  NVL(n.nup_total,  0)                                          AS nup_total_users,
-  NVL(pp.mgmt_pack, cd.mgmt_pack)                               AS mgmt_pack_access,
-  NVL(pp.ddl_log,   cd.ddl_log)                                 AS ddl_logging
-FROM       v$pdbs         p
-CROSS JOIN cdb_defaults   cd
-LEFT JOIN  pdb_params     pp ON pp.con_id = p.con_id
-LEFT JOIN  pdb_nup        n  ON n.con_id  = p.con_id
+  NVL(p.restricted, 'NO') AS restricted
+FROM   v$pdbs p
 WHERE  p.con_id > 0
 ORDER  BY p.con_id;
 
 SPOOL OFF
 
 -- =============================================================================
--- 7. MANAGEMENT PACK PARAMETERS — GV$PARAMETER per container
+-- 7. PDB FEATURE USAGE — per-PDB features from CDB_FEATURE_USAGE_STATISTICS
+--    Only populated for CDB databases (connect to CDB$ROOT).
+--    Same exclusion list as the CDB-level feature_usage.csv.
+--    Rows with detected_usages = 0 are excluded.
+-- =============================================================================
+SPOOL &sam_prefix._pdb_feature_usage.csv
+
+PROMPT pdb_name,con_id,feature_name,db_version,detected_usages,total_samples,currently_used,first_usage_date,last_usage_date
+
+SELECT
+  p.name                                                         AS pdb_name,
+  f.con_id,
+  '"'||REPLACE(SUBSTR(f.name,1,200),'"','""')||'"'              AS feature_name,
+  SUBSTR(f.version, 1, 20)                                       AS db_version,
+  NVL(f.detected_usages, 0)                                     AS detected_usages,
+  NVL(f.total_samples, 0)                                        AS total_samples,
+  f.currently_used,
+  TO_CHAR(f.first_usage_date, 'YYYY-MM-DD')                     AS first_usage_date,
+  TO_CHAR(f.last_usage_date,  'YYYY-MM-DD')                     AS last_usage_date
+FROM   cdb_feature_usage_statistics f
+JOIN   v$pdbs p ON p.con_id = f.con_id
+WHERE  f.con_id > 1
+  AND  f.detected_usages > 0
+  AND  f.name NOT IN (
+           'ASO native encryption and checksumming',
+           'Automatic Maintenance - SQL Tuning Advisor',
+           'Automatic Maintenance - Space Advisor',
+           'Automatic Segment Advisor',
+           'Automatic SQL Tuning Advisor',
+           'EM Performance Page',
+           'File Mapping',
+           'Label Security',
+           'OLAP - Analytic Workspaces',
+           'Oracle Secure Backup',
+           'Real-Time SQL Monitoring',
+           'SQL Access Advisor',
+           'SQL Tuning Advisor',
+           'SQL Tuning Set (user)',
+           'Segment Advisor'
+       )
+ORDER  BY p.name, f.name;
+
+SPOOL OFF
+
+-- =============================================================================
+-- 8. MANAGEMENT PACK PARAMETERS — GV$PARAMETER per container
 --    control_management_pack_access:
 --      NONE                  — no Diagnostics or Tuning Pack licensed
 --      DIAGNOSTIC            — Diagnostics Pack only
@@ -685,7 +692,7 @@ ORDER BY p.con_id, p.param_name;
 SPOOL OFF
 
 -- =============================================================================
--- 8. RAC nodes (only populated for RAC databases)
+-- 9. RAC nodes (only populated for RAC databases)
 -- =============================================================================
 SPOOL &sam_prefix._rac_nodes.csv
 
@@ -716,12 +723,13 @@ PROMPT  Discovery complete (CSV).
 PROMPT  Files written:
 PROMPT    &sam_prefix._server.csv
 PROMPT    &sam_prefix._instances.csv
-PROMPT    &sam_prefix._product_usage.csv    (PRIMARY - licence by product)
-PROMPT    &sam_prefix._feature_usage.csv    (detail with product mapping)
+PROMPT    &sam_prefix._product_usage.csv        (PRIMARY - licence by product)
+PROMPT    &sam_prefix._feature_usage.csv        (CDB-level detail with product mapping)
+PROMPT    &sam_prefix._pdb_feature_usage.csv    (per-PDB feature detail; CDB only)
 PROMPT    &sam_prefix._users.csv
-PROMPT    &sam_prefix._pdbs.csv             (CDB only; NUP counts + pack access)
-PROMPT    &sam_prefix._mgmt_packs.csv       (GV$PARAMETER pack settings per container)
-PROMPT    &sam_prefix._rac_nodes.csv        (RAC only)
+PROMPT    &sam_prefix._pdbs.csv                 (CDB only; topology)
+PROMPT    &sam_prefix._mgmt_packs.csv           (GV$PARAMETER pack settings per container)
+PROMPT    &sam_prefix._rac_nodes.csv            (RAC only)
 PROMPT
 PROMPT  MAP logic: MOS Doc ID 1317265.1 (Oct-2021 v21.0)
 PROMPT ============================================================
