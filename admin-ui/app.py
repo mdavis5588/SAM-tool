@@ -3239,6 +3239,32 @@ def edit_server(server_id):
         except Exception:
             client_contacts = []
 
+    # Feature usage — CDB-level and per-PDB rows grouped by instance then PDB
+    try:
+        feature_rows = query(
+            f"""SELECT i.oracle_sid, i.instance_id,
+                       f.pdb_name, f.feature_name, f.db_version,
+                       f.detected_usages, f.total_samples,
+                       f.currently_used, f.first_usage_date, f.last_usage_date,
+                       f.last_sample_date
+                FROM {schema}.oracle_feature_usage f
+                JOIN {schema}.oracle_instances i ON i.instance_id = f.instance_id
+                WHERE i.server_id = %s
+                ORDER BY i.oracle_sid, COALESCE(f.pdb_name, ''), f.feature_name""",
+            (server_id,)
+        )
+        # Group: {sid: {pdb_name_or_None: [rows]}}
+        from collections import defaultdict
+        feature_by_instance = defaultdict(lambda: defaultdict(list))
+        for r in feature_rows:
+            feature_by_instance[r["oracle_sid"]][r["pdb_name"]].append(r)
+        feature_by_instance = {
+            sid: dict(pdbs)
+            for sid, pdbs in feature_by_instance.items()
+        }
+    except Exception:
+        feature_by_instance = {}
+
     return render_template("edit_server.html",
                            server=server,
                            instances=instances,
@@ -3251,7 +3277,8 @@ def edit_server(server_id):
                            java_installations=java_installations,
                            se2_violations=se2_violations,
                            cpu_validation=cpu_validation,
-                           client_contacts=client_contacts)
+                           client_contacts=client_contacts,
+                           feature_by_instance=feature_by_instance)
 
 
 # ---------------------------------------------------------------------------

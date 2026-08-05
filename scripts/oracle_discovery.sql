@@ -90,11 +90,9 @@ DECLARE
   v_diag_licensed    VARCHAR2(5)   := 'false';
   v_tuning_licensed  VARCHAR2(5)   := 'false';
 
-  -- Per-PDB pack/NUP variables
-  v_pdb_nup_active   NUMBER        := 0;
-  v_pdb_nup_total    NUMBER        := 0;
-  v_pdb_mgmt_pack    VARCHAR2(64)  := '';
-  v_pdb_ddl_log      VARCHAR2(10)  := '';
+  -- Per-PDB feature variables
+  v_pdb_feat_json    CLOB          := '';
+  v_pdb_feat_sep     VARCHAR2(1)   := '';
 
   -- Cursors
   CURSOR c_instances IS
@@ -272,44 +270,68 @@ BEGIN
       END LOOP;
     END IF;
 
-    -- PDBs
+    -- PDBs (with per-PDB feature usage from cdb_feature_usage_statistics)
     v_pdbs_json := ''; v_pdb_sep := ''; v_pdb_count := 0;
     IF v_is_cdb THEN
       FOR v_pdb_rec IN c_pdbs LOOP
-        -- NUP user counts per PDB via CDB_USERS (requires CDB$ROOT connection)
-        v_pdb_nup_active := 0; v_pdb_nup_total := 0;
+        -- Per-PDB feature usage (requires CDB$ROOT connection; gracefully skipped if unavailable)
+        v_pdb_feat_json := ''; v_pdb_feat_sep := '';
         BEGIN
-          SELECT COUNT(*) INTO v_pdb_nup_active FROM cdb_users
-          WHERE oracle_maintained = 'N' AND account_status = 'OPEN' AND con_id = v_pdb_rec.con_id;
-          SELECT COUNT(*) INTO v_pdb_nup_total  FROM cdb_users
-          WHERE oracle_maintained = 'N' AND con_id = v_pdb_rec.con_id;
-        EXCEPTION WHEN OTHERS THEN NULL;
+          FOR v_feat_rec IN (
+            SELECT SUBSTR(name, 1, 200)              AS feature_name,
+                   SUBSTR(version, 1, 20)            AS db_version,
+                   NVL(detected_usages, 0)           AS detected_usages,
+                   NVL(total_samples, 0)             AS total_samples,
+                   CASE WHEN currently_used = 'TRUE' THEN 'true' ELSE 'false' END AS currently_used,
+                   TO_CHAR(first_usage_date, 'YYYY-MM-DD') AS first_usage_date,
+                   TO_CHAR(last_usage_date,  'YYYY-MM-DD') AS last_usage_date,
+                   SUBSTR(NVL(description, ''), 1, 500)    AS description
+            FROM   cdb_feature_usage_statistics
+            WHERE  con_id = v_pdb_rec.con_id
+              AND  detected_usages > 0
+              AND  name NOT IN (
+                       'ASO native encryption and checksumming',
+                       'Automatic Maintenance - SQL Tuning Advisor',
+                       'Automatic Maintenance - Space Advisor',
+                       'Automatic Segment Advisor',
+                       'Automatic SQL Tuning Advisor',
+                       'EM Performance Page',
+                       'File Mapping',
+                       'Label Security',
+                       'OLAP - Analytic Workspaces',
+                       'Oracle Secure Backup',
+                       'Real-Time SQL Monitoring',
+                       'SQL Access Advisor',
+                       'SQL Tuning Advisor',
+                       'SQL Tuning Set (user)',
+                       'Segment Advisor'
+                   )
+            ORDER BY name
+          ) LOOP
+            v_pdb_feat_json := v_pdb_feat_json || v_pdb_feat_sep
+              || '{"feature_name":"'    || j(v_feat_rec.feature_name)
+              || '","db_version":"'     || j(v_feat_rec.db_version)
+              || '","detected_usages":' || v_feat_rec.detected_usages
+              || ',"total_samples":'    || v_feat_rec.total_samples
+              || ',"currently_used":'   || v_feat_rec.currently_used
+              || ',"first_usage_date":' || CASE WHEN v_feat_rec.first_usage_date IS NOT NULL
+                                                THEN '"' || v_feat_rec.first_usage_date || '"'
+                                                ELSE 'null' END
+              || ',"last_usage_date":'  || CASE WHEN v_feat_rec.last_usage_date IS NOT NULL
+                                                THEN '"' || v_feat_rec.last_usage_date || '"'
+                                                ELSE 'null' END
+              || ',"description":"'     || j(v_feat_rec.description) || '"}';
+            v_pdb_feat_sep := ',';
+          END LOOP;
+        EXCEPTION WHEN OTHERS THEN NULL;  -- cdb_feature_usage_statistics not accessible; skip
         END;
-        -- Management-pack parameter for this PDB; defaults to CDB value if no PDB override
-        v_pdb_mgmt_pack := v_mgmt_pack_access;
-        v_pdb_ddl_log   := v_ddl_logging;
-        BEGIN
-          SELECT UPPER(SUBSTR(value,1,64)) INTO v_pdb_mgmt_pack
-          FROM gv$parameter WHERE LOWER(name)='control_management_pack_access' AND inst_id=1 AND con_id=v_pdb_rec.con_id;
-        EXCEPTION WHEN OTHERS THEN NULL;
-        END;
-        BEGIN
-          SELECT UPPER(SUBSTR(value,1,10)) INTO v_pdb_ddl_log
-          FROM gv$parameter WHERE LOWER(name)='enable_ddl_logging' AND inst_id=1 AND con_id=v_pdb_rec.con_id;
-        EXCEPTION WHEN OTHERS THEN NULL;
-        END;
+
         v_pdbs_json := v_pdbs_json || v_pdb_sep
-          || '{"pdb_name":"'             || j(v_pdb_rec.pdb_name)
-          || '","con_id":'               || v_pdb_rec.con_id
-          || ',"open_mode":"'            || j(v_pdb_rec.open_mode)
-          || '","restricted":"'          || j(NVL(v_pdb_rec.restricted,'NO'))
-          || '","nup_active_users":'     || v_pdb_nup_active
-          || ',"nup_total_users":'       || v_pdb_nup_total
-          || ',"mgmt_pack_access":"'     || j(v_pdb_mgmt_pack)
-          || '","diagnostics_licensed":' || CASE WHEN v_pdb_mgmt_pack IN ('DIAGNOSTIC','DIAGNOSTIC+TUNING') THEN 'true' ELSE 'false' END
-          || ',"tuning_licensed":'       || CASE WHEN v_pdb_mgmt_pack = 'DIAGNOSTIC+TUNING' THEN 'true' ELSE 'false' END
-          || ',"ddl_logging":'           || CASE WHEN v_pdb_ddl_log = 'TRUE' THEN 'true' ELSE 'false' END
-          || '}';
+          || '{"pdb_name":"'    || j(v_pdb_rec.pdb_name)
+          || '","con_id":'      || v_pdb_rec.con_id
+          || ',"open_mode":"'   || j(v_pdb_rec.open_mode)
+          || '","restricted":"' || j(NVL(v_pdb_rec.restricted,'NO'))
+          || '","feature_usage":[' || v_pdb_feat_json || ']}';
         v_pdb_sep := ','; v_pdb_count := v_pdb_count + 1;
       END LOOP;
     END IF;
