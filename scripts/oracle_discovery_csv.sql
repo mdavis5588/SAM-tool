@@ -610,47 +610,240 @@ ORDER  BY p.con_id;
 SPOOL OFF
 
 -- =============================================================================
--- 7. PDB FEATURE USAGE — per-PDB features from CDB_FEATURE_USAGE_STATISTICS
+-- 7. PDB FEATURE USAGE — per-PDB licensed features from CDB_FEATURE_USAGE_STATISTICS
 --    Only populated for CDB databases (connect to CDB$ROOT).
---    Same exclusion list as the CDB-level feature_usage.csv.
---    Rows with detected_usages = 0 are excluded.
+--    Applies full MOS Doc ID 1317265.1 MAP logic partitioned by con_id so that
+--    only the most-recent DBID/VERSION sample per PDB is used (CURRENT_ENTRY).
+--    INVALID features excluded; BUG-suppressed features included for visibility.
+--    C003/C005 (Multitenant) excluded at PDB level (con_id > 1) per Oracle guidance.
 -- =============================================================================
 SPOOL &sam_prefix._pdb_feature_usage.csv
 
-PROMPT pdb_name,con_id,feature_name,db_version,detected_usages,total_samples,currently_used,first_usage_date,last_usage_date
+PROMPT pdb_name,con_id,product,feature_name,usage_status,db_version,detected_usages,total_samples,currently_used,first_usage_date,last_usage_date
 
+WITH
+map AS (
+  SELECT '' product,'' feature,'' mversion,'' condition FROM dual UNION ALL
+  SELECT 'Active Data Guard','Active Data Guard - Real-Time Query on Physical Standby','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Active Data Guard','Global Data Services','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Active Data Guard or Real Application Clusters','Application Continuity','^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Analytics','Data Mining','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Compression','ADVANCED Index Compression','^12\.','BUG' FROM dual UNION ALL
+  SELECT 'Advanced Compression','Advanced Index Compression','^12\.','BUG' FROM dual UNION ALL
+  SELECT 'Advanced Compression','Advanced Index Compression','^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Compression','Backup HIGH Compression','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Compression','Backup LOW Compression','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Compression','Backup MEDIUM Compression','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Compression','Backup ZLIB Compression','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Compression','Data Guard','^11\.2|^1[289]\.|^2[0-9]\.','C001' FROM dual UNION ALL
+  SELECT 'Advanced Compression','Flashback Data Archive','^11\.2\.0\.[1-3]\.', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Compression','Flashback Data Archive','^(11\.2\.0\.[4-9]\.|1[289]\.|2[0-9]\.)','INVALID' FROM dual UNION ALL
+  SELECT 'Advanced Compression','HeapCompression','^11\.2|^12\.1','BUG' FROM dual UNION ALL
+  SELECT 'Advanced Compression','HeapCompression','^12\.[2-9]|^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Compression','Heat Map','^12\.1','BUG' FROM dual UNION ALL
+  SELECT 'Advanced Compression','Heat Map','^12\.[2-9]|^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Compression','Hybrid Columnar Compression Row Level Locking','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Compression','Information Lifecycle Management','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Compression','Oracle Advanced Network Compression Service','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Compression','Oracle Utility Datapump (Export)','^11\.2|^1[289]\.|^2[0-9]\.','C001' FROM dual UNION ALL
+  SELECT 'Advanced Compression','Oracle Utility Datapump (Import)','^11\.2|^1[289]\.|^2[0-9]\.','C001' FROM dual UNION ALL
+  SELECT 'Advanced Compression','SecureFile Compression (user)','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Compression','SecureFile Deduplication (user)','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Security','ASO native encryption and checksumming','^11\.2|^1[289]\.|^2[0-9]\.','INVALID' FROM dual UNION ALL
+  SELECT 'Advanced Security','Backup Encryption','^11\.2', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Security','Backup Encryption','^1[289]\.|^2[0-9]\.','INVALID' FROM dual UNION ALL
+  SELECT 'Advanced Security','Data Redaction','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Security','Encrypted Tablespaces','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Security','Oracle Utility Datapump (Export)','^11\.2|^1[289]\.|^2[0-9]\.','C002' FROM dual UNION ALL
+  SELECT 'Advanced Security','Oracle Utility Datapump (Import)','^11\.2|^1[289]\.|^2[0-9]\.','C002' FROM dual UNION ALL
+  SELECT 'Advanced Security','SecureFile Encryption (user)','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Advanced Security','Transparent Data Encryption','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Change Management Pack','Change Management Pack','^11\.2', ' ' FROM dual UNION ALL
+  SELECT 'Configuration Management Pack for Oracle Database','EM Config Management Pack','^11\.2', ' ' FROM dual UNION ALL
+  SELECT 'Data Masking Pack','Data Masking Pack','^11\.2', ' ' FROM dual UNION ALL
+  SELECT '.Database Gateway','Gateways','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT '.Database Gateway','Transparent Gateway','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Database In-Memory','In-Memory ADO Policies','^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Database In-Memory','In-Memory Aggregation','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Database In-Memory','In-Memory Column Store','^12\.1\.0\.2\.','BUG' FROM dual UNION ALL
+  SELECT 'Database In-Memory','In-Memory Column Store','^12\.1\.0\.[3-9]\.|^12\.2|^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Database In-Memory','In-Memory Distribute For Service (User Defined)','^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Database In-Memory','In-Memory Expressions','^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Database In-Memory','In-Memory FastStart','^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Database In-Memory','In-Memory Join Groups','^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Database Vault','Oracle Database Vault','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Database Vault','Privilege Capture','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Diagnostics Pack','ADDM','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Diagnostics Pack','AWR Baseline','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Diagnostics Pack','AWR Baseline Template','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Diagnostics Pack','AWR Report','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Diagnostics Pack','Automatic Workload Repository','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Diagnostics Pack','Baseline Adaptive Thresholds','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Diagnostics Pack','Baseline Static Computations','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Diagnostics Pack','Diagnostic Pack','^11\.2', ' ' FROM dual UNION ALL
+  SELECT 'Diagnostics Pack','EM Performance Page','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT '.Exadata','Cloud DB with EHCC','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT '.Exadata','Exadata','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT '.GoldenGate','GoldenGate','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT '.HW','Hybrid Columnar Compression','^12\.1','BUG' FROM dual UNION ALL
+  SELECT '.HW','Hybrid Columnar Compression','^12\.[2-9]|^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT '.HW','Hybrid Columnar Compression Conventional Load','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT '.HW','Hybrid Columnar Compression Row Level Locking','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT '.HW','ODA Infrastructure','^1[9]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT '.HW','Sun ZFS with EHCC','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT '.HW','ZFS Storage','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT '.HW','Zone maps','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Label Security','Label Security','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Multitenant','Oracle Multitenant','^1[28]\.','C003' FROM dual UNION ALL
+  SELECT 'Multitenant','Oracle Multitenant','^1[9]\.|^2[0-9]\.','C005' FROM dual UNION ALL
+  SELECT 'Multitenant','Oracle Pluggable Databases','^1[28]\.','C003' FROM dual UNION ALL
+  SELECT 'OLAP','OLAP - Analytic Workspaces','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'OLAP','OLAP - Cubes','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Partitioning','Partitioning (user)','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Partitioning','Zone maps','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT '.Pillar Storage','Pillar Storage','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT '.Pillar Storage','Pillar Storage with EHCC','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT '.Provisioning and Patch Automation Pack','EM Standalone Provisioning and Patch Automation Pack','^11\.2', ' ' FROM dual UNION ALL
+  SELECT 'Provisioning and Patch Automation Pack for Database','EM Database Provisioning and Patch Automation Pack','^11\.2', ' ' FROM dual UNION ALL
+  SELECT 'RAC or RAC One Node','Quality of Service Management','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Real Application Clusters','Real Application Clusters (RAC)','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Real Application Clusters One Node','Real Application Cluster One Node','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Real Application Testing','Database Replay: Workload Capture','^11\.2|^1[289]\.|^2[0-9]\.','C004' FROM dual UNION ALL
+  SELECT 'Real Application Testing','Database Replay: Workload Replay','^11\.2|^1[289]\.|^2[0-9]\.','C004' FROM dual UNION ALL
+  SELECT 'Real Application Testing','SQL Performance Analyzer','^11\.2|^1[289]\.|^2[0-9]\.','C004' FROM dual UNION ALL
+  SELECT '.Secure Backup','Oracle Secure Backup','^1[289]\.|^2[0-9]\.','INVALID' FROM dual UNION ALL
+  SELECT 'Spatial and Graph','Spatial','^11\.2','INVALID' FROM dual UNION ALL
+  SELECT 'Spatial and Graph','Spatial','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Tuning Pack','Automatic Maintenance - SQL Tuning Advisor','^1[289]\.|^2[0-9]\.','INVALID' FROM dual UNION ALL
+  SELECT 'Tuning Pack','Automatic SQL Tuning Advisor','^11\.2|^1[289]\.|^2[0-9]\.','INVALID' FROM dual UNION ALL
+  SELECT 'Tuning Pack','Real-Time SQL Monitoring','^11\.2', ' ' FROM dual UNION ALL
+  SELECT 'Tuning Pack','Real-Time SQL Monitoring','^1[289]\.|^2[0-9]\.','INVALID' FROM dual UNION ALL
+  SELECT 'Tuning Pack','SQL Access Advisor','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Tuning Pack','SQL Monitoring and Tuning pages','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Tuning Pack','SQL Profile','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Tuning Pack','SQL Tuning Advisor','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+  SELECT 'Tuning Pack','SQL Tuning Set (user)','^1[289]\.|^2[0-9]\.','INVALID' FROM dual UNION ALL
+  SELECT 'Tuning Pack','Tuning Pack','^11\.2', ' ' FROM dual UNION ALL
+  SELECT '.WebLogic Server Management Pack Enterprise Edition','EM AS Provisioning and Patch Automation Pack','^11\.2', ' ' FROM dual UNION ALL
+  SELECT '' product,'' feature,'' mversion,'' condition FROM dual
+),
+-- CDB_FEATURE_USAGE_STATISTICS — deduplicated to most-recent sample per con_id.
+-- Partitioning the FIRST_VALUE by con_id mirrors what the official MOS script
+-- does with &&DFUS. (CDB_FEATURE_USAGE_STATISTICS) at the PDB level.
+fus AS (
+  SELECT
+    con_id,
+    CASE
+      WHEN dbid||'#'||version||'#'||TO_CHAR(last_sample_date,'YYYYMMDDHH24MISS') =
+           FIRST_VALUE(dbid)    OVER (PARTITION BY con_id ORDER BY last_sample_date DESC NULLS LAST, dbid DESC)||'#'||
+           FIRST_VALUE(version) OVER (PARTITION BY con_id ORDER BY last_sample_date DESC NULLS LAST, dbid DESC)||'#'||
+           FIRST_VALUE(TO_CHAR(last_sample_date,'YYYYMMDDHH24MISS'))
+                                OVER (PARTITION BY con_id ORDER BY last_sample_date DESC NULLS LAST, dbid DESC)
+      THEN 'Y' ELSE 'N'
+    END                 AS current_entry,
+    name, last_sample_date, dbid, version,
+    detected_usages, total_samples, currently_used,
+    first_usage_date, last_usage_date, aux_count, feature_info
+  FROM cdb_feature_usage_statistics
+  WHERE con_id > 1
+),
+pfus AS (
+  SELECT
+    f.con_id,
+    m.product,
+    f.name                AS feature_being_used,
+    CASE
+      WHEN m.condition = 'BUG'
+           THEN '3.SUPPRESSED_DUE_TO_BUG'
+      WHEN f.detected_usages > 0
+           AND f.currently_used  = 'TRUE'
+           AND f.current_entry   = 'Y'
+           AND (TRIM(m.condition) IS NULL
+                OR (condition_met = 'TRUE' AND condition_counter = 'FALSE'))
+           THEN '6.CURRENT_USAGE'
+      WHEN f.detected_usages > 0
+           AND f.currently_used  = 'TRUE'
+           AND f.current_entry   = 'Y'
+           AND condition_met   = 'TRUE'
+           AND condition_counter = 'TRUE'
+           THEN '5.PAST_OR_CURRENT_USAGE'
+      WHEN f.detected_usages > 0
+           AND (TRIM(m.condition) IS NULL OR condition_met = 'TRUE')
+           THEN '4.PAST_USAGE'
+      WHEN f.current_entry = 'Y'
+           THEN '2.NO_CURRENT_USAGE'
+      ELSE '1.NO_PAST_USAGE'
+    END                 AS usage,
+    f.last_sample_date, f.version,
+    f.detected_usages, f.total_samples, f.currently_used,
+    CASE WHEN m.condition LIKE 'C___' AND condition_met = 'FALSE'
+         THEN TO_DATE(NULL) ELSE f.first_usage_date END AS first_usage_date,
+    CASE WHEN m.condition LIKE 'C___' AND condition_met = 'FALSE'
+         THEN TO_DATE(NULL) ELSE f.last_usage_date  END AS last_usage_date
+  FROM (
+    SELECT
+      f2.con_id,
+      m2.product, m2.condition,
+      CASE
+        WHEN m2.condition = 'C001'
+             AND (  (    REGEXP_LIKE(TO_CHAR(f2.feature_info), 'compression[ -]used:[ 0-9]*[1-9][ 0-9]*time', 'i')
+                     AND TO_CHAR(f2.feature_info) NOT LIKE '%(BASIC algorithm used: 0 times, LOW algorithm used: 0 times, MEDIUM algorithm used: 0 times, HIGH algorithm used: 0 times)%')
+                 OR REGEXP_LIKE(TO_CHAR(f2.feature_info), 'compression[ -]used: *TRUE', 'i'))
+             THEN 'TRUE'
+        WHEN m2.condition = 'C002'
+             AND (REGEXP_LIKE(TO_CHAR(f2.feature_info), 'encryption used:[ 0-9]*[1-9][ 0-9]*time', 'i')
+               OR REGEXP_LIKE(TO_CHAR(f2.feature_info), 'encryption used: *TRUE', 'i'))
+             THEN 'TRUE'
+        WHEN m2.condition = 'C003' AND f2.aux_count > 1 THEN 'TRUE'
+        WHEN m2.condition = 'C005' AND f2.aux_count > 3 THEN 'TRUE'
+        WHEN m2.condition = 'C004'                       THEN 'TRUE'
+        ELSE 'FALSE'
+      END AS condition_met,
+      CASE
+        WHEN m2.condition = 'C001'
+             AND  REGEXP_LIKE(TO_CHAR(f2.feature_info), 'compression[ -]used:[ 0-9]*[1-9][ 0-9]*time', 'i')
+             AND  TO_CHAR(f2.feature_info) NOT LIKE '%(BASIC algorithm used: 0 times, LOW algorithm used: 0 times, MEDIUM algorithm used: 0 times, HIGH algorithm used: 0 times)%'
+             THEN 'TRUE'
+        WHEN m2.condition = 'C002'
+             AND  REGEXP_LIKE(TO_CHAR(f2.feature_info), 'encryption used:[ 0-9]*[1-9][ 0-9]*time', 'i')
+             THEN 'TRUE'
+        ELSE 'FALSE'
+      END AS condition_counter,
+      f2.current_entry, f2.name, f2.last_sample_date, f2.version,
+      f2.detected_usages, f2.total_samples, f2.currently_used,
+      f2.first_usage_date, f2.last_usage_date, f2.aux_count, f2.feature_info
+    FROM map m2
+    JOIN fus f2 ON m2.feature = f2.name AND REGEXP_LIKE(f2.version, m2.mversion)
+    WHERE NVL(f2.total_samples, 0) > 0
+      -- Exclude C003/C005 (Multitenant licensing) at PDB level per Oracle guidance
+      AND NOT (m2.condition IN ('C003','C005') AND f2.con_id NOT IN (0,1))
+  ) f
+  JOIN map m ON m.product = f.product AND m.feature = f.name AND m.condition = f.condition
+  WHERE NVL(f.condition, '-') != 'INVALID'
+)
 SELECT
-  p.name                                                         AS pdb_name,
-  f.con_id,
-  '"'||REPLACE(SUBSTR(f.name,1,200),'"','""')||'"'              AS feature_name,
-  SUBSTR(f.version, 1, 20)                                       AS db_version,
-  NVL(f.detected_usages, 0)                                     AS detected_usages,
-  NVL(f.total_samples, 0)                                        AS total_samples,
-  f.currently_used,
-  TO_CHAR(f.first_usage_date, 'YYYY-MM-DD')                     AS first_usage_date,
-  TO_CHAR(f.last_usage_date,  'YYYY-MM-DD')                     AS last_usage_date
-FROM   cdb_feature_usage_statistics f
-JOIN   v$pdbs p ON p.con_id = f.con_id
-WHERE  f.con_id > 1
-  AND  f.detected_usages > 0
-  AND  f.name NOT IN (
-           'ASO native encryption and checksumming',
-           'Automatic Maintenance - SQL Tuning Advisor',
-           'Automatic Maintenance - Space Advisor',
-           'Automatic Segment Advisor',
-           'Automatic SQL Tuning Advisor',
-           'EM Performance Page',
-           'File Mapping',
-           'Label Security',
-           'OLAP - Analytic Workspaces',
-           'Oracle Secure Backup',
-           'Real-Time SQL Monitoring',
-           'SQL Access Advisor',
-           'SQL Tuning Advisor',
-           'SQL Tuning Set (user)',
-           'Segment Advisor'
-       )
-ORDER  BY p.name, f.name;
+  p.name                                                               AS pdb_name,
+  pf.con_id,
+  '"'||REPLACE(pf.product,           '"', '""')||'"'                  AS product,
+  '"'||REPLACE(pf.feature_being_used,'"', '""')||'"'                  AS feature_name,
+  DECODE(pf.usage,
+    '2.NO_CURRENT_USAGE',      'NO_CURRENT_USAGE',
+    '3.SUPPRESSED_DUE_TO_BUG', 'SUPPRESSED_DUE_TO_BUG',
+    '4.PAST_USAGE',            'PAST_USAGE',
+    '5.PAST_OR_CURRENT_USAGE', 'PAST_OR_CURRENT_USAGE',
+    '6.CURRENT_USAGE',         'CURRENT_USAGE',
+    'UNKNOWN')                                                         AS usage_status,
+  SUBSTR(pf.version, 1, 20)                                           AS db_version,
+  NVL(pf.detected_usages, 0)                                          AS detected_usages,
+  NVL(pf.total_samples, 0)                                            AS total_samples,
+  pf.currently_used,
+  TO_CHAR(pf.first_usage_date, 'YYYY-MM-DD')                         AS first_usage_date,
+  TO_CHAR(pf.last_usage_date,  'YYYY-MM-DD')                         AS last_usage_date
+FROM pfus pf
+JOIN v$pdbs p ON p.con_id = pf.con_id
+WHERE pf.usage IN ('2.NO_CURRENT_USAGE', '3.SUPPRESSED_DUE_TO_BUG',
+                   '4.PAST_USAGE', '5.PAST_OR_CURRENT_USAGE', '6.CURRENT_USAGE')
+ORDER BY p.name, DECODE(SUBSTR(pf.product,1,1), '.', 2, 1), pf.product, pf.feature_being_used;
 
 SPOOL OFF
 
