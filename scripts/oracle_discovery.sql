@@ -278,35 +278,50 @@ BEGIN
         v_pdb_feat_json := ''; v_pdb_feat_sep := '';
         BEGIN
           FOR v_feat_rec IN (
-            SELECT SUBSTR(name, 1, 200)              AS feature_name,
-                   SUBSTR(version, 1, 20)            AS db_version,
-                   NVL(detected_usages, 0)           AS detected_usages,
-                   NVL(total_samples, 0)             AS total_samples,
-                   CASE WHEN currently_used = 'TRUE' THEN 'true' ELSE 'false' END AS currently_used,
-                   TO_CHAR(first_usage_date, 'YYYY-MM-DD') AS first_usage_date,
-                   TO_CHAR(last_usage_date,  'YYYY-MM-DD') AS last_usage_date,
-                   SUBSTR(NVL(description, ''), 1, 500)    AS description
-            FROM   cdb_feature_usage_statistics
-            WHERE  con_id = v_pdb_rec.con_id
+            -- Deduplicate to most-recent DBID/VERSION sample (CURRENT_ENTRY = 'Y')
+            -- to match the MAP/CURRENT_ENTRY logic used in oracle_discovery_csv.sql.
+            SELECT feature_name, db_version, detected_usages, total_samples,
+                   currently_used, first_usage_date, last_usage_date, description
+            FROM (
+              SELECT SUBSTR(name, 1, 200)              AS feature_name,
+                     SUBSTR(version, 1, 20)            AS db_version,
+                     NVL(detected_usages, 0)           AS detected_usages,
+                     NVL(total_samples, 0)             AS total_samples,
+                     CASE WHEN currently_used = 'TRUE' THEN 'true' ELSE 'false' END AS currently_used,
+                     TO_CHAR(first_usage_date, 'YYYY-MM-DD') AS first_usage_date,
+                     TO_CHAR(last_usage_date,  'YYYY-MM-DD') AS last_usage_date,
+                     SUBSTR(NVL(description, ''), 1, 500)    AS description,
+                     CASE
+                       WHEN dbid||'#'||version||'#'||TO_CHAR(last_sample_date,'YYYYMMDDHH24MISS') =
+                            FIRST_VALUE(dbid)    OVER (ORDER BY last_sample_date DESC NULLS LAST, dbid DESC)||'#'||
+                            FIRST_VALUE(version) OVER (ORDER BY last_sample_date DESC NULLS LAST, dbid DESC)||'#'||
+                            FIRST_VALUE(TO_CHAR(last_sample_date,'YYYYMMDDHH24MISS'))
+                                                 OVER (ORDER BY last_sample_date DESC NULLS LAST, dbid DESC)
+                       THEN 'Y' ELSE 'N'
+                     END AS current_entry
+              FROM   cdb_feature_usage_statistics
+              WHERE  con_id = v_pdb_rec.con_id
+                AND  name NOT IN (
+                         'ASO native encryption and checksumming',
+                         'Automatic Maintenance - SQL Tuning Advisor',
+                         'Automatic Maintenance - Space Advisor',
+                         'Automatic Segment Advisor',
+                         'Automatic SQL Tuning Advisor',
+                         'EM Performance Page',
+                         'File Mapping',
+                         'Label Security',
+                         'OLAP - Analytic Workspaces',
+                         'Oracle Secure Backup',
+                         'Real-Time SQL Monitoring',
+                         'SQL Access Advisor',
+                         'SQL Tuning Advisor',
+                         'SQL Tuning Set (user)',
+                         'Segment Advisor'
+                     )
+            )
+            WHERE  current_entry = 'Y'
               AND  detected_usages > 0
-              AND  name NOT IN (
-                       'ASO native encryption and checksumming',
-                       'Automatic Maintenance - SQL Tuning Advisor',
-                       'Automatic Maintenance - Space Advisor',
-                       'Automatic Segment Advisor',
-                       'Automatic SQL Tuning Advisor',
-                       'EM Performance Page',
-                       'File Mapping',
-                       'Label Security',
-                       'OLAP - Analytic Workspaces',
-                       'Oracle Secure Backup',
-                       'Real-Time SQL Monitoring',
-                       'SQL Access Advisor',
-                       'SQL Tuning Advisor',
-                       'SQL Tuning Set (user)',
-                       'Segment Advisor'
-                   )
-            ORDER BY name
+            ORDER BY feature_name
           ) LOOP
             v_pdb_feat_json := v_pdb_feat_json || v_pdb_feat_sep
               || '{"feature_name":"'    || j(v_feat_rec.feature_name)
