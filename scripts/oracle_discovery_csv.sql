@@ -727,9 +727,9 @@ map AS (
   SELECT '.WebLogic Server Management Pack Enterprise Edition','EM AS Provisioning and Patch Automation Pack','^11\.2', ' ' FROM dual UNION ALL
   SELECT '' product,'' feature,'' mversion,'' condition FROM dual
 ),
--- CDB_FEATURE_USAGE_STATISTICS — deduplicated to most-recent sample per con_id.
--- Partitioning the FIRST_VALUE by con_id mirrors what the official MOS script
--- does with &&DFUS. (CDB_FEATURE_USAGE_STATISTICS) at the PDB level.
+-- CDB_FEATURE_USAGE_STATISTICS deduplicated to most-recent sample per con_id.
+-- FIRST_VALUE partitioned by con_id gives each PDB its own CURRENT_ENTRY,
+-- matching the per-container deduplication in MOS Doc ID 1317265.1.
 fus AS (
   SELECT
     con_id,
@@ -749,77 +749,75 @@ fus AS (
 ),
 pfus AS (
   SELECT
-    f.con_id,
-    m.product,
-    f.name                AS feature_being_used,
+    con_id,
+    product,
+    name                AS feature_being_used,
     CASE
-      WHEN m.condition = 'BUG'
+      WHEN condition = 'BUG'
            THEN '3.SUPPRESSED_DUE_TO_BUG'
-      WHEN f.detected_usages > 0
-           AND f.currently_used  = 'TRUE'
-           AND f.current_entry   = 'Y'
-           AND (TRIM(m.condition) IS NULL
+      WHEN detected_usages > 0
+           AND currently_used  = 'TRUE'
+           AND current_entry   = 'Y'
+           AND (TRIM(condition) IS NULL
                 OR (condition_met = 'TRUE' AND condition_counter = 'FALSE'))
            THEN '6.CURRENT_USAGE'
-      WHEN f.detected_usages > 0
-           AND f.currently_used  = 'TRUE'
-           AND f.current_entry   = 'Y'
+      WHEN detected_usages > 0
+           AND currently_used  = 'TRUE'
+           AND current_entry   = 'Y'
            AND condition_met   = 'TRUE'
            AND condition_counter = 'TRUE'
            THEN '5.PAST_OR_CURRENT_USAGE'
-      WHEN f.detected_usages > 0
-           AND (TRIM(m.condition) IS NULL OR condition_met = 'TRUE')
+      WHEN detected_usages > 0
+           AND (TRIM(condition) IS NULL OR condition_met = 'TRUE')
            THEN '4.PAST_USAGE'
-      WHEN f.current_entry = 'Y'
+      WHEN current_entry = 'Y'
            THEN '2.NO_CURRENT_USAGE'
       ELSE '1.NO_PAST_USAGE'
     END                 AS usage,
-    f.last_sample_date, f.version,
-    f.detected_usages, f.total_samples, f.currently_used,
-    CASE WHEN m.condition LIKE 'C___' AND condition_met = 'FALSE'
-         THEN TO_DATE(NULL) ELSE f.first_usage_date END AS first_usage_date,
-    CASE WHEN m.condition LIKE 'C___' AND condition_met = 'FALSE'
-         THEN TO_DATE(NULL) ELSE f.last_usage_date  END AS last_usage_date
+    last_sample_date, version,
+    detected_usages, total_samples, currently_used,
+    CASE WHEN condition LIKE 'C___' AND condition_met = 'FALSE'
+         THEN TO_DATE(NULL) ELSE first_usage_date END AS first_usage_date,
+    CASE WHEN condition LIKE 'C___' AND condition_met = 'FALSE'
+         THEN TO_DATE(NULL) ELSE last_usage_date  END AS last_usage_date
   FROM (
     SELECT
-      f2.con_id,
-      m2.product, m2.condition,
+      f.con_id,
+      m.product, m.condition,
       CASE
-        WHEN m2.condition = 'C001'
-             AND (  (    REGEXP_LIKE(TO_CHAR(f2.feature_info), 'compression[ -]used:[ 0-9]*[1-9][ 0-9]*time', 'i')
-                     AND TO_CHAR(f2.feature_info) NOT LIKE '%(BASIC algorithm used: 0 times, LOW algorithm used: 0 times, MEDIUM algorithm used: 0 times, HIGH algorithm used: 0 times)%')
-                 OR REGEXP_LIKE(TO_CHAR(f2.feature_info), 'compression[ -]used: *TRUE', 'i'))
+        WHEN m.condition = 'C001'
+             AND (  (    REGEXP_LIKE(TO_CHAR(f.feature_info), 'compression[ -]used:[ 0-9]*[1-9][ 0-9]*time', 'i')
+                     AND TO_CHAR(f.feature_info) NOT LIKE '%(BASIC algorithm used: 0 times, LOW algorithm used: 0 times, MEDIUM algorithm used: 0 times, HIGH algorithm used: 0 times)%')
+                 OR REGEXP_LIKE(TO_CHAR(f.feature_info), 'compression[ -]used: *TRUE', 'i'))
              THEN 'TRUE'
-        WHEN m2.condition = 'C002'
-             AND (REGEXP_LIKE(TO_CHAR(f2.feature_info), 'encryption used:[ 0-9]*[1-9][ 0-9]*time', 'i')
-               OR REGEXP_LIKE(TO_CHAR(f2.feature_info), 'encryption used: *TRUE', 'i'))
+        WHEN m.condition = 'C002'
+             AND (REGEXP_LIKE(TO_CHAR(f.feature_info), 'encryption used:[ 0-9]*[1-9][ 0-9]*time', 'i')
+               OR REGEXP_LIKE(TO_CHAR(f.feature_info), 'encryption used: *TRUE', 'i'))
              THEN 'TRUE'
-        WHEN m2.condition = 'C003' AND f2.aux_count > 1 THEN 'TRUE'
-        WHEN m2.condition = 'C005' AND f2.aux_count > 3 THEN 'TRUE'
-        WHEN m2.condition = 'C004'                       THEN 'TRUE'
+        WHEN m.condition = 'C003' AND f.aux_count > 1 THEN 'TRUE'
+        WHEN m.condition = 'C005' AND f.aux_count > 3 THEN 'TRUE'
+        WHEN m.condition = 'C004'                      THEN 'TRUE'
         ELSE 'FALSE'
       END AS condition_met,
       CASE
-        WHEN m2.condition = 'C001'
-             AND  REGEXP_LIKE(TO_CHAR(f2.feature_info), 'compression[ -]used:[ 0-9]*[1-9][ 0-9]*time', 'i')
-             AND  TO_CHAR(f2.feature_info) NOT LIKE '%(BASIC algorithm used: 0 times, LOW algorithm used: 0 times, MEDIUM algorithm used: 0 times, HIGH algorithm used: 0 times)%'
+        WHEN m.condition = 'C001'
+             AND  REGEXP_LIKE(TO_CHAR(f.feature_info), 'compression[ -]used:[ 0-9]*[1-9][ 0-9]*time', 'i')
+             AND  TO_CHAR(f.feature_info) NOT LIKE '%(BASIC algorithm used: 0 times, LOW algorithm used: 0 times, MEDIUM algorithm used: 0 times, HIGH algorithm used: 0 times)%'
              THEN 'TRUE'
-        WHEN m2.condition = 'C002'
-             AND  REGEXP_LIKE(TO_CHAR(f2.feature_info), 'encryption used:[ 0-9]*[1-9][ 0-9]*time', 'i')
+        WHEN m.condition = 'C002'
+             AND  REGEXP_LIKE(TO_CHAR(f.feature_info), 'encryption used:[ 0-9]*[1-9][ 0-9]*time', 'i')
              THEN 'TRUE'
         ELSE 'FALSE'
       END AS condition_counter,
-      f2.current_entry, f2.name, f2.last_sample_date, f2.version,
-      f2.detected_usages, f2.total_samples, f2.currently_used,
-      f2.first_usage_date, f2.last_usage_date, f2.aux_count, f2.feature_info
-    FROM map m2
-    JOIN fus f2 ON m2.feature = f2.name AND REGEXP_LIKE(f2.version, m2.mversion)
-    WHERE NVL(f2.total_samples, 0) > 0
-      -- Exclude C003/C005 (Multitenant licensing) at PDB level per Oracle guidance
-      AND NOT (m2.condition IN ('C003','C005') AND f2.con_id NOT IN (0,1))
-  ) f
-  JOIN map m ON m.product = f.product AND m.feature = f.name AND m.condition = f.condition
-  WHERE NVL(f.condition, '-') != 'INVALID'
+      f.current_entry, f.name, f.last_sample_date, f.version,
+      f.detected_usages, f.total_samples, f.currently_used,
+      f.first_usage_date, f.last_usage_date
+    FROM map m
+    JOIN fus f ON m.feature = f.name AND REGEXP_LIKE(f.version, m.mversion)
+    WHERE NVL(f.total_samples, 0) > 0
+      AND NOT (m.condition IN ('C003','C005'))
+  )
+  WHERE NVL(condition, '-') != 'INVALID'
 )
 SELECT
   p.name                                                               AS pdb_name,
