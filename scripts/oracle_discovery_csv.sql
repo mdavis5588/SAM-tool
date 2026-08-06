@@ -621,6 +621,10 @@ SPOOL &sam_prefix._pdb_feature_usage.csv
 
 PROMPT pdb_name,con_id,product,feature_name,usage_status,db_version,detected_usages,total_samples,currently_used,first_usage_date,last_usage_date
 
+-- Disable substitution-variable processing so no & inside SQL strings or
+-- comments triggers a SQL*Plus prompt during this complex query.
+SET DEFINE OFF
+
 WITH
 map AS (
   SELECT '' product,'' feature,'' mversion,'' condition FROM dual UNION ALL
@@ -816,7 +820,7 @@ pfus AS (
     JOIN fus f ON m.feature = f.name AND REGEXP_LIKE(f.version, m.mversion)
     WHERE NVL(f.total_samples, 0) > 0
       AND NOT (m.condition IN ('C003','C005'))
-  )
+  ) inner_pfus
   WHERE NVL(condition, '-') != 'INVALID'
 )
 SELECT
@@ -844,6 +848,7 @@ WHERE pf.usage IN ('2.NO_CURRENT_USAGE', '3.SUPPRESSED_DUE_TO_BUG',
 ORDER BY p.name, DECODE(SUBSTR(pf.product,1,1), '.', 2, 1), pf.product, pf.feature_being_used;
 
 SPOOL OFF
+SET DEFINE ON
 
 -- =============================================================================
 -- 8. MANAGEMENT PACK PARAMETERS — GV$PARAMETER per container
