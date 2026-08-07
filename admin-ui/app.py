@@ -2009,6 +2009,11 @@ def _process_json_upload(schema: str, file_obj) -> dict:
     # The oracle_discovery.sql JSON puts CDB-level features at doc["feature_usage"] (top-level)
     # and per-PDB features embedded inside each instance's pdbs array.
     feat_payload = doc.get("feature_usage_payload")
+    import sys
+    print(f"DEBUG feat_payload key present: {feat_payload is not None}", file=sys.stderr)
+    print(f"DEBUG doc top-level keys: {list(doc.keys())}", file=sys.stderr)
+    print(f"DEBUG mgmt_pack_summary: {doc.get('mgmt_pack_summary')}", file=sys.stderr)
+    print(f"DEBUG feature_usage count: {len(doc.get('feature_usage', []))}", file=sys.stderr)
     if feat_payload is None:
         top_features = list(doc.get("feature_usage", []))
 
