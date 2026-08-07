@@ -499,7 +499,8 @@ BEGIN
         total_ram_mb       = EXCLUDED.total_ram_mb,
         datacenter         = EXCLUDED.datacenter,
         last_seen          = NOW(),
-        last_discovery_run = EXCLUDED.last_discovery_run
+        last_discovery_run = EXCLUDED.last_discovery_run,
+        is_active          = TRUE
       RETURNING server_id INTO v_server_id;
 
       -- Insert processor snapshot
@@ -540,7 +541,8 @@ BEGIN
           db_version       = EXCLUDED.db_version,
           platform_name    = EXCLUDED.platform_name,
           last_seen        = NOW(),
-          discovery_run_id = EXCLUDED.discovery_run_id;
+          discovery_run_id = EXCLUDED.discovery_run_id,
+          is_active        = TRUE;
       END LOOP;
     END;
     $body$;
