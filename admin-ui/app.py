@@ -2068,6 +2068,17 @@ def _process_json_upload(schema: str, file_obj) -> dict:
         pack_options.append("Diagnostics Pack")
     if mgmt.get("tuning_licensed"):
         pack_options.append("Tuning Pack")
+
+    # Detect ASO from feature_usage — any of these names indicates ASO is in use
+    _aso_keywords = (
+        "transparent data encryption", "encrypted tablespace",
+        "data redaction", "securefile encryption", "backup encryption",
+        "network encryption", "advanced security", "rman encryption",
+        "tde", "securefile", "label security",
+    )
+    top_feature_names = [f.get("feature_name", "").lower() for f in doc.get("feature_usage", [])]
+    if any(kw in fn for fn in top_feature_names for kw in _aso_keywords):
+        pack_options.append("Advanced Security")
     if pack_options:
         try:
             with get_db() as conn:
