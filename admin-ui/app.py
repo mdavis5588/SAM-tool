@@ -2070,7 +2070,7 @@ def _process_json_upload(schema: str, file_obj) -> dict:
         pack_options.append("Tuning Pack")
     if pack_options:
         try:
-            with get_db_connection() as conn:
+            with get_db() as conn:
                 with conn.cursor() as cur:
                     for sid_inst in base.get("instances", []):
                         sid = sid_inst.get("sid", "")
