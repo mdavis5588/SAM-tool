@@ -764,84 +764,50 @@
     </div>
     {% endif %}
 
-  {# ── Oracle Feature Usage ────────────────────────────────── #}
-  {% if feature_by_instance %}
+  {# ── Oracle Options & Detected Licensed Products ──────────── #}
+  {% if oracle_options or detected_products %}
   <div class="card mb-4">
     <div class="card-header d-flex align-items-center gap-2">
-      <i class="bi bi-toggles"></i>
-      <span>Oracle Feature Usage</span>
-      <span class="badge bg-secondary ms-1 fw-normal">DBA_FEATURE_USAGE_STATISTICS</span>
+      <i class="bi bi-shield-check"></i>
+      <span>Oracle Licensed Options &amp; Packs</span>
     </div>
-    <div class="card-body p-0">
-      {% for sid, pdb_groups in feature_by_instance.items() %}
-      <div class="px-3 pt-3 pb-1">
-        <span class="fw-semibold small text-uppercase" style="letter-spacing:.05em; font-size:.7rem;">
-          <i class="bi bi-database me-1"></i>{{ sid }}
-        </span>
-      </div>
-      {% for pdb_name, feats in pdb_groups.items() %}
-      {% if pdb_name %}
-      <div class="px-4 pt-1 pb-0">
-        <span class="badge bg-info text-dark fw-normal" style="font-size:.7rem;">
-          <i class="bi bi-layers me-1"></i>PDB: {{ pdb_name }}
-        </span>
+    <div class="card-body">
+
+      {% if oracle_options %}
+      <div class="mb-3">
+        <div class="text-muted fw-semibold mb-2" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;">
+          <i class="bi bi-toggle-on me-1"></i>Installed Options (v$OPTION)
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          {% for o in oracle_options %}
+          <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle" style="font-size:.8rem;">
+            <i class="bi bi-check-circle me-1"></i>{{ o.option_name }}
+            {% if o.option_version %}<span class="opacity-75 ms-1">{{ o.option_version }}</span>{% endif %}
+          </span>
+          {% endfor %}
+        </div>
       </div>
       {% endif %}
-      <div class="table-responsive">
-        <table class="table table-sm table-hover mb-0" style="font-size:.82rem;">
-          {% if loop.first and not pdb_name %}
-          <thead class="table-light">
-            <tr>
-              <th>Feature</th>
-              <th class="text-center">Currently Used</th>
-              <th class="text-end">Detected</th>
-              <th class="text-end">Samples</th>
-              <th class="text-end">First Used</th>
-              <th class="text-end">Last Used</th>
-              <th class="text-end">Last Sampled</th>
-            </tr>
-          </thead>
-          {% elif loop.first %}
-          <thead class="table-light">
-            <tr>
-              <th>Feature</th>
-              <th class="text-center">Currently Used</th>
-              <th class="text-end">Detected</th>
-              <th class="text-end">Samples</th>
-              <th class="text-end">First Used</th>
-              <th class="text-end">Last Used</th>
-              <th class="text-end">Last Sampled</th>
-            </tr>
-          </thead>
-          {% endif %}
-          <tbody>
-            {% for f in feats %}
-            <tr>
-              <td>{{ f.feature_name }}
-                {% if f.db_version %}<span class="text-muted small ms-1">v{{ f.db_version }}</span>{% endif %}
-              </td>
-              <td class="text-center">
-                {% if f.currently_used %}
-                  <span class="badge bg-success">Yes</span>
-                {% else %}
-                  <span class="badge bg-secondary">No</span>
-                {% endif %}
-              </td>
-              <td class="text-end">{{ f.detected_usages }}</td>
-              <td class="text-end text-muted">{{ f.total_samples }}</td>
-              <td class="text-end text-muted">{{ f.first_usage_date or '—' }}</td>
-              <td class="text-end {% if f.currently_used %}fw-semibold{% else %}text-muted{% endif %}">
-                {{ f.last_usage_date or '—' }}
-              </td>
-              <td class="text-end text-muted">{{ f.last_sample_date or '—' }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+
+      {% if detected_products %}
+      <div>
+        <div class="text-muted fw-semibold mb-2" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;">
+          <i class="bi bi-graph-up me-1"></i>Detected from Feature Usage (DBA_FEATURE_USAGE_STATISTICS)
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          {% for p in detected_products %}
+          <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle" style="font-size:.8rem;">
+            <i class="bi bi-exclamation-circle me-1"></i>{{ p.product }}
+            {% if p.last_usage_date %}<span class="opacity-75 ms-1">last used {{ p.last_usage_date }}</span>{% endif %}
+          </span>
+          {% endfor %}
+        </div>
+        <div class="text-muted mt-2" style="font-size:.75rem;">
+          <i class="bi bi-info-circle me-1"></i>Features with detected usage mapped to licensed products — verify licensing requirements.
+        </div>
       </div>
-      {% endfor %}{# end pdb_groups #}
-      {% if not loop.last %}<hr class="my-0">{% endif %}
-      {% endfor %}{# end feature_by_instance #}
+      {% endif %}
+
     </div>
   </div>
   {% endif %}

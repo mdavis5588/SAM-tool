@@ -3519,31 +3519,73 @@ def edit_server(server_id):
         except Exception:
             client_contacts = []
 
-    # Feature usage — CDB-level and per-PDB rows grouped by instance then PDB
+    # Oracle options (from v$option / Ansible discovery)
     try:
-        feature_rows = query(
-            f"""SELECT i.oracle_sid, i.instance_id,
-                       f.pdb_name, f.feature_name, f.db_version,
-                       f.detected_usages, f.total_samples,
-                       f.currently_used, f.first_usage_date, f.last_usage_date,
-                       f.last_sample_date
-                FROM {schema}.oracle_feature_usage f
-                JOIN {schema}.oracle_instances i ON i.instance_id = f.instance_id
-                WHERE i.server_id = %s
-                ORDER BY i.oracle_sid, COALESCE(f.pdb_name, ''), f.feature_name""",
+        oracle_options = query(
+            f"""SELECT o.option_name, o.option_version, o.status, o.is_active,
+                       i.oracle_sid
+                FROM {schema}.oracle_options o
+                JOIN {schema}.oracle_instances i ON i.instance_id = o.instance_id
+                WHERE i.server_id = %s AND o.is_active = TRUE
+                ORDER BY i.oracle_sid, o.option_name""",
             (server_id,)
         )
-        # Group: {sid: {pdb_name_or_None: [rows]}}
-        from collections import defaultdict
-        feature_by_instance = defaultdict(lambda: defaultdict(list))
-        for r in feature_rows:
-            feature_by_instance[r["oracle_sid"]][r["pdb_name"]].append(r)
-        feature_by_instance = {
-            sid: dict(pdbs)
-            for sid, pdbs in feature_by_instance.items()
-        }
     except Exception:
-        feature_by_instance = {}
+        oracle_options = []
+
+    # Detected licensed products derived from feature usage (MAP-like logic)
+    try:
+        detected_products = query(
+            f"""SELECT product, MAX(last_usage_date) AS last_usage_date,
+                       SUM(detected_usages) AS detected_usages
+                FROM (
+                  SELECT
+                    CASE
+                      WHEN f.feature_name ILIKE '%SQL Tuning Advisor%'
+                        OR f.feature_name ILIKE '%SQL Profile%'
+                        OR f.feature_name ILIKE '%Automatic Tuning Optimizer%'
+                        OR f.feature_name ILIKE '%Automatic SQL Tuning%'
+                        THEN 'Tuning Pack'
+                      WHEN f.feature_name ILIKE '%Active Session History%'
+                        OR f.feature_name ILIKE '%Automatic Workload Repository%'
+                        OR f.feature_name = 'ADDM'
+                        OR f.feature_name ILIKE '%Baseline%Threshold%'
+                        OR f.feature_name ILIKE '%Baseline Static%'
+                        THEN 'Diagnostics Pack'
+                      WHEN f.feature_name ILIKE '%Transparent Data Encryption%'
+                        OR f.feature_name ILIKE '%Advanced Security%'
+                        OR f.feature_name ILIKE '%Data Redaction%'
+                        THEN 'Advanced Security (ASO)'
+                      WHEN f.feature_name ILIKE '%Database Vault%'
+                        THEN 'Database Vault'
+                      WHEN f.feature_name ILIKE '%Partitioning%'
+                        THEN 'Partitioning'
+                      WHEN f.feature_name ILIKE '%Real Application Clusters%'
+                        OR f.feature_name ILIKE '%Oracle RAC%'
+                        THEN 'Real Application Clusters'
+                      WHEN f.feature_name ILIKE '%Active Data Guard%'
+                        THEN 'Active Data Guard'
+                      WHEN f.feature_name ILIKE '%Oracle Multitenant%'
+                        OR (f.feature_name ILIKE '%Multitenant%'
+                            AND f.feature_name NOT ILIKE '%Non-CDB%')
+                        THEN 'Multitenant'
+                      WHEN f.feature_name ILIKE '%Label Security%'
+                        THEN 'Label Security'
+                      ELSE NULL
+                    END AS product,
+                    f.last_usage_date,
+                    f.detected_usages
+                  FROM {schema}.oracle_feature_usage f
+                  JOIN {schema}.oracle_instances i ON i.instance_id = f.instance_id
+                  WHERE i.server_id = %s AND f.detected_usages > 0
+                ) mapped
+                WHERE product IS NOT NULL
+                GROUP BY product
+                ORDER BY product""",
+            (server_id,)
+        )
+    except Exception:
+        detected_products = []
 
     return render_template("edit_server.html",
                            server=server,
@@ -3558,7 +3600,8 @@ def edit_server(server_id):
                            se2_violations=se2_violations,
                            cpu_validation=cpu_validation,
                            client_contacts=client_contacts,
-                           feature_by_instance=feature_by_instance)
+                           oracle_options=oracle_options,
+                           detected_products=detected_products)
 
 
 # ---------------------------------------------------------------------------
