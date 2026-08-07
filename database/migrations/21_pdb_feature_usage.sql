@@ -216,10 +216,11 @@ BEGIN
     END;
     $body$;
   $fn$,
-  p_schema,
-  p_schema, p_schema,
-  p_schema, p_schema, p_schema,
-  p_schema, p_schema, p_schema);
+  p_schema,                          -- 1:  function schema
+  p_schema, p_schema,                -- 2:  oracle_instances  3: oracle_feature_usage (INSERT CDB)
+  p_schema, p_schema, p_schema,      -- 4-6: first/last/last_usage_date (DO UPDATE CDB)
+  p_schema,                          -- 7:  oracle_feature_usage (INSERT PDB)
+  p_schema, p_schema, p_schema);     -- 8-10: first/last/last_usage_date (DO UPDATE PDB)
 END;
 $$;
 
