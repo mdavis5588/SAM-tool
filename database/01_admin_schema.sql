@@ -494,6 +494,7 @@ BEGIN
   PERFORM sam_admin.install_upsert_functions(p_schema);
   PERFORM sam_admin.install_extended_views(p_schema);
   PERFORM sam_admin.install_feature_usage_table(p_schema);
+  PERFORM sam_admin.install_feature_usage_upsert(p_schema);
 
 END;
 $$;
