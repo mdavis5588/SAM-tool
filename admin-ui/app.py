@@ -3534,7 +3534,9 @@ def edit_server(server_id):
     except Exception:
         oracle_options = []
 
-    # Detected licensed products derived from feature usage (MAP-like logic)
+    # Detected licensed products derived from feature usage.
+    # Feature names matched against MOS Doc ID 1317265.1 MAP CTE, filtered to
+    # names that oracle_discovery.sql actually stores (its cursor excludes several).
     try:
         detected_products = query(
             f"""SELECT product, MAX(last_usage_date) AS last_usage_date,
@@ -3542,31 +3544,50 @@ def edit_server(server_id):
                 FROM (
                   SELECT
                     CASE
-                      WHEN f.feature_name ILIKE '%SQL Tuning Advisor%'
-                        OR f.feature_name ILIKE '%SQL Profile%'
-                        OR f.feature_name ILIKE '%Automatic Tuning Optimizer%'
-                        OR f.feature_name ILIKE '%Automatic SQL Tuning%'
+                      WHEN f.feature_name = ANY(ARRAY[
+                             'SQL Profile',
+                             'SQL Monitoring and Tuning pages',
+                             'SQL Tuning Advisor',
+                             'SQL Access Advisor',
+                             'Tuning Pack'
+                           ])
                         THEN 'Tuning Pack'
-                      WHEN f.feature_name ILIKE '%Active Session History%'
-                        OR f.feature_name ILIKE '%Automatic Workload Repository%'
-                        OR f.feature_name = 'ADDM'
-                        OR f.feature_name ILIKE '%Baseline%Threshold%'
-                        OR f.feature_name ILIKE '%Baseline Static%'
+                      WHEN f.feature_name = ANY(ARRAY[
+                             'ADDM',
+                             'AWR Baseline',
+                             'AWR Baseline Template',
+                             'AWR Report',
+                             'Automatic Workload Repository',
+                             'Baseline Adaptive Thresholds',
+                             'Baseline Static Computations',
+                             'Diagnostic Pack',
+                             'Active Session History'
+                           ])
                         THEN 'Diagnostics Pack'
-                      WHEN f.feature_name ILIKE '%Transparent Data Encryption%'
-                        OR f.feature_name ILIKE '%Advanced Security%'
-                        OR f.feature_name ILIKE '%Data Redaction%'
+                      WHEN f.feature_name = ANY(ARRAY[
+                             'Transparent Data Encryption',
+                             'Encrypted Tablespaces',
+                             'Data Redaction',
+                             'SecureFile Encryption (user)',
+                             'Backup Encryption',
+                             'Advanced Security'
+                           ])
                         THEN 'Advanced Security (ASO)'
                       WHEN f.feature_name ILIKE '%Database Vault%'
                         THEN 'Database Vault'
-                      WHEN f.feature_name ILIKE '%Partitioning%'
+                      WHEN f.feature_name = ANY(ARRAY[
+                             'Partitioning',
+                             'Interval Partitioning'
+                           ])
+                           OR f.feature_name ILIKE 'Partitioning%'
                         THEN 'Partitioning'
                       WHEN f.feature_name ILIKE '%Real Application Clusters%'
-                        OR f.feature_name ILIKE '%Oracle RAC%'
+                        OR f.feature_name = 'RAC'
                         THEN 'Real Application Clusters'
                       WHEN f.feature_name ILIKE '%Active Data Guard%'
+                        OR f.feature_name = 'Active Data Guard - Real-Time Query on Physical Standby'
                         THEN 'Active Data Guard'
-                      WHEN f.feature_name ILIKE '%Oracle Multitenant%'
+                      WHEN f.feature_name = 'Oracle Multitenant'
                         OR (f.feature_name ILIKE '%Multitenant%'
                             AND f.feature_name NOT ILIKE '%Non-CDB%')
                         THEN 'Multitenant'
