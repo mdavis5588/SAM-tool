@@ -2276,6 +2276,63 @@ def _process_csv_upload(schema: str, files) -> dict:
         n_pdb = sum(len(v) for v in pdb_feats.values())
         messages.append(f"Feature usage upserted ({n_cdb} CDB features, {n_pdb} PDB features).")
 
+    # Store Diagnostics Pack / Tuning Pack from _mgmt_packs.csv and
+    # Advanced Security from feature_usage keywords as oracle_options rows.
+    pack_options = []
+    mgmt_rows = parsed.get("mgmt_packs", [])
+    if any(r.get("diagnostics_licensed", "").strip().upper() == "YES" for r in mgmt_rows):
+        pack_options.append("Diagnostics Pack")
+    if any(r.get("tuning_licensed", "").strip().upper() == "YES" for r in mgmt_rows):
+        pack_options.append("Tuning Pack")
+
+    _aso_keywords = (
+        "transparent data encryption", "encrypted tablespace",
+        "data redaction", "securefile encryption", "backup encryption",
+        "network encryption", "advanced security", "rman encryption",
+        "tde", "securefile", "label security",
+    )
+    cdb_feature_names = [
+        _feat_row_to_dict(r).get("feature_name", "").lower()
+        for r in parsed.get("feature_usage", [])
+    ]
+    if any(kw in fn for fn in cdb_feature_names for kw in _aso_keywords):
+        pack_options.append("Advanced Security")
+
+    if pack_options and instances_list:
+        try:
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    sid = instances_list[0]["sid"]
+                    cur.execute(
+                        f"""SELECT i.instance_id
+                            FROM {schema}.oracle_instances i
+                            JOIN {schema}.oracle_servers   s ON s.server_id = i.server_id
+                            WHERE s.hostname = %s AND i.oracle_sid = %s
+                            LIMIT 1""",
+                        (hostname, sid)
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        instance_id = row[0]
+                        for pack in pack_options:
+                            cur.execute(
+                                f"""UPDATE {schema}.oracle_options
+                                    SET status = 'TRUE', discovery_run_id = %s
+                                    WHERE instance_id = %s AND option_name = %s""",
+                                (run_id, instance_id, pack)
+                            )
+                            if cur.rowcount == 0:
+                                cur.execute(
+                                    f"""INSERT INTO {schema}.oracle_options
+                                          (instance_id, option_name, status, discovery_run_id)
+                                        VALUES (%s, %s, 'TRUE', %s)""",
+                                    (instance_id, pack, run_id)
+                                )
+                conn.commit()
+            messages.append(f"Management pack access stored ({', '.join(pack_options)}).")
+        except Exception as e:
+            messages.append(f"Warning: could not store management pack options: {e}")
+
     return {
         "success":  True,
         "messages": messages,
