@@ -29,6 +29,12 @@ SET ECHO OFF
 SET VERIFY OFF
 SET TERMOUT OFF
 
+-- CPU model and architecture can be pre-set by the calling shell wrapper
+-- (run_discovery.sh) via SQL*Plus DEFINE.  If not defined, the script falls
+-- back to querying v$parameter (which often returns nothing useful).
+DEFINE sam_cpu_model = 'unknown'
+DEFINE sam_cpu_arch  = 'x86_64'
+
 -- Derive output filename: oracle_discovery_<host>_<db_unique_name>_<timestamp>.json
 COLUMN sam_outfile NEW_VALUE sam_outfile NOPRINT
 SELECT 'oracle_discovery_'
@@ -225,8 +231,18 @@ BEGIN
     SELECT value / 1024 / 1024 INTO v_ram_mb FROM v$osstat WHERE stat_name = 'PHYSICAL_MEMORY_BYTES';
   EXCEPTION WHEN OTHERS THEN v_ram_mb := 0;
   END;
-  BEGIN SELECT SUBSTR(value,1,256)       INTO v_cpu_model FROM v$parameter WHERE name = 'processor_type'; EXCEPTION WHEN OTHERS THEN v_cpu_model := 'unknown'; END;
-  BEGIN SELECT SUBSTR(LOWER(value),1,64) INTO v_cpu_arch  FROM v$parameter WHERE name = 'cpu_type';       EXCEPTION WHEN OTHERS THEN v_cpu_arch  := 'x86_64'; END;
+  -- Use OS-supplied values from the shell wrapper if available; fall back to
+  -- v$parameter (rarely populated) and finally the DEFINE defaults.
+  v_cpu_model := NULLIF(TRIM('&sam_cpu_model'), 'unknown');
+  v_cpu_arch  := NULLIF(TRIM('&sam_cpu_arch'),  'x86_64');
+  IF v_cpu_model IS NULL THEN
+    BEGIN SELECT SUBSTR(value,1,256)       INTO v_cpu_model FROM v$parameter WHERE name = 'processor_type' AND value IS NOT NULL; EXCEPTION WHEN OTHERS THEN NULL; END;
+    v_cpu_model := NVL(v_cpu_model, 'unknown');
+  END IF;
+  IF v_cpu_arch IS NULL THEN
+    BEGIN SELECT SUBSTR(LOWER(value),1,64) INTO v_cpu_arch  FROM v$parameter WHERE name = 'cpu_type' AND value IS NOT NULL; EXCEPTION WHEN OTHERS THEN NULL; END;
+    v_cpu_arch := NVL(v_cpu_arch, 'x86_64');
+  END IF;
 
   -- --------------------------------------------------------
   -- RAC check
