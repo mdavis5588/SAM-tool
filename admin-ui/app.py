@@ -2010,7 +2010,32 @@ def _process_json_upload(schema: str, file_obj) -> dict:
     # and per-PDB features embedded inside each instance's pdbs array.
     feat_payload = doc.get("feature_usage_payload")
     if feat_payload is None:
-        top_features = doc.get("feature_usage", [])
+        top_features = list(doc.get("feature_usage", []))
+
+        # Inject Diagnostics Pack / Tuning Pack from mgmt_pack_summary so they
+        # appear in oracle_feature_usage and can be detected on the server page.
+        mgmt = doc.get("mgmt_pack_summary", {})
+        if mgmt.get("diagnostics_licensed"):
+            top_features.append({
+                "feature_name": "Diagnostics Pack",
+                "db_version": None,
+                "detected_usages": 1,
+                "total_samples": 1,
+                "currently_used": True,
+                "first_usage_date": None,
+                "last_usage_date": None,
+            })
+        if mgmt.get("tuning_licensed"):
+            top_features.append({
+                "feature_name": "Tuning Pack",
+                "db_version": None,
+                "detected_usages": 1,
+                "total_samples": 1,
+                "currently_used": True,
+                "first_usage_date": None,
+                "last_usage_date": None,
+            })
+
         feat_instances = []
         for idx, inst in enumerate(base.get("instances", [])):
             feat_instances.append({
@@ -3577,6 +3602,7 @@ def edit_server(server_id):
                              'Baseline Adaptive Thresholds',
                              'Baseline Static Computations',
                              'Diagnostic Pack',
+                             'Diagnostics Pack',
                              'Active Session History'
                            ])
                         THEN 'Diagnostics Pack'
