@@ -515,7 +515,7 @@ BEGIN
         (p_payload->>'cpu_cores_per_socket')::INTEGER,
         (p_payload->>'cpu_threads_per_core')::INTEGER,
         (COALESCE(p_payload->>'virt_type','unknown'))::virt_type,
-        (p_payload->>'is_vmware')::BOOLEAN,
+        COALESCE((p_payload->>'is_vmware')::BOOLEAN, FALSE),
         (p_payload->>'vcpu_count')::INTEGER,
         p_payload->>'run_id'
       );
