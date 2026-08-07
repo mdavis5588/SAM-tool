@@ -2009,11 +2009,6 @@ def _process_json_upload(schema: str, file_obj) -> dict:
     # The oracle_discovery.sql JSON puts CDB-level features at doc["feature_usage"] (top-level)
     # and per-PDB features embedded inside each instance's pdbs array.
     feat_payload = doc.get("feature_usage_payload")
-    import sys
-    print(f"DEBUG feat_payload key present: {feat_payload is not None}", file=sys.stderr)
-    print(f"DEBUG doc top-level keys: {list(doc.keys())}", file=sys.stderr)
-    print(f"DEBUG mgmt_pack_summary: {doc.get('mgmt_pack_summary')}", file=sys.stderr)
-    print(f"DEBUG feature_usage count: {len(doc.get('feature_usage', []))}", file=sys.stderr)
     if feat_payload is None:
         top_features = list(doc.get("feature_usage", []))
 
@@ -2061,6 +2056,57 @@ def _process_json_upload(schema: str, file_obj) -> dict:
         _call_upsert(schema, "upsert_oracle_feature_usage", feat_payload)
         n_feat = len(doc.get("feature_usage", []))
         messages.append(f"Feature usage upserted ({n_feat} CDB-level feature(s)).")
+
+    # Store Diagnostics Pack / Tuning Pack as oracle_options rows so they appear
+    # in the licensed-products card.  oracle_feature_usage cannot be relied upon
+    # for these because upsert_oracle_extended_discovery also writes to that table
+    # using a conflicting ON CONFLICT key.  oracle_options is written once per
+    # instance and is already used to display "Enterprise Edition".
+    mgmt = doc.get("mgmt_pack_summary", {})
+    pack_options = []
+    if mgmt.get("diagnostics_licensed"):
+        pack_options.append("Diagnostics Pack")
+    if mgmt.get("tuning_licensed"):
+        pack_options.append("Tuning Pack")
+    if pack_options:
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    for sid_inst in base.get("instances", []):
+                        sid = sid_inst.get("sid", "")
+                        if not sid:
+                            continue
+                        cur.execute(
+                            f"""SELECT i.instance_id
+                                FROM {schema}.oracle_instances i
+                                JOIN {schema}.oracle_servers   s ON s.server_id = i.server_id
+                                WHERE s.hostname = %s AND i.oracle_sid = %s
+                                LIMIT 1""",
+                            (hostname, sid)
+                        )
+                        row = cur.fetchone()
+                        if not row:
+                            continue
+                        instance_id = row[0]
+                        for pack in pack_options:
+                            cur.execute(
+                                f"""UPDATE {schema}.oracle_options
+                                    SET status = 'TRUE', is_active = TRUE,
+                                        discovery_run_id = %s
+                                    WHERE instance_id = %s AND option_name = %s""",
+                                (run_id, instance_id, pack)
+                            )
+                            if cur.rowcount == 0:
+                                cur.execute(
+                                    f"""INSERT INTO {schema}.oracle_options
+                                          (instance_id, option_name, status, is_active, discovery_run_id)
+                                        VALUES (%s, %s, 'TRUE', TRUE, %s)""",
+                                    (instance_id, pack, run_id)
+                                )
+                conn.commit()
+            messages.append(f"Management pack access stored ({', '.join(pack_options)}).")
+        except Exception as e:
+            messages.append(f"Warning: could not store management pack options: {e}")
 
     meta = doc.get("_meta", {})
     return {
@@ -3580,19 +3626,6 @@ def edit_server(server_id):
     except Exception:
         oracle_options = []
 
-    # Debug: show all raw feature names stored for this server
-    try:
-        debug_features = query(
-            f"""SELECT f.feature_name, f.detected_usages, f.currently_used
-                FROM {schema}.oracle_feature_usage f
-                JOIN {schema}.oracle_instances i ON i.instance_id = f.instance_id
-                WHERE i.server_id = %s
-                ORDER BY f.feature_name""",
-            (server_id,)
-        )
-    except Exception:
-        debug_features = []
-
     # Detected licensed products derived from feature usage.
     # Feature names matched against MOS Doc ID 1317265.1 MAP CTE, filtered to
     # names that oracle_discovery.sql actually stores (its cursor excludes several).
@@ -3683,8 +3716,7 @@ def edit_server(server_id):
                            cpu_validation=cpu_validation,
                            client_contacts=client_contacts,
                            oracle_options=oracle_options,
-                           detected_products=detected_products,
-                           debug_features=debug_features)
+                           detected_products=detected_products)
 
 
 # ---------------------------------------------------------------------------
