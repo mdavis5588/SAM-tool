@@ -2006,15 +2006,31 @@ def _process_json_upload(schema: str, file_obj) -> dict:
     messages.append("Extended discovery (PDBs, RAC nodes, NUP) upserted.")
 
     # Feature usage — migration 21 format: {run_id, instances:[{sid, feature_usage, pdbs}]}
+    # The oracle_discovery.sql JSON puts CDB-level features at doc["feature_usage"] (top-level)
+    # and per-PDB features embedded inside each instance's pdbs array.
     feat_payload = doc.get("feature_usage_payload")
-    if feat_payload is None and doc.get("instances"):
-        # Older JSON: build payload from instances array
-        feat_payload = {"run_id": run_id, "instances": doc["instances"]}
-    if feat_payload is None and base.get("instances"):
-        feat_payload = {"run_id": run_id, "instances": base["instances"]}
+    if feat_payload is None:
+        top_features = doc.get("feature_usage", [])
+        feat_instances = []
+        for idx, inst in enumerate(base.get("instances", [])):
+            feat_instances.append({
+                "sid": inst.get("sid", ""),
+                # CDB-level features only assigned to first instance to avoid duplicates in RAC
+                "feature_usage": top_features if idx == 0 else [],
+                "pdbs": [
+                    {
+                        "pdb_name": pdb.get("pdb_name", ""),
+                        "feature_usage": pdb.get("feature_usage", [])
+                    }
+                    for pdb in inst.get("pdbs", [])
+                ]
+            })
+        if feat_instances:
+            feat_payload = {"run_id": run_id, "instances": feat_instances}
     if feat_payload:
         _call_upsert(schema, "upsert_oracle_feature_usage", feat_payload)
-        messages.append("Feature usage upserted.")
+        n_feat = len(doc.get("feature_usage", []))
+        messages.append(f"Feature usage upserted ({n_feat} CDB-level feature(s)).")
 
     meta = doc.get("_meta", {})
     return {
