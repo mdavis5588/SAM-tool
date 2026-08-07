@@ -1992,6 +1992,13 @@ def _process_json_upload(schema: str, file_obj) -> dict:
     base.setdefault("environment", "unknown")
     base.setdefault("criticality", "unknown")
 
+    # Coerce numeric fields that the DB expects as INTEGER but the JSON may
+    # carry as floats (e.g. total_ram_mb = 96256.94140625 from v$osstat bytes).
+    for field in ("total_ram_mb", "cpu_sockets", "cpu_cores_per_socket",
+                  "cpu_threads_per_core", "vcpu_count"):
+        if field in base and base[field] is not None:
+            base[field] = int(round(float(base[field])))
+
     _call_upsert(schema, "upsert_oracle_discovery", base)
     messages.append(f"Server '{hostname}' upserted.")
 
