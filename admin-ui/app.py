@@ -2091,16 +2091,15 @@ def _process_json_upload(schema: str, file_obj) -> dict:
                         for pack in pack_options:
                             cur.execute(
                                 f"""UPDATE {schema}.oracle_options
-                                    SET status = 'TRUE', is_active = TRUE,
-                                        discovery_run_id = %s
+                                    SET status = 'TRUE', discovery_run_id = %s
                                     WHERE instance_id = %s AND option_name = %s""",
                                 (run_id, instance_id, pack)
                             )
                             if cur.rowcount == 0:
                                 cur.execute(
                                     f"""INSERT INTO {schema}.oracle_options
-                                          (instance_id, option_name, status, is_active, discovery_run_id)
-                                        VALUES (%s, %s, 'TRUE', TRUE, %s)""",
+                                          (instance_id, option_name, status, discovery_run_id)
+                                        VALUES (%s, %s, 'TRUE', %s)""",
                                     (instance_id, pack, run_id)
                                 )
                 conn.commit()
@@ -3615,11 +3614,11 @@ def edit_server(server_id):
     # Oracle options (from v$option / Ansible discovery)
     try:
         oracle_options = query(
-            f"""SELECT o.option_name, o.option_version, o.status, o.is_active,
+            f"""SELECT o.option_name, o.option_version, o.status,
                        i.oracle_sid
                 FROM {schema}.oracle_options o
                 JOIN {schema}.oracle_instances i ON i.instance_id = o.instance_id
-                WHERE i.server_id = %s AND o.is_active = TRUE
+                WHERE i.server_id = %s AND o.status = 'TRUE'
                 ORDER BY i.oracle_sid, o.option_name""",
             (server_id,)
         )
