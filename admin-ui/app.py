@@ -1953,7 +1953,20 @@ def _strip_sqlplus_banner(content: str) -> str:
 def _call_upsert(schema: str, func: str, payload: dict) -> None:
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"SELECT {schema}.{func}(%s::jsonb)", (json.dumps(payload),))
+            # Set search_path so unqualified type names (e.g. environment_type,
+            # virt_type) defined in the client schema resolve correctly.
+            cur.execute(
+                psycopg2.sql.SQL("SET search_path TO {}, public").format(
+                    psycopg2.sql.Identifier(schema)
+                )
+            )
+            cur.execute(
+                psycopg2.sql.SQL("SELECT {}.{}(%s::jsonb)").format(
+                    psycopg2.sql.Identifier(schema),
+                    psycopg2.sql.Identifier(func)
+                ),
+                (json.dumps(payload),)
+            )
         conn.commit()
 
 
@@ -1973,6 +1986,11 @@ def _process_json_upload(schema: str, file_obj) -> dict:
     hostname = base.get("hostname", "unknown")
     run_id   = base.get("run_id", "")
     messages = []
+
+    # Ensure environment/criticality exist so the enum cast in the DB function
+    # never receives NULL (oracle_discovery.sql does not collect these fields).
+    base.setdefault("environment", "unknown")
+    base.setdefault("criticality", "unknown")
 
     _call_upsert(schema, "upsert_oracle_discovery", base)
     messages.append(f"Server '{hostname}' upserted.")
@@ -2063,6 +2081,7 @@ def _process_csv_upload(schema: str, files) -> dict:
         "cpu_threads_per_core": int(server_row.get("threads_per_core", 0) or 0),
         "vcpu_count":           int(server_row.get("vcpu_count", 0) or 0),
         "virt_type":            server_row.get("virt_type", "unknown").strip(),
+        "environment":          "unknown",
         "run_id":               run_id,
         "instances":            instances_list,
     }
