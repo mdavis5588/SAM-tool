@@ -12,8 +12,8 @@ BEGIN
   FOR v_client IN
     SELECT schema_name FROM sam_admin.clients WHERE is_active ORDER BY schema_name
   LOOP
-    PERFORM sam_admin.install_discovery_functions(v_client.schema_name);
-    RAISE NOTICE 'Reinstalled discovery functions for %', v_client.schema_name;
+    PERFORM sam_admin.install_upsert_functions(v_client.schema_name);
+    RAISE NOTICE 'Reinstalled upsert functions for %', v_client.schema_name;
   END LOOP;
 END;
 $$;
