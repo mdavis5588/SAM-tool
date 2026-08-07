@@ -1932,6 +1932,251 @@ def register_server():
 
 
 # ---------------------------------------------------------------------------
+# Discovery file upload (JSON or CSV bundle from oracle_discovery scripts)
+# ---------------------------------------------------------------------------
+
+import csv as _csv
+import io as _io
+import uuid as _uuid
+
+def _strip_sqlplus_banner(content: str) -> str:
+    """Strip SQL*Plus banner lines before the opening brace."""
+    start = content.find("{")
+    if start == -1:
+        raise ValueError("No JSON object found in file")
+    end = content.rfind("}")
+    if end == -1:
+        raise ValueError("JSON object is not terminated — file may be truncated")
+    return content[start : end + 1]
+
+
+def _call_upsert(schema: str, func: str, payload: dict) -> None:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT {schema}.{func}(%s::jsonb)", (json.dumps(payload),))
+        conn.commit()
+
+
+def _process_json_upload(schema: str, file_obj) -> dict:
+    """Process a JSON discovery file and upsert into the given schema."""
+    content = file_obj.read().decode("utf-8", errors="replace")
+    raw = _strip_sqlplus_banner(content)
+    doc = json.loads(raw)
+
+    required = {"_meta", "base", "extended"}
+    missing = required - doc.keys()
+    if missing:
+        raise ValueError(f"JSON is missing top-level keys: {missing}")
+
+    base     = doc["base"]
+    extended = doc["extended"]
+    hostname = base.get("hostname", "unknown")
+    run_id   = base.get("run_id", "")
+    messages = []
+
+    _call_upsert(schema, "upsert_oracle_discovery", base)
+    messages.append(f"Server '{hostname}' upserted.")
+
+    _call_upsert(schema, "upsert_oracle_extended_discovery", extended)
+    messages.append("Extended discovery (PDBs, RAC nodes, NUP) upserted.")
+
+    # Feature usage — migration 21 format: {run_id, instances:[{sid, feature_usage, pdbs}]}
+    feat_payload = doc.get("feature_usage_payload")
+    if feat_payload is None and doc.get("instances"):
+        # Older JSON: build payload from instances array
+        feat_payload = {"run_id": run_id, "instances": doc["instances"]}
+    if feat_payload is None and base.get("instances"):
+        feat_payload = {"run_id": run_id, "instances": base["instances"]}
+    if feat_payload:
+        _call_upsert(schema, "upsert_oracle_feature_usage", feat_payload)
+        messages.append("Feature usage upserted.")
+
+    meta = doc.get("_meta", {})
+    return {
+        "success": True,
+        "messages": messages,
+        "hostname": hostname,
+        "db": meta.get("db_unique_name", ""),
+        "script_version": meta.get("script_version", "?"),
+    }
+
+
+def _parse_csv_file(file_obj) -> list:
+    """Parse an uploaded CSV into a list of dicts, skipping blank/comment lines."""
+    content = file_obj.read().decode("utf-8", errors="replace")
+    lines = [l for l in content.splitlines() if l.strip() and not l.startswith("--")]
+    reader = _csv.DictReader(_io.StringIO("\n".join(lines)))
+    return [row for row in reader]
+
+
+def _detect_csv_type(filename: str) -> str:
+    """Identify a CSV file by its suffix."""
+    name = filename.lower()
+    for suffix in ("_server", "_instances", "_feature_usage", "_pdb_feature_usage",
+                   "_users", "_pdbs", "_mgmt_packs", "_rac_nodes", "_product_usage"):
+        if suffix + ".csv" in name:
+            return suffix.lstrip("_")
+    return "unknown"
+
+
+def _process_csv_upload(schema: str, files) -> dict:
+    """
+    Process a bundle of CSV files from oracle_discovery_csv.sql and upsert
+    into the given schema.  Requires at minimum _server.csv + _instances.csv.
+    """
+    parsed = {}
+    for f in files:
+        if not f.filename:
+            continue
+        csv_type = _detect_csv_type(f.filename)
+        parsed[csv_type] = _parse_csv_file(f)
+
+    if "server" not in parsed:
+        raise ValueError("_server.csv is required — cannot identify the host.")
+    if "instances" not in parsed:
+        raise ValueError("_instances.csv is required — cannot register Oracle instances.")
+
+    server_row = parsed["server"][0]
+    hostname   = server_row.get("hostname", "").strip()
+    run_id     = "csv-" + datetime.now().strftime("%Y%m%d%H%M%S") + "-" + _uuid.uuid4().hex[:6]
+    messages   = []
+
+    # Build base payload for upsert_oracle_discovery
+    instances_list = []
+    for row in parsed.get("instances", []):
+        instances_list.append({
+            "sid":           row.get("instance_name", "").strip(),
+            "db_name":       row.get("db_name", "").strip(),
+            "edition":       row.get("edition", "").strip(),
+            "version":       row.get("version", "").strip(),
+            "platform_name": row.get("platform_name", "").strip(),
+        })
+
+    base_payload = {
+        "hostname":             hostname,
+        "fqdn":                 server_row.get("fqdn", hostname).strip(),
+        "os_family":            server_row.get("os_family", "").strip(),
+        "total_ram_mb":         int(server_row.get("ram_mb", 0) or 0),
+        "cpu_model":            server_row.get("cpu_model", "").strip(),
+        "cpu_sockets":          int(server_row.get("cpu_sockets", 0) or 0),
+        "cpu_cores_per_socket": int(server_row.get("cores_per_socket", 0) or 0),
+        "cpu_threads_per_core": int(server_row.get("threads_per_core", 0) or 0),
+        "vcpu_count":           int(server_row.get("vcpu_count", 0) or 0),
+        "virt_type":            server_row.get("virt_type", "unknown").strip(),
+        "run_id":               run_id,
+        "instances":            instances_list,
+    }
+
+    _call_upsert(schema, "upsert_oracle_discovery", base_payload)
+    messages.append(f"Server '{hostname}' upserted ({len(instances_list)} instance(s)).")
+
+    # Extended: PDBs + NUP users
+    pdbs_list = []
+    for row in parsed.get("pdbs", []):
+        pdbs_list.append({
+            "pdb_name":   row.get("pdb_name", "").strip(),
+            "con_id":     int(row.get("con_id", 0) or 0),
+            "open_mode":  row.get("open_mode", "").strip(),
+            "restricted": row.get("restricted", "NO").strip(),
+        })
+
+    nup_rows   = parsed.get("users", [])
+    nup_total  = 0
+    nup_active = 0
+    for r in nup_rows:
+        cat = r.get("category", "").lower()
+        cnt = int(r.get("user_count", 0) or 0)
+        if "total" in cat:
+            nup_total = cnt
+        elif "open" in cat or "active" in cat:
+            nup_active = cnt
+
+    extended_payload = {
+        "hostname": hostname,
+        "run_id":   run_id,
+        "pdbs":     pdbs_list,
+        "nup_users": {"total": nup_total, "active": nup_active},
+    }
+    _call_upsert(schema, "upsert_oracle_extended_discovery", extended_payload)
+    if pdbs_list:
+        messages.append(f"PDB topology upserted ({len(pdbs_list)} PDB(s)).")
+    if nup_total:
+        messages.append(f"NUP user counts upserted (total={nup_total}, active={nup_active}).")
+
+    # Feature usage — build migration-21 payload
+    def _feat_row_to_dict(row):
+        return {
+            "feature_name":    row.get("feature_name", "").strip().strip('"'),
+            "db_version":      row.get("db_version", "").strip(),
+            "detected_usages": int(row.get("detected_usages", 0) or 0),
+            "total_samples":   int(row.get("total_samples", 0) or 0),
+            "currently_used":  row.get("currently_used", "FALSE").strip().upper() == "TRUE",
+            "first_usage_date": row.get("first_usage_date") or None,
+            "last_usage_date":  row.get("last_usage_date")  or None,
+        }
+
+    if instances_list and ("feature_usage" in parsed or "pdb_feature_usage" in parsed):
+        # Group PDB features by pdb_name
+        pdb_feats: dict = {}
+        for row in parsed.get("pdb_feature_usage", []):
+            pdb = row.get("pdb_name", "").strip()
+            pdb_feats.setdefault(pdb, []).append(_feat_row_to_dict(row))
+
+        # Attach features to the first (and usually only) instance at CDB level
+        sid = instances_list[0]["sid"]
+        feat_instances = [{
+            "sid":           sid,
+            "feature_usage": [_feat_row_to_dict(r) for r in parsed.get("feature_usage", [])],
+            "pdbs": [
+                {"pdb_name": pdb_name, "feature_usage": feats}
+                for pdb_name, feats in pdb_feats.items()
+            ],
+        }]
+        _call_upsert(schema, "upsert_oracle_feature_usage",
+                     {"run_id": run_id, "instances": feat_instances})
+        n_cdb = len(feat_instances[0]["feature_usage"])
+        n_pdb = sum(len(v) for v in pdb_feats.values())
+        messages.append(f"Feature usage upserted ({n_cdb} CDB features, {n_pdb} PDB features).")
+
+    return {
+        "success":  True,
+        "messages": messages,
+        "hostname": hostname,
+        "db":       instances_list[0]["db_name"] if instances_list else "",
+    }
+
+
+@app.route("/servers/upload-discovery", methods=["GET", "POST"])
+@login_required
+def upload_discovery():
+    schema  = get_schema()
+    clients = get_clients()
+    result  = None
+
+    if request.method == "POST":
+        target_schema = request.form.get("target_schema", schema)
+        upload_type   = request.form.get("upload_type", "json")
+        try:
+            if upload_type == "json":
+                f = request.files.get("json_file")
+                if not f or not f.filename:
+                    raise ValueError("No JSON file selected.")
+                result = _process_json_upload(target_schema, f)
+            else:
+                files = request.files.getlist("csv_files")
+                if not files or not any(f.filename for f in files):
+                    raise ValueError("No CSV files selected.")
+                result = _process_csv_upload(target_schema, files)
+        except Exception as exc:
+            result = {"success": False, "error": str(exc), "messages": []}
+
+    return render_template("upload_discovery.html",
+                           clients=clients,
+                           result=result,
+                           active_schema=schema)
+
+
+# ---------------------------------------------------------------------------
 # Discovery run history
 # ---------------------------------------------------------------------------
 
