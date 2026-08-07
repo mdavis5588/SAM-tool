@@ -764,6 +764,23 @@
     </div>
     {% endif %}
 
+  {# ── DEBUG: raw feature names ──────────── #}
+  {% if debug_features %}
+  <div class="card mb-4 border-warning">
+    <div class="card-header bg-warning-subtle">DEBUG: Raw oracle_feature_usage rows ({{ debug_features|length }} total)</div>
+    <div class="card-body" style="max-height:300px;overflow-y:auto">
+      <table class="table table-sm table-bordered mb-0">
+        <thead><tr><th>feature_name</th><th>detected_usages</th><th>currently_used</th></tr></thead>
+        <tbody>
+          {% for f in debug_features %}
+          <tr><td>{{ f.feature_name }}</td><td>{{ f.detected_usages }}</td><td>{{ f.currently_used }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
   {# ── Oracle Options & Detected Licensed Products ──────────── #}
   {% if oracle_options or detected_products %}
   <div class="card mb-4">

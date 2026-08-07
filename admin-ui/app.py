@@ -3575,6 +3575,19 @@ def edit_server(server_id):
     except Exception:
         oracle_options = []
 
+    # Debug: show all raw feature names stored for this server
+    try:
+        debug_features = query(
+            f"""SELECT f.feature_name, f.detected_usages, f.currently_used
+                FROM {schema}.oracle_feature_usage f
+                JOIN {schema}.oracle_instances i ON i.instance_id = f.instance_id
+                WHERE i.server_id = %s
+                ORDER BY f.feature_name""",
+            (server_id,)
+        )
+    except Exception:
+        debug_features = []
+
     # Detected licensed products derived from feature usage.
     # Feature names matched against MOS Doc ID 1317265.1 MAP CTE, filtered to
     # names that oracle_discovery.sql actually stores (its cursor excludes several).
@@ -3665,7 +3678,8 @@ def edit_server(server_id):
                            cpu_validation=cpu_validation,
                            client_contacts=client_contacts,
                            oracle_options=oracle_options,
-                           detected_products=detected_products)
+                           detected_products=detected_products,
+                           debug_features=debug_features)
 
 
 # ---------------------------------------------------------------------------
