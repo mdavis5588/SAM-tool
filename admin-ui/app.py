@@ -2020,11 +2020,20 @@ def _process_json_upload(schema: str, file_obj) -> dict:
 
 
 def _parse_csv_file(file_obj) -> list:
-    """Parse an uploaded CSV into a list of dicts, skipping blank/comment lines."""
+    """Parse an uploaded CSV into a list of dicts, skipping blank/comment lines.
+    Values are stripped of surrounding whitespace (SQL*Plus pads columns)."""
     content = file_obj.read().decode("utf-8", errors="replace")
     lines = [l for l in content.splitlines() if l.strip() and not l.startswith("--")]
     reader = _csv.DictReader(_io.StringIO("\n".join(lines)))
-    return [row for row in reader]
+    return [{k: (v.strip() if v else "") for k, v in row.items()} for row in reader]
+
+
+def _safe_int(val, default=0) -> int:
+    """Convert a possibly-empty or whitespace-padded string to int."""
+    try:
+        return int(str(val).strip().replace(",", "") or default)
+    except (ValueError, TypeError):
+        return default
 
 
 def _detect_csv_type(filename: str) -> str:
@@ -2074,12 +2083,12 @@ def _process_csv_upload(schema: str, files) -> dict:
         "hostname":             hostname,
         "fqdn":                 server_row.get("fqdn", hostname).strip(),
         "os_family":            server_row.get("os_family", "").strip(),
-        "total_ram_mb":         int(server_row.get("ram_mb", 0) or 0),
+        "total_ram_mb":         _safe_int(server_row.get("ram_mb")),
         "cpu_model":            server_row.get("cpu_model", "").strip(),
-        "cpu_sockets":          int(server_row.get("cpu_sockets", 0) or 0),
-        "cpu_cores_per_socket": int(server_row.get("cores_per_socket", 0) or 0),
-        "cpu_threads_per_core": int(server_row.get("threads_per_core", 0) or 0),
-        "vcpu_count":           int(server_row.get("vcpu_count", 0) or 0),
+        "cpu_sockets":          _safe_int(server_row.get("cpu_sockets")),
+        "cpu_cores_per_socket": _safe_int(server_row.get("cores_per_socket")),
+        "cpu_threads_per_core": _safe_int(server_row.get("threads_per_core")),
+        "vcpu_count":           _safe_int(server_row.get("vcpu_count")),
         "virt_type":            server_row.get("virt_type", "unknown").strip(),
         "environment":          "unknown",
         "run_id":               run_id,
@@ -2094,7 +2103,7 @@ def _process_csv_upload(schema: str, files) -> dict:
     for row in parsed.get("pdbs", []):
         pdbs_list.append({
             "pdb_name":   row.get("pdb_name", "").strip(),
-            "con_id":     int(row.get("con_id", 0) or 0),
+            "con_id":     _safe_int(row.get("con_id")),
             "open_mode":  row.get("open_mode", "").strip(),
             "restricted": row.get("restricted", "NO").strip(),
         })
@@ -2104,7 +2113,7 @@ def _process_csv_upload(schema: str, files) -> dict:
     nup_active = 0
     for r in nup_rows:
         cat = r.get("category", "").lower()
-        cnt = int(r.get("user_count", 0) or 0)
+        cnt = _safe_int(r.get("user_count"))
         if "total" in cat:
             nup_total = cnt
         elif "open" in cat or "active" in cat:
@@ -2127,8 +2136,8 @@ def _process_csv_upload(schema: str, files) -> dict:
         return {
             "feature_name":    row.get("feature_name", "").strip().strip('"'),
             "db_version":      row.get("db_version", "").strip(),
-            "detected_usages": int(row.get("detected_usages", 0) or 0),
-            "total_samples":   int(row.get("total_samples", 0) or 0),
+            "detected_usages": _safe_int(row.get("detected_usages")),
+            "total_samples":   _safe_int(row.get("total_samples")),
             "currently_used":  row.get("currently_used", "FALSE").strip().upper() == "TRUE",
             "first_usage_date": row.get("first_usage_date") or None,
             "last_usage_date":  row.get("last_usage_date")  or None,
