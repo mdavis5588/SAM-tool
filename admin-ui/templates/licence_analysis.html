@@ -888,6 +888,9 @@
 
           <!-- Licence requirements table -->
           <h6 class="fw-semibold mb-3"><i class="bi bi-table me-1"></i> On-Premises Licence Requirements</h6>
+          <!-- DEBUG assign_by_family: {{ result.assign_by_family }} -->
+          <!-- DEBUG assignments: {{ result.assignments }} -->
+          <!-- DEBUG lines product_families: {{ result.lines | map(attribute='product_family') | list }} -->
           {% set has_assignments = result.assign_by_family and result.assign_by_family | length > 0 %}
           <div class="table-responsive mb-4">
             <table class="table table-sm table-hover align-middle mb-0">
