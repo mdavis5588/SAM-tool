@@ -39,7 +39,7 @@ Each client schema contains identical tables and views:
 | Object | Description |
 |---|---|
 | `oracle_servers` | Server inventory (hostname, IP, environment, etc.) |
-| `oracle_processors` | CPU details — model, sockets, cores per socket |
+| `oracle_processors` | CPU details — model, sockets, cores per socket, Exadata flag |
 | `oracle_instances` | Oracle DB instances (SID, edition, version) |
 | `oracle_options` | Active `v$option` flags (Partitioning, RAC, Diagnostics Pack, etc.) |
 | `wls_domains` | WebLogic domains (name, edition, version) |
@@ -125,26 +125,33 @@ ansible-playbook ansible/playbooks/discover_oracle.yml \
 
 ### Manual (no Ansible — air-gapped or firewalled servers)
 
-**Step 1 — Run the discovery script on the Oracle server**
+Two discovery formats are supported: **JSON** (recommended, richer data) and **CSV** (lighter, no SQL*Plus spool quirks).
+
+#### JSON discovery
+
+**Step 1 — Run the wrapper script on the Oracle server**
 
 ```bash
-scp scripts/oracle_discovery.sql oracle-server:/tmp/
-
-# OS authentication
-sqlplus / as sysdba @/tmp/oracle_discovery.sql
-
-# Or explicit credentials
-sqlplus sys/yourpassword@ORCL as sysdba @/tmp/oracle_discovery.sql
+scp scripts/run_discovery.sh oracle-server:/tmp/
+chmod +x /tmp/run_discovery.sh
+/tmp/run_discovery.sh
 ```
 
-The script queries `v$instance`, `v$database`, `v$osstat`, `gv$instance`, `v$pdbs`,
-`v$option`, and `dba_users`. It writes:
+The wrapper collects OS CPU details via `lscpu` / `/proc/cpuinfo`, passes them to
+`oracle_discovery.sql` via SQL*Plus, and writes:
 
 ```
 oracle_discovery_<hostname>_<YYYYMMDD_HH24MISS>.json
 ```
 
-**Step 2 — Transfer and load**
+The script queries `v$instance`, `v$database`, `v$osstat`, `gv$instance`, `v$pdbs`,
+`v$option`, `dba_users`, `dba_feature_usage_statistics`, and performs three-tier
+Exadata detection (`v$cell`, `cell_offload_processing` parameter, feature usage).
+
+**Step 2 — Upload via the Admin UI**
+
+Upload the JSON file through **Administration → Upload Discovery** in the UI,
+or load it from the command line:
 
 ```bash
 scp oracle-server:/tmp/oracle_discovery_myserver_20250101_120000.json .
@@ -160,6 +167,19 @@ python3 scripts/load_discovery.py oracle_discovery_myserver_20250101_120000.json
 | `--client SCHEMA` | Override `SAM_CLIENT_SCHEMA` env var |
 | `--dry-run` | Validate JSON without writing to the database |
 | `--verbose` | Print each SQL call as it executes |
+
+#### CSV discovery
+
+Use when JSON is impractical (very old SQL*Plus, restricted DBMS_OUTPUT):
+
+```bash
+scp scripts/run_discovery_csv.sh oracle-server:/tmp/
+chmod +x /tmp/run_discovery_csv.sh
+/tmp/run_discovery_csv.sh
+```
+
+Writes `oracle_discovery_<hostname>_<YYYYMMDD_HH24MISS>.csv`. Upload via the UI
+the same way as JSON — the upload handler detects the format automatically.
 
 ### Schedule nightly discovery (cron)
 
@@ -433,7 +453,7 @@ The top-right client switcher scopes most pages to a single client. Key behaviou
 |---|---|
 | **Dashboard** | KPI summary — compliance score, licence gaps, contract value, per-client RAG status |
 | **Servers** | All active servers — licence requirements, CSI assignment status, compliance badge; remove servers from inventory |
-| **Edit Server** | Switch metric (Processor / NUP); assign/remove CSI contracts; view change history; reactivate removed servers |
+| **Edit Server** | Edit environment, datacenter, and IP address; switch metric (Processor / NUP); assign/remove CSI contracts; view change history; reactivate removed servers |
 | **Register Server** | Manually add a server with CPU model, core factor, OS, hardware, DB/WLS details, and licensed options |
 | **WebLogic Servers** | WebLogic domain inventory with licence position |
 | **Contracts** | CSI contracts, entitlement lines, server consumption |
@@ -543,6 +563,23 @@ psql oracle_sam -f database/migrations/add_client_pool_snapshots.sql
 psql oracle_sam -f database/migrations/13_stale_server_investigations.sql
 psql oracle_sam -f database/migrations/14_decommissioned_servers.sql
 psql oracle_sam -f database/migrations/15_contract_br_p2p.sql
+psql oracle_sam -f database/migrations/16_new_alert_types.sql
+psql oracle_sam -f database/migrations/17_auto_snapshots.sql
+psql oracle_sam -f database/migrations/18_guard_compliance_alerts.sql
+psql oracle_sam -f database/migrations/19_feature_usage_table_and_alert.sql
+psql oracle_sam -f database/migrations/20_licence_options_analysis.sql
+psql oracle_sam -f database/migrations/21_pdb_feature_usage.sql
+psql oracle_sam -f database/migrations/22_reactivate_on_rediscovery.sql
+psql oracle_sam -f database/migrations/23_fix_provision_client_feature_usage.sql
+psql oracle_sam -f database/migrations/24_fix_reactivate_on_rediscovery.sql
+psql oracle_sam -f database/migrations/25_direct_fix_upsert_discovery.sql
+psql oracle_sam -f database/migrations/26_refresh_option_trigger.sql
+psql oracle_sam -f database/migrations/27_direct_fix_option_trigger.sql
+psql oracle_sam -f database/migrations/28_silence_option_trigger.sql
+psql oracle_sam -f database/migrations/29_drop_option_trigger.sql
+psql oracle_sam -f database/migrations/30_drop_snapshot_trigger.sql
+psql oracle_sam -f database/migrations/31_add_is_exadata.sql
+psql oracle_sam -f database/migrations/32_patch_upsert_is_exadata.sql
 ```
 
 | Script | What it adds |
@@ -564,6 +601,23 @@ psql oracle_sam -f database/migrations/15_contract_br_p2p.sql
 | `13_stale_server_investigations.sql` | `sam_admin.stale_server_investigations` — tracks assignment and resolution of servers missing for 14+ days |
 | `14_decommissioned_servers.sql` | `sam_admin.decommissioned_servers` — permanent archive of decommissioned servers and their licence snapshots |
 | `15_contract_br_p2p.sql` | `br_number` and `p2p_number` columns on `shared.csi_contracts` |
+| `16_new_alert_types.sql` | New alert types: `NEW_SERVER_DETECTED`, `VMWARE_SERVER_NO_ULA`, `HARDWARE_INCREASE`, `HARDWARE_DECREASE`, `NEW_OPTION_ENABLED` |
+| `17_auto_snapshots.sql` | Automatic licence-position snapshots triggered on new option activation |
+| `18_guard_compliance_alerts.sql` | Wraps per-contract alert blocks in `BEGIN…EXCEPTION` guards so missing views don't break alerting |
+| `19_feature_usage_table_and_alert.sql` | `oracle_feature_usage` per-client table; persists `dba_feature_usage_statistics`; dormant-feature alert |
+| `20_licence_options_analysis.sql` | `shared.oracle_product_list_prices` — Oracle product pricing catalogue for FinOps analysis |
+| `21_pdb_feature_usage.sql` | Extends `oracle_feature_usage` to store feature data at the PDB level |
+| `22_reactivate_on_rediscovery.sql` | Re-activates removed servers/instances on re-discovery; ensures `upsert_oracle_feature_usage` exists for all clients |
+| `23_fix_provision_client_feature_usage.sql` | Back-fills `oracle_feature_usage` table and upsert function for clients created before migration 19 |
+| `24_fix_reactivate_on_rediscovery.sql` | Re-applies the `is_active = TRUE` ON CONFLICT fix that migration 22 failed to install |
+| `25_direct_fix_upsert_discovery.sql` | Directly patches `upsert_oracle_discovery` in all client schemas to set `is_active = TRUE` on conflict |
+| `26_refresh_option_trigger.sql` | Re-installs `log_option_change()` trigger to remove stale column reference |
+| `27_direct_fix_option_trigger.sql` | Directly patches `log_option_change()` in all schemas, bypassing the stale meta-function |
+| `28_silence_option_trigger.sql` | Makes `log_option_change()` fault-tolerant against stale `discovery_changelog` schema |
+| `29_drop_option_trigger.sql` | Drops the broken `trg_log_option_change` trigger from all client schemas |
+| `30_drop_snapshot_trigger.sql` | Drops the broken `trg_snapshot_on_feature_activation` trigger from all client schemas |
+| `31_add_is_exadata.sql` | Adds `is_exadata BOOLEAN` column to `oracle_processors` in all client schemas |
+| `32_patch_upsert_is_exadata.sql` | Recreates `upsert_oracle_discovery` in all client schemas to write the `is_exadata` value |
 
 ---
 
@@ -603,7 +657,31 @@ SAM-tool/
 │       ├── add_client_pool_snapshots.sql
 │       ├── 13_stale_server_investigations.sql
 │       ├── 14_decommissioned_servers.sql
-│       └── 15_contract_br_p2p.sql
+│       ├── 15_contract_br_p2p.sql
+│       ├── 16_new_alert_types.sql
+│       ├── 17_auto_snapshots.sql
+│       ├── 18_guard_compliance_alerts.sql
+│       ├── 19_feature_usage_table_and_alert.sql
+│       ├── 20_licence_options_analysis.sql
+│       ├── 21_pdb_feature_usage.sql
+│       ├── 22_reactivate_on_rediscovery.sql
+│       ├── 23_fix_provision_client_feature_usage.sql
+│       ├── 24_fix_reactivate_on_rediscovery.sql
+│       ├── 25_direct_fix_upsert_discovery.sql
+│       ├── 26_refresh_option_trigger.sql
+│       ├── 27_direct_fix_option_trigger.sql
+│       ├── 28_silence_option_trigger.sql
+│       ├── 29_drop_option_trigger.sql
+│       ├── 30_drop_snapshot_trigger.sql
+│       ├── 31_add_is_exadata.sql
+│       └── 32_patch_upsert_is_exadata.sql
+├── scripts/
+│   ├── run_discovery.sh                     ★ Run on Oracle DB server — collects CPU via lscpu, outputs JSON
+│   ├── oracle_discovery.sql                 SQL*Plus script called by run_discovery.sh
+│   ├── run_discovery_csv.sh                 CSV variant of run_discovery.sh
+│   ├── oracle_discovery_csv.sql             SQL*Plus script called by run_discovery_csv.sh
+│   ├── run_wls_discovery.sh                 Run on WebLogic server — JSON discovery
+│   └── wls_discovery_csv.sh                 CSV variant of WebLogic discovery
 ├── admin-ui/
 │   ├── app.py
 │   ├── requirements.txt
