@@ -40,6 +40,10 @@ SET TRIMSPOOL ON
 SET LINESIZE 4000
 SET COLSEP ','
 
+-- CPU model/arch injected by run_discovery_csv.sh; fallback to v$parameter
+DEFINE sam_cpu_model = 'unknown'
+DEFINE sam_cpu_arch  = 'x86_64'
+
 COLUMN sam_prefix NEW_VALUE sam_prefix NOPRINT
 SELECT LOWER(REPLACE(i.host_name, '.', '_'))
        || '_'
@@ -93,7 +97,10 @@ SELECT
   )                                                                      AS total_physical_cores,
   NVL((SELECT value FROM v$osstat WHERE stat_name = 'NUM_CPUS'), 1)     AS vcpu_count,
   ROUND((SELECT value FROM v$osstat WHERE stat_name = 'PHYSICAL_MEMORY_BYTES') / 1048576) AS ram_mb,
-  NVL((SELECT SUBSTR(value,1,100) FROM v$parameter WHERE name = 'processor_type'), 'unknown') AS cpu_model,
+  CASE
+    WHEN '&sam_cpu_model' NOT IN ('unknown', '') THEN '&sam_cpu_model'
+    ELSE NVL((SELECT SUBSTR(value,1,200) FROM v$parameter WHERE name = 'processor_type'), 'unknown')
+  END                                                                     AS cpu_model,
   CASE
     WHEN UPPER(NVL((SELECT value FROM v$parameter WHERE name='db_block_checking'),  '')) LIKE '%VMWARE%'
       OR UPPER(NVL((SELECT value FROM v$parameter WHERE name='vm_type'),            '')) LIKE '%VMWARE%'
