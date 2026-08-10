@@ -1,0 +1,399 @@
+{% extends "base.html" %}
+{% block title %}{{ t('register_server.title') }}{% endblock %}
+{% block content %}
+<style>
+  :root {
+    --rs-surface: #fff;
+    --rs-border: #dee2e6;
+    --rs-muted: #6c757d;
+    --rs-section-bg: #f8f9fa;
+    --rs-type-active-db:  #0d6efd22;
+    --rs-type-active-wls: #dc354522;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --rs-surface: #1e2228;
+      --rs-border: #373c44;
+      --rs-muted: #8b95a1;
+      --rs-section-bg: #161b22;
+    }
+  }
+  :root[data-theme="dark"] {
+    --rs-surface: #1e2228;
+    --rs-border: #373c44;
+    --rs-muted: #8b95a1;
+    --rs-section-bg: #161b22;
+  }
+
+  .rs-card {
+    background: var(--rs-surface);
+    border: 1px solid var(--rs-border);
+    border-radius: 8px;
+    padding: 1.75rem 2rem;
+    max-width: 800px;
+  }
+  .rs-header { margin-bottom: 1.75rem; }
+  .rs-header h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: .25rem; }
+  .rs-header p  { color: var(--rs-muted); font-size: .875rem; margin: 0; }
+
+  .rs-section {
+    background: var(--rs-section-bg);
+    border: 1px solid var(--rs-border);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+  .rs-section-title {
+    font-size: .75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--rs-muted);
+    margin-bottom: .75rem;
+  }
+  .rs-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem 1rem; }
+  .rs-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .75rem 1rem; }
+  @media (max-width: 600px) {
+    .rs-grid-2, .rs-grid-3 { grid-template-columns: 1fr; }
+  }
+
+  .rs-label { font-size: .8rem; font-weight: 600; margin-bottom: .25rem; display: block; }
+  .rs-hint  { font-size: .75rem; color: var(--rs-muted); margin-top: .2rem; }
+  .rs-actions { display: flex; gap: .75rem; margin-top: 1.5rem; }
+
+  /* Server type picker */
+  .type-picker { display: flex; gap: .75rem; margin-bottom: 1.25rem; }
+  .type-card {
+    flex: 1;
+    border: 2px solid var(--rs-border);
+    border-radius: 8px;
+    padding: .9rem 1rem;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    user-select: none;
+  }
+  .type-card:hover { border-color: #0d6efd88; }
+  .type-card.selected-db  { border-color: #0d6efd; background: var(--rs-type-active-db); }
+  .type-card.selected-wls { border-color: #dc3545; background: var(--rs-type-active-wls); }
+  .type-card-icon { font-size: 1.5rem; margin-bottom: .3rem; }
+  .type-card-title { font-weight: 700; font-size: .9rem; }
+  .type-card-sub   { font-size: .78rem; color: var(--rs-muted); }
+</style>
+
+<div class="container-fluid py-4">
+  <div class="rs-header">
+    <h1><i class="bi bi-hdd-network me-2"></i>{{ t('register_server.title') }}</h1>
+    <p>{{ t('register_server.subtitle') }}</p>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+      <div class="alert alert-{{ cat }} alert-dismissible fade show py-2" role="alert" style="max-width:800px">
+        {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}
+  {% endwith %}
+
+  <form method="post" action="{{ url_for('register_server') }}" id="regForm">
+    <input type="hidden" name="server_type" id="serverTypeInput" value="{{ form.get('server_type','oracle_database') }}">
+
+    <div class="rs-card">
+
+      <!-- Client selector -->
+      <div class="rs-section">
+        <div class="rs-section-title">{{ t('register_server.section_client') }}</div>
+        <div>
+          <label class="rs-label" for="client_schema">{{ t('register_server.label_client') }} <span class="text-danger">*</span></label>
+          <select id="client_schema" name="client_schema" class="form-select form-select-sm" required>
+            <option value="">— {{ t('register_server.select_client') }} —</option>
+            {% for c in all_clients %}
+            <option value="{{ c.schema_name }}"
+              {% if form.get('client_schema', schema) == c.schema_name %}selected{% endif %}>
+              {{ c.client_name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <!-- Server type picker -->
+      <div class="rs-section-title">{{ t('register_server.section_type') }}</div>
+      <div class="type-picker mb-3">
+        <div class="type-card {% if form.get('server_type','oracle_database') == 'oracle_database' %}selected-db{% endif %}"
+             id="typeCardDB" onclick="selectType('oracle_database')">
+          <div class="type-card-icon">🗄️</div>
+          <div class="type-card-title">Oracle Database</div>
+          <div class="type-card-sub">{{ t('register_server.type_db_sub') }}</div>
+        </div>
+        <div class="type-card {% if form.get('server_type') == 'oracle_weblogic' %}selected-wls{% endif %}"
+             id="typeCardWLS" onclick="selectType('oracle_weblogic')">
+          <div class="type-card-icon">☕</div>
+          <div class="type-card-title">Oracle WebLogic</div>
+          <div class="type-card-sub">{{ t('register_server.type_wls_sub') }}</div>
+        </div>
+      </div>
+
+      <!-- Identity -->
+      <div class="rs-section">
+        <div class="rs-section-title">{{ t('register_server.section_identity') }}</div>
+        <div class="rs-grid-2">
+          <div>
+            <label class="rs-label" for="hostname">{{ t('register_server.label_hostname') }} <span class="text-danger">*</span></label>
+            <input type="text" id="hostname" name="hostname" class="form-control form-control-sm"
+                   value="{{ form.get('hostname','') }}" required>
+            <div class="rs-hint">{{ t('register_server.hint_hostname') }}</div>
+          </div>
+          <div>
+            <label class="rs-label" for="fqdn">{{ t('register_server.label_fqdn') }}</label>
+            <input type="text" id="fqdn" name="fqdn" class="form-control form-control-sm"
+                   value="{{ form.get('fqdn','') }}" placeholder="srv01.corp.example.com">
+          </div>
+          <div>
+            <label class="rs-label" for="ip_address">{{ t('register_server.label_ip') }}</label>
+            <input type="text" id="ip_address" name="ip_address" class="form-control form-control-sm"
+                   value="{{ form.get('ip_address','') }}" placeholder="10.0.0.1">
+          </div>
+          <div>
+            <label class="rs-label" for="environment">{{ t('register_server.label_environment') }}</label>
+            <select id="environment" name="environment" class="form-select form-select-sm">
+              {% for env in environments %}
+              <option value="{{ env }}" {% if form.get('environment', 'unknown') == env %}selected{% endif %}>
+                {{ env | replace('_',' ') | title }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="rs-label" for="datacenter">{{ t('register_server.label_datacenter') }}</label>
+            <input type="text" id="datacenter" name="datacenter" class="form-control form-control-sm"
+                   value="{{ form.get('datacenter','') }}" placeholder="DC1">
+          </div>
+        </div>
+      </div>
+
+      <!-- DB-specific fields -->
+      <div class="rs-section" id="dbSection" style="{% if form.get('server_type') == 'oracle_weblogic' %}display:none{% endif %}">
+        <div class="rs-section-title">Oracle Database Details</div>
+        <div class="rs-grid-3">
+          <div>
+            <label class="rs-label" for="oracle_sid">{{ t('register_server.label_sid') }}</label>
+            <input type="text" id="oracle_sid" name="oracle_sid" class="form-control form-control-sm"
+                   value="{{ form.get('oracle_sid','') }}" placeholder="ORCL">
+            <div class="rs-hint">{{ t('register_server.hint_sid') }}</div>
+          </div>
+          <div>
+            <label class="rs-label" for="db_version">{{ t('register_server.label_db_version') }}</label>
+            <input type="text" id="db_version" name="db_version" class="form-control form-control-sm"
+                   value="{{ form.get('db_version','') }}" placeholder="19.3.0.0">
+          </div>
+          <div>
+            <label class="rs-label" for="edition">{{ t('register_server.label_edition') }}</label>
+            <select id="edition" name="edition" class="form-select form-select-sm">
+              <option value="">—</option>
+              <option value="Enterprise Edition" {% if form.get('edition') == 'Enterprise Edition' %}selected{% endif %}>Enterprise Edition</option>
+              <option value="Standard Edition 2" {% if form.get('edition') == 'Standard Edition 2' %}selected{% endif %}>Standard Edition 2</option>
+              <option value="Standard Edition" {% if form.get('edition') == 'Standard Edition' %}selected{% endif %}>Standard Edition</option>
+              <option value="Personal Edition" {% if form.get('edition') == 'Personal Edition' %}selected{% endif %}>Personal Edition</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- DB Options / Features -->
+      <div class="rs-section" id="dbOptionsSection" style="{% if form.get('server_type') == 'oracle_weblogic' %}display:none{% endif %}">
+        <div class="rs-section-title">Oracle Licensed Options / Features</div>
+        <div class="rs-hint mb-2">Only Enterprise Edition options need to be selected. Leave unchecked if the option is not in use.</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.4rem .75rem">
+          {% for opt in licensed_options %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox"
+                   name="db_options" value="{{ opt.option_name }}"
+                   id="opt_{{ loop.index }}"
+                   {% if opt.option_name in (form.getlist('db_options') if form else []) %}checked{% endif %}>
+            <label class="form-check-label small" for="opt_{{ loop.index }}"
+                   {% if opt.notes %}title="{{ opt.notes }}"{% endif %}>
+              {{ opt.display_name }}
+              {% if opt.notes %}<i class="bi bi-info-circle text-muted" style="font-size:.7rem"></i>{% endif %}
+            </label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- WLS-specific fields -->
+      <div class="rs-section" id="wlsSection" style="{% if form.get('server_type','oracle_database') != 'oracle_weblogic' %}display:none{% endif %}">
+        <div class="rs-section-title">WebLogic Domain Details</div>
+        <div class="rs-grid-3">
+          <div>
+            <label class="rs-label" for="domain_name">{{ t('register_server.label_domain') }}</label>
+            <input type="text" id="domain_name" name="domain_name" class="form-control form-control-sm"
+                   value="{{ form.get('domain_name','') }}" placeholder="base_domain">
+            <div class="rs-hint">{{ t('register_server.hint_domain') }}</div>
+          </div>
+          <div>
+            <label class="rs-label" for="wls_version">{{ t('register_server.label_wls_version') }}</label>
+            <input type="text" id="wls_version" name="wls_version" class="form-control form-control-sm"
+                   value="{{ form.get('wls_version','') }}" placeholder="14.1.1.0">
+          </div>
+          <div>
+            <label class="rs-label" for="wls_edition">{{ t('register_server.label_wls_edition') }}</label>
+            <select id="wls_edition" name="wls_edition" class="form-select form-select-sm">
+              <option value="">—</option>
+              <option value="WebLogic Server" {% if form.get('wls_edition') == 'WebLogic Server' %}selected{% endif %}>WebLogic Server</option>
+              <option value="WebLogic Suite" {% if form.get('wls_edition') == 'WebLogic Suite' %}selected{% endif %}>WebLogic Suite</option>
+              <option value="Coherence" {% if form.get('wls_edition') == 'Coherence' %}selected{% endif %}>Coherence</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- CPU model & core factor (applies to both DB and WLS) -->
+      <div class="rs-section">
+        <div class="rs-section-title">CPU Model &amp; Core Factor</div>
+        <div class="rs-grid-2">
+          <div>
+            <label class="rs-label" for="cpu_model_select">CPU Model</label>
+            <select id="cpu_model_select" name="cpu_model" class="form-select form-select-sm mb-1"
+                    onchange="applyCpuPreset(this.value)">
+              <option value="">— Select a CPU model —</option>
+              <optgroup label="Intel (factor 0.50)">
+                <option value="Intel Xeon|0.5">Intel Xeon (all generations)</option>
+                <option value="Intel Xeon E5|0.5">Intel Xeon E5</option>
+                <option value="Intel Xeon E7|0.5">Intel Xeon E7</option>
+                <option value="Intel Xeon Gold|0.5">Intel Xeon Gold</option>
+                <option value="Intel Xeon Platinum|0.5">Intel Xeon Platinum</option>
+                <option value="Intel Xeon Silver|0.5">Intel Xeon Silver</option>
+                <option value="Intel Core|0.5">Intel Core (i-series)</option>
+              </optgroup>
+              <optgroup label="AMD (factor 0.50)">
+                <option value="AMD EPYC|0.5">AMD EPYC</option>
+                <option value="AMD Opteron|0.5">AMD Opteron</option>
+              </optgroup>
+              <optgroup label="IBM POWER (factor 1.00)">
+                <option value="IBM POWER7|1.0">IBM POWER7</option>
+                <option value="IBM POWER8|1.0">IBM POWER8</option>
+                <option value="IBM POWER9|1.0">IBM POWER9</option>
+                <option value="IBM POWER10|1.0">IBM POWER10</option>
+              </optgroup>
+              <optgroup label="HP-UX / Itanium (factor 1.00)">
+                <option value="Intel Itanium|1.0">Intel Itanium (HP-UX / HP Integrity)</option>
+                <option value="HP Integrity|1.0">HP Integrity (generic)</option>
+              </optgroup>
+              <optgroup label="Oracle SPARC (factor varies)">
+                <option value="SPARC T4|0.25">SPARC T4 (factor 0.25)</option>
+                <option value="SPARC T5|0.25">SPARC T5 (factor 0.25)</option>
+                <option value="SPARC T7|0.25">SPARC T7 (factor 0.25)</option>
+                <option value="SPARC M7|0.5">SPARC M7 (factor 0.50)</option>
+                <option value="SPARC M8|0.5">SPARC M8 (factor 0.50)</option>
+              </optgroup>
+              <optgroup label="ARM (factor 0.50)">
+                <option value="ARM|0.5">ARM (generic)</option>
+                <option value="AWS Graviton|0.5">AWS Graviton</option>
+                <option value="Apple M|0.5">Apple Silicon M-series</option>
+              </optgroup>
+            </select>
+            <div class="rs-hint">Sets the core factor automatically based on Oracle's processor core factor table.</div>
+          </div>
+          <div>
+            <label class="rs-label" for="core_factor_override">Core Factor Override</label>
+            <select id="core_factor_override" name="core_factor_override" class="form-select form-select-sm">
+              <option value="">— Auto-detect from CPU model —</option>
+              <option value="0.25" {% if form.get('core_factor_override') == '0.25' %}selected{% endif %}>0.25 — Oracle SPARC T-series</option>
+              <option value="0.5"  {% if form.get('core_factor_override') == '0.5'  %}selected{% endif %}>0.50 — Intel / AMD / ARM</option>
+              <option value="1.0"  {% if form.get('core_factor_override') == '1.0'  %}selected{% endif %}>1.00 — IBM POWER / SPARC M / HP-UX Itanium</option>
+            </select>
+            <div class="rs-hint">Set automatically when you pick from the list above, or override manually if needed.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- OS -->
+      <div class="rs-section">
+        <div class="rs-section-title">{{ t('register_server.section_os') }}</div>
+        <div class="rs-grid-3">
+          <div>
+            <label class="rs-label" for="os_family">{{ t('register_server.label_os_family') }}</label>
+            <input type="text" id="os_family" name="os_family" class="form-control form-control-sm"
+                   value="{{ form.get('os_family','') }}" placeholder="Linux">
+          </div>
+          <div>
+            <label class="rs-label" for="os_distribution">{{ t('register_server.label_os_dist') }}</label>
+            <input type="text" id="os_distribution" name="os_distribution" class="form-control form-control-sm"
+                   value="{{ form.get('os_distribution','') }}" placeholder="RHEL">
+          </div>
+          <div>
+            <label class="rs-label" for="os_version">{{ t('register_server.label_os_ver') }}</label>
+            <input type="text" id="os_version" name="os_version" class="form-control form-control-sm"
+                   value="{{ form.get('os_version','') }}" placeholder="8.9">
+          </div>
+        </div>
+      </div>
+
+      <!-- Hardware -->
+      <div class="rs-section">
+        <div class="rs-section-title">{{ t('register_server.section_hardware') }}</div>
+        <div class="rs-grid-3">
+          <div>
+            <label class="rs-label" for="total_ram_mb">{{ t('register_server.label_ram') }}</label>
+            <input type="number" id="total_ram_mb" name="total_ram_mb" class="form-control form-control-sm"
+                   value="{{ form.get('total_ram_mb','') }}" min="0" placeholder="65536">
+            <div class="rs-hint">{{ t('register_server.hint_cores') }}</div>
+          </div>
+          <div>
+            <label class="rs-label" for="physical_cores">{{ t('register_server.label_cores') }}</label>
+            <input type="number" id="physical_cores" name="physical_cores" class="form-control form-control-sm"
+                   value="{{ form.get('physical_cores','') }}" min="1" placeholder="16">
+            <div class="rs-hint">{{ t('register_server.hint_cores') }}</div>
+          </div>
+          <div>
+            <label class="rs-label" for="cpu_sockets">{{ t('register_server.label_sockets') }}</label>
+            <input type="number" id="cpu_sockets" name="cpu_sockets" class="form-control form-control-sm"
+                   value="{{ form.get('cpu_sockets','') }}" min="1" placeholder="2">
+          </div>
+          <div>
+            <label class="rs-label" for="cores_per_socket">{{ t('register_server.label_cps') }}</label>
+            <input type="number" id="cores_per_socket" name="cores_per_socket" class="form-control form-control-sm"
+                   value="{{ form.get('cores_per_socket','') }}" min="1" placeholder="8">
+          </div>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="mb-3">
+        <label class="rs-label" for="notes">{{ t('register_server.label_notes') }}</label>
+        <textarea id="notes" name="notes" class="form-control form-control-sm" rows="2">{{ form.get('notes','') }}</textarea>
+      </div>
+
+      <div class="rs-actions">
+        <button type="submit" class="btn btn-success">
+          <i class="bi bi-hdd-network me-1"></i>{{ t('register_server.btn_register') }}
+        </button>
+        <a href="{{ url_for('servers') }}" class="btn btn-outline-secondary">{{ t('register_server.btn_cancel') }}</a>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+function applyCpuPreset(val) {
+  if (!val) return;
+  const factor = val.split('|')[1];
+  if (factor) {
+    const sel = document.getElementById('core_factor_override');
+    for (let i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === factor) { sel.selectedIndex = i; break; }
+    }
+  }
+}
+
+function selectType(type) {
+  document.getElementById('serverTypeInput').value = type;
+  document.getElementById('typeCardDB').className  = 'type-card' + (type === 'oracle_database'  ? ' selected-db'  : '');
+  document.getElementById('typeCardWLS').className = 'type-card' + (type === 'oracle_weblogic' ? ' selected-wls' : '');
+  const isDB = type === 'oracle_database';
+  document.getElementById('dbSection').style.display        = isDB ? '' : 'none';
+  document.getElementById('dbOptionsSection').style.display = isDB ? '' : 'none';
+  document.getElementById('wlsSection').style.display       = isDB ? 'none' : '';
+}
+</script>
+{% endblock %}

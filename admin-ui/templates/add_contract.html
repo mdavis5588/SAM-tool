@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% block title %}New Contract — Helios{% endblock %}
+{% block content %}
+
+<style>
+  .form-card {
+    background: #fff;
+    border: 1px solid #e3e6ea;
+    border-radius: 10px;
+    padding: 1.75rem 2rem;
+    max-width: 720px;
+  }
+  @media (prefers-color-scheme: dark) {
+    .form-card { background: #1e1e1d; border-color: #2c2c2a; }
+  }
+  .field-label {
+    font-size: .75rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .05em;
+    color: #6c757d; margin-bottom: .3rem;
+  }
+  .policy-card {
+    border: 2px solid #e3e6ea;
+    border-radius: 8px;
+    padding: .75rem 1rem;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .policy-card:has(input:checked) {
+    border-color: #7c3aed;
+    background: rgba(124,58,237,.05);
+  }
+  .policy-card input { display: none; }
+  .policy-title { font-weight: 600; font-size: .88rem; }
+  .policy-desc  { font-size: .78rem; color: #6c757d; margin-top: .15rem; }
+  .ula-product-check {
+    display: inline-flex; align-items: center; gap: .4rem;
+    border: 2px solid #e3e6ea; border-radius: 20px;
+    padding: .3rem .75rem; cursor: pointer; font-size: .82rem;
+    transition: border-color .15s, background .15s;
+    user-select: none;
+  }
+  .ula-product-check input { display: none; }
+  .ula-product-check:has(input:checked) {
+    border-color: #7c3aed;
+    background: rgba(124,58,237,.1);
+    color: #7c3aed; font-weight: 600;
+  }
+</style>
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('contracts') }}">Contracts</a></li>
+    <li class="breadcrumb-item active">{{ t('add_contract.title') }}</li>
+  </ol>
+</nav>
+
+<h4 class="mb-4"><i class="bi bi-file-earmark-plus me-1"></i>{{ t('add_contract.title') }}</h4>
+
+<div class="form-card shadow-sm">
+  <form method="post">
+    <input type="hidden" name="action" value="save_header">
+
+    <!-- ── ULA toggle (top) ── -->
+    <div class="mb-4 p-3 rounded border d-flex align-items-center gap-3"
+         style="border-color:#e3e6ea" id="ulaToggleRow">
+      <div class="form-check form-switch mb-0">
+        <input class="form-check-input" type="checkbox" id="isUlaToggle"
+               name="is_ula" value="1" style="width:2.5em;height:1.3em">
+        <label class="form-check-label fw-semibold ms-1" for="isUlaToggle">
+          <i class="bi bi-infinity me-1" style="color:#7c3aed"></i>Unlimited Licence Agreement (ULA)
+        </label>
+      </div>
+      <span class="text-muted" style="font-size:.8rem">Toggle on if this contract is a ULA</span>
+    </div>
+
+    <!-- ── Identity ── -->
+    <div class="row g-3 mb-3">
+      <div class="col-md-5">
+        <div class="field-label">{{ t('add_contract.csi_number') }}</div>
+        <input type="text" name="csi_number" class="form-control" placeholder="e.g. 12345678"
+               pattern="\d*" title="Digits only">
+        <div class="form-text">Leave blank if not yet assigned.</div>
+      </div>
+      <div class="col-md-7">
+        <div class="field-label">Contract Name <span class="text-danger">*</span></div>
+        <input type="text" name="contract_name" class="form-control" required
+               placeholder="e.g. Acme Oracle DB EE 2024">
+      </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-md-4">
+        <div class="field-label">{{ t('add_contract.vendor_reference') }}</div>
+        <input type="text" name="vendor_reference" class="form-control" placeholder="PO / Oracle ref">
+      </div>
+      <div class="col-md-4">
+        <div class="field-label">BR Number</div>
+        <input type="text" name="br_number" class="form-control" placeholder="e.g. BR-2024-00123">
+      </div>
+      <div class="col-md-4">
+        <div class="field-label">P2P Number</div>
+        <input type="text" name="p2p_number" class="form-control" placeholder="e.g. P2P-2024-00456">
+      </div>
+    </div>
+    <div class="row g-3 mb-3">
+      <div class="col-md-3">
+        <div class="field-label">Currency</div>
+        <select name="currency" class="form-select">
+          <option value="USD" selected>USD</option>
+          <option value="GBP">GBP</option>
+          <option value="EUR">EUR</option>
+          <option value="AUD">AUD</option>
+          <option value="CAD">CAD</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <div class="field-label">Status</div>
+        <select name="status" class="form-select">
+          <option value="active" selected>Active</option>
+          <option value="pending">Pending</option>
+          <option value="expired">Expired</option>
+          <option value="terminated">Terminated</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- ── Dates ── -->
+    <div class="row g-3 mb-3">
+      <div class="col-md-4">
+        <div class="field-label">{{ t('add_contract.purchase_date') }}</div>
+        <input type="date" name="purchase_date" class="form-control">
+      </div>
+      <div class="col-md-4 non-ula-date">
+        <div class="field-label">{{ t('add_contract.support_start') }}</div>
+        <input type="date" name="support_start" class="form-control">
+      </div>
+      <div class="col-md-4 non-ula-date">
+        <div class="field-label">{{ t('add_contract.support_expiry') }}</div>
+        <input type="date" name="support_expiry" class="form-control">
+      </div>
+    </div>
+
+    <div id="ulaFields" style="display:none">
+      <div class="p-3 mb-4 rounded border" style="border-color:#7c3aed!important;background:rgba(124,58,237,.04)">
+        <div class="row g-3 mb-3">
+          <div class="col-md-5">
+            <div class="field-label">ULA Expiry Date</div>
+            <input type="date" name="ula_expiry" class="form-control">
+          </div>
+        </div>
+
+        <div class="field-label mb-1">Covered Products / Features</div>
+        <div class="form-text mb-2">Tick every product this ULA covers.</div>
+
+        <div class="d-flex flex-wrap gap-2">
+          {% for prod in ['Enterprise Edition', 'Standard Edition 2', 'Tuning Pack', 'Diagnostics Pack',
+                          'Real Application Clusters', 'Partitioning', 'Advanced Security',
+                          'Label Security', 'Database Vault', 'OLAP', 'Spatial and Graph',
+                          'Active Data Guard', 'GoldenGate', 'Multitenant'] %}
+          <label class="ula-product-check">
+            <input type="checkbox" name="ula_products" value="{{ prod }}">
+            <span>{{ prod }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Sharing policy ── -->
+    <div class="field-label mb-2">Sharing Policy <span class="text-danger">*</span></div>
+    <div class="row g-2 mb-3" id="policyCards">
+      <div class="col-md-4">
+        <label class="policy-card d-block">
+          <input type="radio" name="sharing_policy" value="client_locked" required>
+          <div class="policy-title"><i class="bi bi-lock-fill text-purple me-1" style="color:#7c3aed"></i>{{ t('add_contract.policy_client_locked') }}</div>
+          <div class="policy-desc">Exclusively assigned to one client.</div>
+        </label>
+      </div>
+      <div class="col-md-4" id="policyShareableCol">
+        <label class="policy-card d-block">
+          <input type="radio" name="sharing_policy" value="shareable">
+          <div class="policy-title"><i class="bi bi-share me-1" style="color:#2a78d6"></i>{{ t('add_contract.policy_shareable') }}</div>
+          <div class="policy-desc">Pooled — can be allocated across clients.</div>
+        </label>
+      </div>
+      <div class="col-md-4" id="policyUnassignedCol">
+        <label class="policy-card d-block">
+          <input type="radio" name="sharing_policy" value="unassigned">
+          <div class="policy-title"><i class="bi bi-question-circle me-1 text-muted"></i>{{ t('add_contract.policy_unassigned') }}</div>
+          <div class="policy-desc">Not yet assigned to any client.</div>
+        </label>
+      </div>
+    </div>
+
+    <!-- ── Client selector (shown for locked/shareable) ── -->
+    <div id="clientRow" class="mb-4" style="display:none">
+      <div class="field-label" id="clientLabel">Client</div>
+      <select name="locked_client" class="form-select" style="max-width:320px">
+        <option value="">— Select client —</option>
+        {% for c in all_clients %}
+        <option value="{{ c.client_code }}">{{ c.client_name or c.client_code }}</option>
+        {% endfor %}
+      </select>
+      <div class="form-text" id="clientHint"></div>
+    </div>
+
+    <!-- ── Notes ── -->
+    <div class="mb-4">
+      <div class="field-label">Notes</div>
+      <textarea name="notes" class="form-control" rows="2" placeholder="Optional internal notes"></textarea>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-arrow-right-circle me-1"></i>{{ t('add_contract.save_add_lines') }}
+      </button>
+      <a href="{{ url_for('contracts') }}" class="btn btn-outline-secondary">{{ t('action.cancel') }}</a>
+    </div>
+  </form>
+</div>
+
+<script>
+  // ── Sharing policy ──────────────────────────────────────────────────────
+  const radios    = document.querySelectorAll('input[name="sharing_policy"]');
+  const clientRow = document.getElementById('clientRow');
+  const clientLbl = document.getElementById('clientLabel');
+  const clientHnt = document.getElementById('clientHint');
+
+  function updateClient() {
+    const val = document.querySelector('input[name="sharing_policy"]:checked')?.value;
+    if (val === 'client_locked') {
+      clientRow.style.display = '';
+      clientLbl.textContent = 'Lock to Client *';
+      clientHnt.textContent = 'This contract will be exclusively assigned to the selected client.';
+    } else if (val === 'shareable') {
+      clientRow.style.display = '';
+      clientLbl.textContent = 'Assign to Client (optional)';
+      clientHnt.textContent = 'Optionally assign this shareable pool to a client now.';
+    } else {
+      clientRow.style.display = 'none';
+    }
+  }
+  radios.forEach(r => r.addEventListener('change', updateClient));
+
+  // ── ULA fields ──────────────────────────────────────────────────────────
+  const ulaToggle           = document.getElementById('isUlaToggle');
+  const ulaFields           = document.getElementById('ulaFields');
+  const ulaRow              = document.getElementById('ulaToggleRow');
+  const policyShareableCol  = document.getElementById('policyShareableCol');
+  const policyUnassignedCol = document.getElementById('policyUnassignedCol');
+  const radioLocked         = document.querySelector('input[name="sharing_policy"][value="client_locked"]');
+
+  function applyUlaState() {
+    const on = ulaToggle.checked;
+    ulaFields.style.display = on ? '' : 'none';
+    document.querySelectorAll('.non-ula-date').forEach(el => {
+      el.style.display = on ? 'none' : '';
+    });
+    ulaRow.style.borderColor = on ? '#7c3aed' : '#e3e6ea';
+    ulaRow.style.background  = on ? 'rgba(124,58,237,.04)' : '';
+    policyShareableCol.style.display  = on ? 'none' : '';
+    policyUnassignedCol.style.display = on ? 'none' : '';
+    if (on) {
+      radioLocked.checked = true;
+      updateClient();
+    }
+  }
+
+  ulaToggle.addEventListener('change', applyUlaState);
+  applyUlaState();
+</script>
+{% endblock %}

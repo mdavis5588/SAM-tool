@@ -1,0 +1,427 @@
+{% extends "base.html" %}
+{% block title %}{{ contract.contract_name }} — Helios{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3 d-flex align-items-center justify-content-between">
+  <ol class="breadcrumb mb-0">
+    <li class="breadcrumb-item"><a href="{{ url_for('contracts') }}">Contracts</a></li>
+    <li class="breadcrumb-item active">{{ contract.csi_number or contract.contract_name }}</li>
+  </ol>
+  <button type="button" class="btn btn-sm btn-outline-danger"
+          data-bs-toggle="modal" data-bs-target="#deleteContractModal">
+    <i class="bi bi-trash me-1"></i>Delete Contract
+  </button>
+</nav>
+
+<!-- Delete confirmation modal -->
+<div class="modal fade" id="deleteContractModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title text-danger"><i class="bi bi-exclamation-triangle me-2"></i>Delete Contract</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to permanently delete <strong>{{ contract.contract_name }}</strong>
+          {% if contract.csi_number %}(CSI {{ contract.csi_number }}){% endif %}?</p>
+        <p class="text-muted" style="font-size:.875rem">This will also remove all entitlement lines and server assignments linked to this contract. This cannot be undone.</p>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form method="POST" action="{{ url_for('delete_contract', csi_id=contract.csi_id) }}">
+          <button type="submit" class="btn btn-danger">Delete permanently</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-4">
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-dark text-white">Contract Details</div>
+      <div class="card-body">
+        <table class="table table-sm table-borderless mb-0">
+          <tr><th>CSI Number</th><td><code>{{ contract.csi_number or '—' }}</code></td></tr>
+          <tr><th>Contract Name</th><td>{{ contract.contract_name }}</td></tr>
+          <tr><th>Vendor Reference</th><td>{{ contract.vendor_reference or '—' }}</td></tr>
+          <tr><th>BR Number</th><td>{{ contract.br_number or '—' }}</td></tr>
+          <tr><th>P2P Number</th><td>{{ contract.p2p_number or '—' }}</td></tr>
+          <tr><th>Purchase Date</th><td>{{ contract.purchase_date or '—' }}</td></tr>
+          {% if not contract.is_ula %}
+          <tr><th>Support Start</th><td>{{ contract.support_start or '—' }}</td></tr>
+          <tr><th>Support Expiry</th><td>{{ contract.support_expiry or '—' }}</td></tr>
+          {% endif %}
+          <tr><th>ULA</th><td>{% if contract.is_ula %}Yes — expires {{ contract.ula_expiry }}{% else %}No{% endif %}</td></tr>
+          <tr><th>Sharing Policy</th><td>{{ contract.sharing_policy | replace('_',' ') | title }}</td></tr>
+          <tr><th>Owning Client</th><td>{{ contract.owning_client or '—' }}</td></tr>
+          <tr><th>Status</th><td>
+            {% if contract.status == 'active' %}
+              <span class="badge bg-success">Active</span>
+            {% else %}
+              <span class="badge bg-danger">{{ contract.status | title }}</span>
+            {% endif %}
+          </td></tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Reference Numbers -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-hash me-1"></i>Reference Numbers</span>
+        <button class="btn btn-sm btn-outline-secondary" type="button"
+                data-bs-toggle="collapse" data-bs-target="#refsEditArea" aria-expanded="false">
+          <i class="bi bi-pencil"></i> {{ t('action.edit') }}
+        </button>
+      </div>
+      <div class="card-body">
+        <table class="table table-sm table-borderless mb-0">
+          <tr>
+            <th style="width:40%">BR Number</th>
+            <td>{{ contract.br_number or '<span class="text-muted fst-italic">Not set</span>' | safe }}</td>
+          </tr>
+          <tr>
+            <th>P2P Number</th>
+            <td>{{ contract.p2p_number or '<span class="text-muted fst-italic">Not set</span>' | safe }}</td>
+          </tr>
+        </table>
+        <div class="collapse" id="refsEditArea">
+          <hr class="my-2">
+          <form method="POST" action="{{ url_for('contract_save_references', csi_id=contract.csi_id) }}">
+            <div class="mb-2">
+              <label class="form-label form-label-sm mb-1">BR Number</label>
+              <input type="text" name="br_number" class="form-control form-control-sm"
+                     value="{{ contract.br_number or '' }}" placeholder="e.g. BR-2024-00123">
+            </div>
+            <div class="mb-2">
+              <label class="form-label form-label-sm mb-1">P2P Number</label>
+              <input type="text" name="p2p_number" class="form-control form-control-sm"
+                     value="{{ contract.p2p_number or '' }}" placeholder="e.g. P2P-2024-00456">
+            </div>
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-sm btn-primary">{{ t('action.save') }}</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary"
+                      data-bs-toggle="collapse" data-bs-target="#refsEditArea">{{ t('action.cancel') }}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notes -->
+    <div class="card shadow-sm">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-journal-text me-1"></i>{{ t('label.notes') }}</span>
+        <button class="btn btn-sm btn-outline-secondary" type="button"
+                data-bs-toggle="collapse" data-bs-target="#notesEditArea" aria-expanded="false">
+          <i class="bi bi-pencil"></i> {{ t('action.edit') }}
+        </button>
+      </div>
+      <div class="card-body">
+        {% if contract.notes %}
+        <p class="mb-2" style="white-space:pre-wrap;font-size:.9rem">{{ contract.notes }}</p>
+        {% else %}
+        <p class="text-muted mb-2" style="font-size:.875rem"><em>No notes added yet.</em></p>
+        {% endif %}
+
+        <div class="collapse" id="notesEditArea">
+          <form method="POST" action="{{ url_for('contract_save_notes', csi_id=contract.csi_id) }}">
+            <textarea name="notes" class="form-control form-control-sm mb-2" rows="4"
+                      placeholder="Add notes…">{{ contract.notes or '' }}</textarea>
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-sm btn-primary">{{ t('action.save') }}</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary"
+                      data-bs-toggle="collapse" data-bs-target="#notesEditArea">{{ t('action.cancel') }}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="col-lg-8">
+    <!-- Entitlement lines -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-list-ul"></i> Entitlement Lines</span>
+        {% if contract.is_ula %}
+        <span style="font-size:.85rem">
+          <span class="text-muted me-1">Annual Support:</span>
+          {% if ula_annual_support %}
+          <strong>{{ contract.currency or 'USD' }} {{ '{:,.2f}'.format(ula_annual_support) }}</strong>
+          {% else %}
+          <a href="{{ url_for('ula_support_cost', csi_id=contract.csi_id) }}" class="text-decoration-none" style="font-size:.82rem;color:#7c3aed">+ Add cost</a>
+          {% endif %}
+        </span>
+        {% endif %}
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>#</th>
+              <th>Product</th>
+              <th>Metric</th>
+              {% if not contract.is_ula %}
+              <th>Quantity</th>
+              <th>Consumed</th>
+              {% endif %}
+              <th>Available</th>
+              {% if not contract.is_ula %}
+              <th>Unit Price</th>
+              <th>Total Price</th>
+              <th>Annual Support</th>
+              <th>Support / Unit</th>
+              <th></th>
+              {% endif %}
+            </tr>
+
+          </thead>
+          <tbody>
+            {% if contract.is_ula %}
+              {% if ula_products %}
+                {% for p in ula_products %}
+                <tr>
+                  <td>{{ loop.index }}</td>
+                  <td>{{ p }}</td>
+                  <td>Processor</td>
+                  <td><span class="badge" style="background:rgba(124,58,237,.12);color:#7c3aed">ULA</span></td>
+                </tr>
+                {% endfor %}
+              {% else %}
+                <tr><td colspan="4" class="text-muted text-center">No covered products defined.</td></tr>
+              {% endif %}
+            {% else %}
+              {% for l in lines %}
+              {% set consumed = consumed_by_line.get(l.product_family, 0) %}
+              {% set qty = l.quantity or 0 %}
+              {% set available = [qty - consumed, 0] | max %}
+              {% set ann_support = l.annual_support_cost | float if l.annual_support_cost else (l.total_price | float * 0.22 if l.total_price else none) %}
+              {% set support_per_unit = (l.annual_support_cost | float / (qty | float)) if (l.annual_support_cost and qty) else (l.unit_price | float * 0.22 if l.unit_price else none) %}
+              <tr data-line-id="{{ l.line_id }}" data-csi-id="{{ contract.csi_id }}">
+                <td>{{ l.line_number }}</td>
+                <td>{{ l.product_name }}</td>
+                <td>{{ l.license_metric | replace('_',' ') | title }}</td>
+                <td>{{ (l.quantity | int) if l.quantity else '—' }}</td>
+                <td>
+                  {% if consumed %}
+                    <span class="fw-semibold">{{ consumed | int }}</span>
+                  {% else %}
+                    <span class="text-muted">0</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if qty %}
+                    {% if available == 0 %}
+                      <span class="badge bg-danger">0</span>
+                    {% elif available * 5 < qty %}
+                      <span class="badge bg-warning text-dark">{{ available | int }}</span>
+                    {% else %}
+                      <span class="badge bg-success">{{ available | int }}</span>
+                    {% endif %}
+                  {% else %}—{% endif %}
+                </td>
+                <td class="price-cell" data-field="unit_price" data-raw="{{ l.unit_price | float if l.unit_price else '' }}">
+                  <span class="price-display">{% if l.unit_price %}{{ '{:,.2f}'.format(l.unit_price) }}{% else %}<span class="text-muted">—</span>{% endif %}</span>
+                </td>
+                <td class="price-display-only" data-derived="total_price">
+                  {% if l.total_price %}<span class="total-price-val">{{ '{:,.2f}'.format(l.total_price) }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="price-cell" data-field="annual_support_cost" data-raw="{{ l.annual_support_cost | float if l.annual_support_cost else '' }}">
+                  <span class="price-display">
+                    {% if ann_support %}{{ '{:,.2f}'.format(ann_support) }}{% if not l.annual_support_cost %}<span class="text-muted small ms-1" title="Estimated at 22%">est.</span>{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}
+                  </span>
+                </td>
+                <td data-derived="support_per_unit">
+                  {% if support_per_unit %}<span class="support-unit-val">{{ '{:,.2f}'.format(support_per_unit) }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="text-end">
+                  <button class="btn btn-sm btn-outline-secondary edit-line-btn py-0 px-2" title="Edit prices">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="11" class="text-muted text-center">No lines found.</td></tr>
+              {% endfor %}
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Servers assigned to this CSI -->
+    <div class="card shadow-sm">
+      <div class="card-header"><i class="bi bi-server"></i> Assigned Servers</div>
+      {% if assigned_servers %}
+      <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Hostname</th>
+              <th>Environment</th>
+              <th>Product Family</th>
+              <th>Licences</th>
+              <th>Notes</th>
+              <th>From Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in assigned_servers %}
+            <tr>
+              <td>
+                <a href="{{ url_for('edit_server', server_id=s.server_id) }}">
+                  {{ s.hostname }}
+                </a>
+              </td>
+              <td>{{ s.environment | title }}</td>
+              <td>{{ s.product_family | replace('_',' ') | title }}</td>
+              <td>{{ s.licences_consumed or 'Auto' }}</td>
+              <td><small>{{ s.notes or '' }}</small></td>
+              <td>{{ s.effective_date or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="card-body text-muted">No servers assigned to this contract yet.</div>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+
+<!-- Edit line prices modal -->
+<div class="modal fade" id="editLineModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title"><i class="bi bi-pencil me-1"></i> Edit Line Pricing</h6>
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold mb-1">Unit Price</label>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text">$</span>
+            <input type="number" id="editUnitPrice" class="form-control" step="0.01" min="0" placeholder="e.g. 47500.00">
+          </div>
+          <div class="form-text">Total Price updates automatically (unit price × quantity).</div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label small fw-semibold mb-1">Annual Support Cost</label>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text">$</span>
+            <input type="number" id="editAnnualSupport" class="form-control" step="0.01" min="0" placeholder="Leave blank for 22% estimate">
+          </div>
+          <div class="form-text">Leave blank to show the 22% estimate. Support / Unit = this ÷ quantity.</div>
+        </div>
+        <div id="editLineError" class="alert alert-danger py-1 small d-none mt-2"></div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="saveLineBtn">
+          <span id="saveBtnSpinner" class="spinner-border spinner-border-sm d-none me-1"></span>
+          Save
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  let activeRow = null;
+
+  document.querySelectorAll('.edit-line-btn').forEach(btn => {
+    btn.addEventListener('click', function () {
+      activeRow = this.closest('tr');
+      const upCell  = activeRow.querySelector('[data-field="unit_price"]');
+      const ascCell = activeRow.querySelector('[data-field="annual_support_cost"]');
+      document.getElementById('editUnitPrice').value     = upCell  ? (upCell.dataset.raw  || '') : '';
+      document.getElementById('editAnnualSupport').value = ascCell ? (ascCell.dataset.raw || '') : '';
+      document.getElementById('editLineError').classList.add('d-none');
+      new bootstrap.Modal(document.getElementById('editLineModal')).show();
+    });
+  });
+
+  document.getElementById('saveLineBtn').addEventListener('click', async function () {
+    if (!activeRow) return;
+    const lineId   = activeRow.dataset.lineId;
+    const csiId    = activeRow.dataset.csiId;
+    const unitPrice  = document.getElementById('editUnitPrice').value.trim();
+    const annSupport = document.getElementById('editAnnualSupport').value.trim();
+    const errDiv     = document.getElementById('editLineError');
+    const spinner    = document.getElementById('saveBtnSpinner');
+
+    errDiv.classList.add('d-none');
+    spinner.classList.remove('d-none');
+    this.disabled = true;
+
+    try {
+      const resp = await fetch(`/contracts/${csiId}/lines/${lineId}/edit`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          unit_price:          unitPrice  === '' ? null : unitPrice,
+          annual_support_cost: annSupport === '' ? null : annSupport,
+        })
+      });
+      const data = await resp.json();
+
+      if (!data.ok) {
+        errDiv.textContent = Object.values(data.errors || {}).join(' ');
+        errDiv.classList.remove('d-none');
+        return;
+      }
+
+      const fmt = v => v != null
+        ? v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})
+        : '—';
+
+      const upCell  = activeRow.querySelector('[data-field="unit_price"]');
+      const ascCell = activeRow.querySelector('[data-field="annual_support_cost"]');
+
+      if (upCell) {
+        upCell.dataset.raw = data.unit_price != null ? data.unit_price : '';
+        upCell.querySelector('.price-display').textContent = fmt(data.unit_price);
+      }
+
+      const totEl = activeRow.querySelector('[data-derived="total_price"]');
+      if (totEl) totEl.textContent = fmt(data.total_price);
+
+      if (ascCell) {
+        const dispSupport = data.annual_support_cost != null
+          ? data.annual_support_cost
+          : (data.total_price != null ? data.total_price * 0.22 : null);
+        const isEstimate = data.annual_support_cost == null && dispSupport != null;
+        ascCell.dataset.raw = data.annual_support_cost != null ? data.annual_support_cost : '';
+        ascCell.querySelector('.price-display').innerHTML = dispSupport != null
+          ? fmt(dispSupport) + (isEstimate ? ' <span class="text-muted small ms-1" title="Estimated at 22%">est.</span>' : '')
+          : '—';
+      }
+
+      const qty = data.quantity;
+      const annSuppVal = data.annual_support_cost != null
+        ? data.annual_support_cost
+        : (data.total_price != null ? data.total_price * 0.22 : null);
+      const supPerUnit = (annSuppVal != null && qty) ? annSuppVal / qty : null;
+      const spuEl = activeRow.querySelector('[data-derived="support_per_unit"]');
+      if (spuEl) spuEl.textContent = fmt(supPerUnit);
+
+      bootstrap.Modal.getInstance(document.getElementById('editLineModal')).hide();
+    } catch (e) {
+      errDiv.textContent = 'Save failed — please try again.';
+      errDiv.classList.remove('d-none');
+    } finally {
+      spinner.classList.add('d-none');
+      this.disabled = false;
+    }
+  });
+})();
+</script>
+
+{% endblock %}

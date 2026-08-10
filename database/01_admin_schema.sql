@@ -27,29 +27,29 @@ CREATE TABLE IF NOT EXISTS sam_admin.clients (
 
 -- ---------------------------------------------------------------------------
 -- DISCOVERY RUNS AUDIT
--- Central audit log across all clients and all product types.
+-- One row per discovery sweep across all clients and sources.
+-- (Matches the structure created by migration 10_discovery_runs.sql)
 -- ---------------------------------------------------------------------------
-CREATE TYPE sam_admin.product_type AS ENUM
-  ('oracle_database', 'oracle_weblogic', 'oracle_java', 'mssql', 'vmware');
-
 CREATE TABLE IF NOT EXISTS sam_admin.discovery_runs (
-  run_id          TEXT PRIMARY KEY,
-  client_id       INTEGER NOT NULL REFERENCES sam_admin.clients (client_id),
-  product         sam_admin.product_type NOT NULL DEFAULT 'oracle_database',
-  started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  completed_at    TIMESTAMPTZ,
-  hosts_targeted  INTEGER,
-  hosts_succeeded INTEGER,
-  hosts_failed    INTEGER,
-  triggered_by    TEXT,
-  ansible_version TEXT,
-  playbook        TEXT,
-  notes           TEXT
+    run_id           SERIAL PRIMARY KEY,
+    client_id        INTEGER NOT NULL REFERENCES sam_admin.clients(client_id) ON DELETE CASCADE,
+    client_schema    TEXT    NOT NULL,
+    discovery_source TEXT    NOT NULL,
+    started_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at      TIMESTAMPTZ,
+    servers_seen     INTEGER NOT NULL DEFAULT 0,
+    servers_new      INTEGER NOT NULL DEFAULT 0,
+    servers_updated  INTEGER NOT NULL DEFAULT 0,
+    servers_conflict INTEGER NOT NULL DEFAULT 0,
+    run_host         TEXT,
+    notes            TEXT,
+    run_status       TEXT NOT NULL DEFAULT 'running'
+                     CHECK (run_status IN ('running','completed','failed'))
 );
 
-CREATE INDEX idx_runs_client  ON sam_admin.discovery_runs (client_id);
-CREATE INDEX idx_runs_product ON sam_admin.discovery_runs (product);
-CREATE INDEX idx_runs_started ON sam_admin.discovery_runs (started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_runs_client  ON sam_admin.discovery_runs (client_id);
+CREATE INDEX IF NOT EXISTS idx_runs_source  ON sam_admin.discovery_runs (discovery_source);
+CREATE INDEX IF NOT EXISTS idx_runs_started ON sam_admin.discovery_runs (started_at DESC);
 
 -- ---------------------------------------------------------------------------
 -- PROVISION CLIENT SCHEMA
@@ -71,9 +71,12 @@ BEGIN
     RAISE EXCEPTION 'client_code must be lowercase alphanumeric/underscore only: %', p_code;
   END IF;
 
-  -- Register client
+  -- Register client (skip silently if already exists)
   INSERT INTO sam_admin.clients (client_code, client_name, schema_name, contact_email)
   VALUES (p_code, p_name, v_schema, p_contact_email)
+  ON CONFLICT (client_code) DO UPDATE
+    SET client_name    = EXCLUDED.client_name,
+        contact_email  = COALESCE(EXCLUDED.contact_email, sam_admin.clients.contact_email)
   RETURNING client_id INTO v_client_id;
 
   -- Create schema
@@ -135,11 +138,13 @@ BEGIN
       criticality         TEXT,
       total_ram_mb        INTEGER,
       datacenter          TEXT,
-      is_active           BOOLEAN NOT NULL DEFAULT TRUE,
-      first_seen          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      last_seen           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      last_discovery_run  TEXT,
-      notes               TEXT
+      is_active                BOOLEAN NOT NULL DEFAULT TRUE,
+      first_seen               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_discovery_run       TEXT,
+      notes                    TEXT,
+      licence_metric_override  TEXT
+        CHECK (licence_metric_override IN ('processor_perpetual','named_user_plus'))
     )
   $sql$, p_schema, p_schema);
 
@@ -157,6 +162,7 @@ BEGIN
       total_physical_cores  INTEGER GENERATED ALWAYS AS (cpu_sockets * cores_per_socket) STORED,
       virt_type             %I.virt_type NOT NULL DEFAULT 'unknown',
       is_vmware             BOOLEAN NOT NULL DEFAULT FALSE,
+      is_exadata            BOOLEAN NOT NULL DEFAULT FALSE,
       vcpu_count            INTEGER,
       recorded_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       discovery_run_id      TEXT
@@ -307,21 +313,161 @@ BEGIN
                             REFERENCES shared.csi_contracts (csi_id),
       line_id             INTEGER
                             REFERENCES shared.license_entitlement_lines (line_id),
-                            -- NULL = assignment covers all lines on the CSI.
-                            -- Set to a specific line_id to assign at product level
-                            -- (e.g. this server uses the Diagnostic Pack line only).
       product_family      TEXT NOT NULL,
-                            -- 'oracle_database' or 'oracle_weblogic' — which
-                            -- product on this server does this CSI assignment cover.
+                            -- 'oracle_database', 'oracle_weblogic', etc.
+      product_detail      TEXT,
+                            -- NULL  = covers the base DB/WLS edition line.
+                            -- Set to the licence line product_detail to scope
+                            -- this assignment to a specific line (e.g. 'Partitioning',
+                            -- 'Oracle Database 19c Enterprise Edition').
       licences_consumed   NUMERIC(10,2),
                             -- How many licence units this server draws from the CSI.
-                            -- NULL = calculated automatically from processor topology.
+                            -- NULL = calculated automatically from licence position.
       effective_date      DATE NOT NULL DEFAULT CURRENT_DATE,
       notes               TEXT,
-      assigned_by         TEXT,          -- username or system that created the mapping
+      assigned_by         TEXT,
       created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (server_id, csi_id, line_id, product_family)
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  $sql$, p_schema, p_schema);
+
+  -- Unique index using COALESCE so NULL product_detail participates in deduplication
+  EXECUTE format($sql$
+    CREATE UNIQUE INDEX IF NOT EXISTS uix_%s_server_csi_line
+      ON %I.server_csi_map (server_id, csi_id, product_family, COALESCE(product_detail, ''))
+  $sql$, p_schema, p_schema);
+
+  -- oracle_rac_nodes: Real Application Clusters node topology per DB instance
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.oracle_rac_nodes (
+      rac_node_id       SERIAL PRIMARY KEY,
+      instance_id       INTEGER NOT NULL
+                          REFERENCES %I.oracle_instances (instance_id) ON DELETE CASCADE,
+      server_id         INTEGER NOT NULL
+                          REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+      node_name         TEXT NOT NULL,
+      node_number       INTEGER,
+      instance_name     TEXT,
+      is_active         BOOLEAN NOT NULL DEFAULT TRUE,
+      last_seen         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      discovery_run_id  TEXT,
+      UNIQUE (instance_id, node_name)
+    )
+  $sql$, p_schema, p_schema, p_schema);
+
+  -- oracle_pdbs: CDB/PDB topology (Oracle 12c+)
+  -- Multitenant requires a separate licence when > 1 PDB is used per CDB.
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.oracle_pdbs (
+      pdb_id                       SERIAL PRIMARY KEY,
+      instance_id                  INTEGER NOT NULL
+                                     REFERENCES %I.oracle_instances (instance_id) ON DELETE CASCADE,
+      pdb_name                     TEXT NOT NULL,
+      pdb_con_id                   INTEGER,
+      open_mode                    TEXT,
+      restricted                   TEXT,
+      is_cdb_root                  BOOLEAN NOT NULL DEFAULT FALSE,
+      requires_multitenant_licence BOOLEAN NOT NULL DEFAULT FALSE,
+      last_seen                    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      discovery_run_id             TEXT,
+      UNIQUE (instance_id, pdb_name)
+    )
+  $sql$, p_schema, p_schema);
+
+  -- oracle_nup_users: Named User Plus user count snapshots per instance
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.oracle_nup_users (
+      nup_id            SERIAL PRIMARY KEY,
+      instance_id       INTEGER NOT NULL
+                          REFERENCES %I.oracle_instances (instance_id) ON DELETE CASCADE,
+      snapshot_date     DATE NOT NULL DEFAULT CURRENT_DATE,
+      active_user_count INTEGER NOT NULL DEFAULT 0,
+      total_user_count  INTEGER NOT NULL DEFAULT 0,
+      locked_user_count INTEGER NOT NULL DEFAULT 0,
+      sample_user_list  TEXT[],
+      discovery_run_id  TEXT,
+      recorded_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  $sql$, p_schema, p_schema);
+
+  -- java_installations: Oracle JDK / GraalVM EE discovered on each server
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.java_installations (
+      java_id            SERIAL PRIMARY KEY,
+      server_id          INTEGER NOT NULL
+                           REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+      java_home          TEXT NOT NULL,
+      java_vendor        TEXT,
+      java_version       TEXT,
+      java_major_version INTEGER,
+      java_edition       TEXT,
+      is_oracle_jdk      BOOLEAN NOT NULL DEFAULT FALSE,
+      requires_licence   BOOLEAN NOT NULL DEFAULT FALSE,
+      licence_metric     TEXT,
+      licence_exempt     BOOLEAN NOT NULL DEFAULT FALSE,
+      exempt_reason      TEXT
+                           CHECK (exempt_reason IN (
+                             'oracle_oem', 'oracle_database_jvm', 'oracle_weblogic',
+                             'oracle_fusion_middleware', 'oracle_forms_reports',
+                             'custom'
+                           )),
+      exempt_notes       TEXT,
+      exempt_set_by      TEXT,
+      exempt_set_at      TIMESTAMPTZ,
+      first_seen         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      discovery_run_id   TEXT,
+      UNIQUE (server_id, java_home)
+    )
+  $sql$, p_schema, p_schema);
+
+  -- mysql_installations: MySQL Enterprise / Community installs
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.mysql_installations (
+      mysql_id          SERIAL PRIMARY KEY,
+      server_id         INTEGER NOT NULL
+                          REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+      mysql_version     TEXT,
+      mysql_edition     TEXT,
+      install_path      TEXT,
+      data_dir          TEXT,
+      port              INTEGER,
+      is_enterprise     BOOLEAN NOT NULL DEFAULT FALSE,
+      requires_licence  BOOLEAN NOT NULL DEFAULT FALSE,
+      first_seen        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      discovery_run_id  TEXT
+    )
+  $sql$, p_schema, p_schema);
+  EXECUTE format($sql$
+    CREATE UNIQUE INDEX IF NOT EXISTS mysql_installations_server_path_uidx
+      ON %I.mysql_installations (server_id, COALESCE(install_path, 'unknown'))
+  $sql$, p_schema);
+
+  -- oci_instances: OCI compute instances discovered via OCI CLI
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.oci_instances (
+      oci_id              SERIAL PRIMARY KEY,
+      server_id           INTEGER
+                            REFERENCES %I.oracle_servers (server_id) ON DELETE SET NULL,
+      oci_instance_id     TEXT NOT NULL UNIQUE,
+      display_name        TEXT,
+      compartment_id      TEXT,
+      compartment_name    TEXT,
+      availability_domain TEXT,
+      region              TEXT,
+      shape               TEXT,
+      ocpu_count          NUMERIC(10,2),
+      memory_gb           NUMERIC(10,2),
+      image_os            TEXT,
+      lifecycle_state     TEXT,
+      is_byol             BOOLEAN NOT NULL DEFAULT FALSE,
+      oracle_db_edition   TEXT,
+      private_ip          TEXT,
+      public_ip           TEXT,
+      first_seen          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      discovery_run_id    TEXT
     )
   $sql$, p_schema, p_schema);
 
@@ -334,6 +480,12 @@ BEGIN
   EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_scm_server    ON %I.server_csi_map    (server_id)', p_schema, p_schema);
   EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_scm_csi       ON %I.server_csi_map    (csi_id)', p_schema, p_schema);
   EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_scm_family    ON %I.server_csi_map    (product_family)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_rac_inst      ON %I.oracle_rac_nodes   (instance_id)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_pdb_inst      ON %I.oracle_pdbs        (instance_id)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_nup_inst      ON %I.oracle_nup_users   (instance_id)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_java_server   ON %I.java_installations (server_id)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_mysql_server  ON %I.mysql_installations(server_id)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_oci_server    ON %I.oci_instances      (server_id)', p_schema, p_schema);
 
   -- Install views and functions
   PERFORM sam_admin.install_license_position_view(p_schema);
@@ -341,50 +493,453 @@ BEGIN
   PERFORM sam_admin.install_server_coverage_view(p_schema);
   PERFORM sam_admin.install_changelog_objects(p_schema);
   PERFORM sam_admin.install_upsert_functions(p_schema);
+  PERFORM sam_admin.install_extended_views(p_schema);
+  PERFORM sam_admin.install_feature_usage_table(p_schema);
+  PERFORM sam_admin.install_feature_usage_upsert(p_schema);
 
 END;
 $$;
 
--- Placeholder stubs (defined in 02_shared_schema.sql after shared schema exists)
--- These are called by install_client_tables above; they are replaced properly
--- once the shared schema is created. Order of execution:
---   01_admin_schema.sql → 02_shared_schema.sql → 03_client_template_functions.sql
-CREATE OR REPLACE FUNCTION sam_admin.install_license_position_view(p_schema TEXT)
+-- Placeholder stubs — only created on a FRESH install where 03_client_template_functions.sql
+-- has not yet run. They allow install_client_tables() to compile without errors.
+-- On an EXISTING database these functions already exist as full implementations
+-- (from 03_client_template_functions.sql) and must NOT be overwritten with empty stubs.
+-- Use DO $$ ... $$ to create them conditionally.
+DO $$
+BEGIN
+  -- install_license_position_view
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_license_position_view'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_license_position_view(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
+
+  -- install_license_options_view
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_license_options_view'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_license_options_view(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
+
+  -- install_server_coverage_view
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_server_coverage_view'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_server_coverage_view(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
+
+  -- install_changelog_objects
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_changelog_objects'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_changelog_objects(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
+
+  -- install_upsert_functions
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_upsert_functions'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_upsert_functions(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
+
+  -- install_extended_views
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_extended_views'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_extended_views(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
+
+  -- install_feature_usage_table
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_feature_usage_table'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_feature_usage_table(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- VMWARE CLUSTER INFRASTRUCTURE
+-- Tracks vSphere clusters so Oracle licence footprint can be calculated
+-- across all physical hosts in a cluster (Oracle does not accept VMware as
+-- hard partitioning — the entire cluster must be licensed if any VM runs Oracle).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sam_admin.vmware_clusters (
+  cluster_id       SERIAL PRIMARY KEY,
+  cluster_name     TEXT NOT NULL,
+  vcenter_host     TEXT NOT NULL,
+  datacenter       TEXT,
+  client_id        INTEGER REFERENCES sam_admin.clients (client_id) ON DELETE SET NULL,
+  discovery_run_id TEXT,
+  last_seen        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (vcenter_host, cluster_name)
+);
+
+CREATE TABLE IF NOT EXISTS sam_admin.vmware_hosts (
+  host_id          SERIAL PRIMARY KEY,
+  cluster_id       INTEGER NOT NULL
+                     REFERENCES sam_admin.vmware_clusters (cluster_id) ON DELETE CASCADE,
+  hostname         TEXT NOT NULL,
+  cpu_model        TEXT,
+  cpu_sockets      INTEGER NOT NULL DEFAULT 1,
+  cores_per_socket INTEGER NOT NULL DEFAULT 1,
+  total_cores      INTEGER GENERATED ALWAYS AS (cpu_sockets * cores_per_socket) STORED,
+  memory_gb        NUMERIC(10,2),
+  is_active        BOOLEAN NOT NULL DEFAULT TRUE,
+  discovery_run_id TEXT,
+  last_seen        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (cluster_id, hostname)
+);
+
+CREATE TABLE IF NOT EXISTS sam_admin.vmware_vms (
+  vm_id                   SERIAL PRIMARY KEY,
+  cluster_id              INTEGER NOT NULL
+                            REFERENCES sam_admin.vmware_clusters (cluster_id) ON DELETE CASCADE,
+  host_id                 INTEGER
+                            REFERENCES sam_admin.vmware_hosts (host_id) ON DELETE SET NULL,
+  vm_name                 TEXT NOT NULL,
+  vm_uuid                 TEXT UNIQUE,
+  guest_hostname          TEXT,    -- matches oracle_servers.hostname when populated
+  guest_ip                TEXT,
+  power_state             TEXT,
+  vcpu_count              INTEGER,
+  memory_mb               INTEGER,
+  has_oracle_db           BOOLEAN NOT NULL DEFAULT FALSE,
+  has_oracle_wls          BOOLEAN NOT NULL DEFAULT FALSE,
+  has_oracle_java         BOOLEAN NOT NULL DEFAULT FALSE,
+  discovery_run_id        TEXT,
+  last_seen               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (cluster_id, vm_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_vmw_cluster_client  ON sam_admin.vmware_clusters (client_id);
+CREATE INDEX IF NOT EXISTS idx_vmw_host_cluster    ON sam_admin.vmware_hosts    (cluster_id);
+CREATE INDEX IF NOT EXISTS idx_vmw_vm_cluster      ON sam_admin.vmware_vms      (cluster_id);
+CREATE INDEX IF NOT EXISTS idx_vmw_vm_host         ON sam_admin.vmware_vms      (host_id);
+CREATE INDEX IF NOT EXISTS idx_vmw_vm_hostname     ON sam_admin.vmware_vms      (guest_hostname);
+
+-- View: clusters that contain at least one Oracle VM —
+-- shows total physical core count that Oracle would require to be licensed.
+CREATE OR REPLACE VIEW sam_admin.vmware_licence_exposure AS
+SELECT
+  vc.cluster_id,
+  vc.cluster_name,
+  vc.vcenter_host,
+  vc.datacenter,
+  c.client_code,
+  COUNT(DISTINCT vh.host_id)                          AS host_count,
+  SUM(vh.cpu_sockets)                                 AS total_sockets,
+  SUM(vh.total_cores)                                 AS total_physical_cores,
+  COUNT(DISTINCT vm.vm_id) FILTER (WHERE vm.has_oracle_db)   AS oracle_db_vm_count,
+  COUNT(DISTINCT vm.vm_id) FILTER (WHERE vm.has_oracle_wls)  AS oracle_wls_vm_count,
+  COUNT(DISTINCT vm.vm_id) FILTER (WHERE vm.has_oracle_java) AS oracle_java_vm_count,
+  BOOL_OR(vm.has_oracle_db OR vm.has_oracle_wls OR vm.has_oracle_java) AS has_oracle_workloads,
+  vc.last_seen
+FROM   sam_admin.vmware_clusters vc
+JOIN   sam_admin.vmware_hosts    vh ON vh.cluster_id = vc.cluster_id AND vh.is_active
+LEFT   JOIN sam_admin.vmware_vms vm ON vm.cluster_id = vc.cluster_id
+LEFT   JOIN sam_admin.clients    c  ON c.client_id   = vc.client_id
+GROUP  BY vc.cluster_id, vc.cluster_name, vc.vcenter_host, vc.datacenter,
+          c.client_code, vc.last_seen;
+
+-- ---------------------------------------------------------------------------
+-- LICENCE SNAPSHOTS
+-- Point-in-time capture of the full licence position for a client.
+-- Manual snapshots: one per client per calendar month (enforced by partial index).
+-- Automatic snapshots: taken on feature activation or dormancy events; deduplicated
+-- by (client, month, type, feature) so rapid discovery runs don't create duplicates.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sam_admin.licence_snapshots (
+  snapshot_id     SERIAL PRIMARY KEY,
+  client_id       INTEGER NOT NULL REFERENCES sam_admin.clients (client_id) ON DELETE CASCADE,
+  snapshot_month  DATE NOT NULL,
+  taken_by        TEXT NOT NULL DEFAULT 'system',
+  note            TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  snapshot_type   TEXT NOT NULL DEFAULT 'manual'
+                    CHECK (snapshot_type IN ('manual','feature_activated','feature_dormant')),
+  trigger_feature TEXT
+);
+
+-- One manual snapshot per client per month
+CREATE UNIQUE INDEX IF NOT EXISTS uq_licence_snapshots_manual
+  ON sam_admin.licence_snapshots (client_id, snapshot_month)
+  WHERE snapshot_type = 'manual';
+
+-- Dedup auto-snapshots by (client, month, type, feature)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_licence_snapshots_auto
+  ON sam_admin.licence_snapshots (client_id, snapshot_month, snapshot_type, trigger_feature)
+  WHERE snapshot_type <> 'manual';
+
+CREATE INDEX IF NOT EXISTS idx_snaps_client  ON sam_admin.licence_snapshots (client_id);
+CREATE INDEX IF NOT EXISTS idx_snaps_month   ON sam_admin.licence_snapshots (snapshot_month DESC);
+
+CREATE TABLE IF NOT EXISTS sam_admin.licence_snapshot_lines (
+  line_id           SERIAL PRIMARY KEY,
+  snapshot_id       INTEGER NOT NULL REFERENCES sam_admin.licence_snapshots (snapshot_id) ON DELETE CASCADE,
+  hostname          TEXT,
+  environment       TEXT,
+  product_family    TEXT,
+  product_detail    TEXT,
+  licence_metric    TEXT,
+  licences_required NUMERIC(10,2),
+  licences_assigned NUMERIC(10,2),
+  surplus_deficit   NUMERIC(10,2),
+  compliance_status TEXT,
+  csi_number        TEXT,
+  contract_ref      TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_snap_lines_snap ON sam_admin.licence_snapshot_lines (snapshot_id);
+
+-- ---------------------------------------------------------------------------
+-- AUTOMATIC SNAPSHOT FUNCTIONS
+-- ---------------------------------------------------------------------------
+
+-- take_auto_snapshot(): insert a header + position lines for one client.
+-- Returns the new snapshot_id, or NULL if the dedup index blocked a duplicate.
+CREATE OR REPLACE FUNCTION sam_admin.take_auto_snapshot(
+  p_client_id       INTEGER,
+  p_snapshot_type   TEXT,
+  p_trigger_feature TEXT
+)
+RETURNS INTEGER LANGUAGE plpgsql AS $$
+DECLARE
+  v_schema  TEXT;
+  v_snap_id INTEGER;
+  v_month   DATE := DATE_TRUNC('month', NOW())::DATE;
+  v_note    TEXT;
+  rec       RECORD;
+BEGIN
+  SELECT schema_name INTO v_schema FROM sam_admin.clients WHERE client_id = p_client_id;
+  IF v_schema IS NULL THEN
+    RAISE WARNING 'take_auto_snapshot: client_id % not found', p_client_id;
+    RETURN NULL;
+  END IF;
+
+  v_note := CASE p_snapshot_type
+    WHEN 'feature_activated' THEN 'Auto-snapshot: feature newly active — ' || COALESCE(p_trigger_feature, 'unknown')
+    WHEN 'feature_dormant'   THEN 'Auto-snapshot: feature inactive >1 year — ' || COALESCE(p_trigger_feature, 'unknown')
+    ELSE 'Auto-snapshot: ' || p_snapshot_type
+  END;
+
+  BEGIN
+    INSERT INTO sam_admin.licence_snapshots
+      (client_id, snapshot_month, taken_by, note, snapshot_type, trigger_feature)
+    VALUES
+      (p_client_id, v_month, 'system', v_note, p_snapshot_type, p_trigger_feature)
+    RETURNING snapshot_id INTO v_snap_id;
+  EXCEPTION WHEN unique_violation THEN
+    RETURN NULL;
+  END;
+
+  FOR rec IN EXECUTE format(
+    'SELECT hostname, environment, product_family, product_detail,
+            licence_metric, licences_required, licences_assigned,
+            surplus_deficit, compliance_status, csi_number, contract_ref
+     FROM   %I.license_position',
+    v_schema
+  ) LOOP
+    INSERT INTO sam_admin.licence_snapshot_lines
+      (snapshot_id, hostname, environment, product_family, product_detail,
+       licence_metric, licences_required, licences_assigned,
+       surplus_deficit, compliance_status, csi_number, contract_ref)
+    VALUES
+      (v_snap_id, rec.hostname, rec.environment, rec.product_family, rec.product_detail,
+       rec.licence_metric, rec.licences_required, rec.licences_assigned,
+       rec.surplus_deficit, rec.compliance_status, rec.csi_number, rec.contract_ref);
+  END LOOP;
+
+  RETURN v_snap_id;
+END;
+$$;
+
+-- check_feature_dormancy(): scan all client schemas for options inactive >1 year.
+-- Call daily from the dispatch-alerts endpoint or a pg_cron job.
+CREATE OR REPLACE FUNCTION sam_admin.check_feature_dormancy()
+RETURNS TABLE (client_id INTEGER, feature TEXT, last_active TIMESTAMPTZ, snapshot_id INTEGER)
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_client  RECORD;
+  v_opt     RECORD;
+  v_snap_id INTEGER;
+BEGIN
+  FOR v_client IN SELECT c.client_id, c.schema_name FROM sam_admin.clients c ORDER BY c.client_id
+  LOOP
+    BEGIN
+      FOR v_opt IN EXECUTE format(
+        'SELECT DISTINCT ON (o.option_name) o.option_name, o.recorded_at
+         FROM   %I.oracle_options o
+         WHERE  o.status = ''TRUE''
+           AND  o.recorded_at < NOW() - INTERVAL ''1 year''
+           AND  NOT EXISTS (
+                  SELECT 1 FROM %I.oracle_options o2
+                  WHERE  o2.option_name = o.option_name
+                    AND  o2.status = ''TRUE''
+                    AND  o2.recorded_at >= NOW() - INTERVAL ''1 year''
+                )
+         ORDER  BY o.option_name, o.recorded_at DESC',
+        v_client.schema_name, v_client.schema_name
+      ) LOOP
+        v_snap_id := sam_admin.take_auto_snapshot(v_client.client_id, 'feature_dormant', v_opt.option_name);
+        client_id   := v_client.client_id;
+        feature     := v_opt.option_name;
+        last_active := v_opt.recorded_at;
+        snapshot_id := v_snap_id;
+        RETURN NEXT;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'check_feature_dormancy: error on schema %: %', v_client.schema_name, SQLERRM;
+    END;
+  END LOOP;
+END;
+$$;
+
+-- notify_feature_activated(): called by per-schema trigger to take a snapshot
+-- when an Oracle option status transitions to active.
+CREATE OR REPLACE FUNCTION sam_admin.notify_feature_activated(
+  p_schema      TEXT,
+  p_option_name TEXT,
+  p_old_status  TEXT,
+  p_new_status  TEXT
+)
+RETURNS VOID LANGUAGE plpgsql AS $$
+DECLARE v_client_id INTEGER;
+BEGIN
+  IF p_new_status <> 'TRUE' THEN RETURN; END IF;
+  IF p_old_status = 'TRUE'  THEN RETURN; END IF;
+  SELECT client_id INTO v_client_id FROM sam_admin.clients WHERE schema_name = p_schema;
+  IF v_client_id IS NULL THEN RETURN; END IF;
+  PERFORM sam_admin.take_auto_snapshot(v_client_id, 'feature_activated', p_option_name);
+END;
+$$;
+
+-- install_feature_activation_trigger(): installs a second AFTER trigger on
+-- oracle_options that calls notify_feature_activated() when status → TRUE.
+CREATE OR REPLACE FUNCTION sam_admin.install_feature_activation_trigger(p_schema TEXT)
 RETURNS VOID LANGUAGE plpgsql AS $$
 BEGIN
-  -- Implemented in 03_client_template_functions.sql
-  NULL;
+  EXECUTE format($fn$
+    CREATE OR REPLACE FUNCTION %I.snapshot_on_feature_activation()
+    RETURNS TRIGGER LANGUAGE plpgsql AS $body$
+    BEGIN
+      PERFORM sam_admin.notify_feature_activated(
+        %L, NEW.option_name,
+        CASE WHEN TG_OP = 'UPDATE' THEN OLD.status ELSE NULL END,
+        NEW.status
+      );
+      RETURN NEW;
+    END;
+    $body$;
+  $fn$, p_schema, p_schema);
+
+  EXECUTE format('DROP TRIGGER IF EXISTS trg_snapshot_on_feature_activation ON %I.oracle_options', p_schema);
+  EXECUTE format(
+    'CREATE TRIGGER trg_snapshot_on_feature_activation
+       AFTER INSERT OR UPDATE ON %I.oracle_options
+       FOR EACH ROW EXECUTE FUNCTION %I.snapshot_on_feature_activation()',
+    p_schema, p_schema
+  );
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION sam_admin.install_license_options_view(p_schema TEXT)
+-- install_feature_usage_table(): creates the oracle_feature_usage table in a
+-- client schema to persist DBA_FEATURE_USAGE_STATISTICS data.
+CREATE OR REPLACE FUNCTION sam_admin.install_feature_usage_table(p_schema TEXT)
 RETURNS VOID LANGUAGE plpgsql AS $$
 BEGIN
-  -- Implemented in 03_client_template_functions.sql
-  NULL;
+  EXECUTE format($ddl$
+    CREATE TABLE IF NOT EXISTS %I.oracle_feature_usage (
+      feature_id        SERIAL PRIMARY KEY,
+      instance_id       INTEGER NOT NULL
+                          REFERENCES %I.oracle_instances(instance_id) ON DELETE CASCADE,
+      feature_name      TEXT    NOT NULL,
+      db_version        TEXT,
+      detected_usages   INTEGER NOT NULL DEFAULT 0,
+      total_samples     INTEGER NOT NULL DEFAULT 0,
+      currently_used    BOOLEAN NOT NULL DEFAULT FALSE,
+      first_usage_date  DATE,
+      last_usage_date   DATE,
+      last_sample_date  DATE,
+      discovery_run_id  TEXT,
+      UNIQUE (instance_id, feature_name)
+    )
+  $ddl$, p_schema, p_schema);
+
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS idx_%s_feat_usage_inst ON %I.oracle_feature_usage (instance_id)',
+    p_schema, p_schema
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS idx_%s_feat_usage_last ON %I.oracle_feature_usage (last_usage_date)',
+    p_schema, p_schema
+  );
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION sam_admin.install_server_coverage_view(p_schema TEXT)
-RETURNS VOID LANGUAGE plpgsql AS $$
+-- install_feature_usage_upsert(): stub referenced by install_extended_views.
+-- The real implementation is in 03_client_template_functions.sql.
+DO $$
 BEGIN
-  -- Implemented in 03_client_template_functions.sql
-  NULL;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_feature_usage_upsert'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_feature_usage_upsert(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION sam_admin.install_changelog_objects(p_schema TEXT)
-RETURNS VOID LANGUAGE plpgsql AS $$
-BEGIN
-  -- Implemented in 03_client_template_functions.sql
-  NULL;
-END;
-$$;
+-- ---------------------------------------------------------------------------
+-- ALERT CHANNELS
+-- Stores email / Slack / Teams webhook destinations for compliance alerts.
+-- Dispatch is triggered by calling GET /api/dispatch-alerts from cron.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sam_admin.alert_channels (
+  channel_id    SERIAL PRIMARY KEY,
+  channel_type  TEXT NOT NULL CHECK (channel_type IN ('email', 'slack', 'teams')),
+  channel_name  TEXT NOT NULL,
+  config        JSONB NOT NULL DEFAULT '{}',
+  -- email config keys: smtp_host, smtp_port, smtp_user, smtp_password,
+  --                    from_addr, to_addrs (array)
+  -- slack config keys: webhook_url
+  -- teams config keys: webhook_url
+  enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+  min_severity  TEXT NOT NULL DEFAULT 'MEDIUM'
+                  CHECK (min_severity IN ('LOW', 'MEDIUM', 'HIGH')),
+  last_sent_at  TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
-CREATE OR REPLACE FUNCTION sam_admin.install_upsert_functions(p_schema TEXT)
-RETURNS VOID LANGUAGE plpgsql AS $$
-BEGIN
-  -- Implemented in 03_client_template_functions.sql
-  NULL;
-END;
-$$;

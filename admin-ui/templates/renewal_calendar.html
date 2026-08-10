@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block title %}{{ t('renewal_cal.title') }} — Helios{% endblock %}
+{% block content %}
+
+<style>
+  :root {
+    --r: #dc2626; --r-lo: rgba(220,38,38,.1);
+    --a: #d97706; --a-lo: rgba(217,119,6,.1);
+    --y: #ca8a04; --y-lo: rgba(202,138,4,.1);
+    --g: #16a34a; --g-lo: rgba(22,163,74,.1);
+    --border: #e2e8f0; --card: #fff; --txt: #0f172a; --txt2: #64748b; --page: #f8fafc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --border:#1e293b; --card:#1e293b; --page:#0f172a; --txt:#f1f5f9; --txt2:#94a3b8;
+            --r-lo:rgba(220,38,38,.15); --a-lo:rgba(217,119,6,.15); --y-lo:rgba(202,138,4,.15); --g-lo:rgba(22,163,74,.15); }
+  }
+  :root[data-theme="dark"]  { --border:#1e293b; --card:#1e293b; --page:#0f172a; --txt:#f1f5f9; --txt2:#94a3b8; }
+  :root[data-theme="light"] { --border:#e2e8f0; --card:#fff; --page:#f8fafc; --txt:#0f172a; --txt2:#64748b; }
+
+  body { background: var(--page); }
+
+  /* ── Band cards ── */
+  .band {
+    border-radius: 10px; border: 1px solid var(--border);
+    background: var(--card); margin-bottom: 1.25rem; overflow: hidden;
+  }
+  .band-header {
+    display: flex; align-items: center; gap: .65rem;
+    padding: .7rem 1rem;
+    border-bottom: 1px solid var(--border);
+    font-weight: 700; font-size: .8rem;
+    text-transform: uppercase; letter-spacing: .06em;
+  }
+  .band-header.crit  { background: var(--r-lo); color: var(--r); }
+  .band-header.warn  { background: var(--a-lo); color: var(--a); }
+  .band-header.near  { background: var(--y-lo); color: var(--y); }
+  .band-header.ok    { background: var(--g-lo); color: var(--g); }
+  .band-header.muted { background: transparent; color: var(--txt2); }
+  .band-count {
+    margin-left: auto; font-size: .72rem; font-weight: 700;
+    padding: .12rem .5rem; border-radius: 20px;
+    background: rgba(0,0,0,.08);
+  }
+
+  /* ── Contract rows ── */
+  .renewal-row {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .6rem 1rem; border-bottom: 1px solid var(--border);
+    font-size: .83rem;
+  }
+  .renewal-row:last-child { border-bottom: none; }
+
+  .days-pill {
+    flex-shrink: 0; width: 64px; text-align: center;
+    font-size: .72rem; font-weight: 800; padding: .25rem .4rem;
+    border-radius: 6px; font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+  }
+  .days-pill.crit  { background: var(--r-lo); color: var(--r); }
+  .days-pill.warn  { background: var(--a-lo); color: var(--a); }
+  .days-pill.near  { background: var(--y-lo); color: var(--y); }
+  .days-pill.ok    { background: var(--g-lo); color: var(--g); }
+  .days-pill.past  { background: rgba(100,116,139,.1); color: var(--txt2); }
+
+  .renewal-date  { flex-shrink: 0; width: 88px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--txt); }
+  .renewal-name  { flex: 1; font-weight: 500; color: var(--txt); }
+  .renewal-name a { color: inherit; text-decoration: none; }
+  .renewal-name a:hover { text-decoration: underline; }
+  .renewal-client { font-size: .75rem; color: var(--txt2); margin-top: .1rem; }
+  .renewal-cost   { flex-shrink: 0; text-align: right; font-variant-numeric: tabular-nums; color: var(--txt2); font-size: .8rem; white-space: nowrap; }
+
+  /* ── Timeline bar ── */
+  .timeline-bar {
+    display: flex; height: 8px; border-radius: 4px; overflow: hidden;
+    margin-bottom: 1.5rem; gap: 2px;
+  }
+  .tl-seg { height: 100%; border-radius: 2px; transition: flex .3s; }
+
+  /* ── KPI strip ── */
+  .kpi-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 1rem; margin-bottom: 1.5rem; }
+  @media (max-width: 700px) { .kpi-row { grid-template-columns: repeat(2,1fr); } }
+  .kpi-tile {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: .9rem 1rem; text-align: center;
+  }
+  .kpi-n { font-size: 1.8rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .kpi-l { font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: var(--txt2); margin-top: .2rem; }
+
+  .empty-band { padding: .75rem 1rem; color: var(--txt2); font-size: .83rem; font-style: italic; }
+
+  @media print { .no-print { display: none !important; } }
+</style>
+
+{% set total = past|length + within_30|length + within_90|length + within_12m|length + beyond|length %}
+{% set tl_total = [total, 1] | max %}
+
+<!-- Page header -->
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h4 class="mb-0"><i class="bi bi-calendar-event me-2"></i>{{ t('renewal_cal.title') }}</h4>
+    <div class="text-muted" style="font-size:.82rem">{{ t('renewal_cal.subtitle') }} {{ today.strftime('%d %B %Y') }}</div>
+  </div>
+  <button onclick="window.print()" class="btn btn-sm btn-outline-secondary no-print">
+    <i class="bi bi-printer me-1"></i>{{ t('action.print') }}
+  </button>
+</div>
+
+<!-- KPI tiles -->
+<div class="kpi-row">
+  <div class="kpi-tile">
+    <div class="kpi-n" style="color:var(--r)">{{ past|length }}</div>
+    <div class="kpi-l">{{ t('renewal_cal.kpi_expired') }}</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="kpi-n" style="color:var(--a)">{{ within_30|length }}</div>
+    <div class="kpi-l">{{ t('renewal_cal.kpi_30d') }}</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="kpi-n" style="color:var(--y)">{{ within_90|length }}</div>
+    <div class="kpi-l">{{ t('renewal_cal.kpi_90d') }}</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="kpi-n" style="color:var(--g)">{{ within_12m|length + beyond|length }}</div>
+    <div class="kpi-l">{{ t('renewal_cal.kpi_future') }}</div>
+  </div>
+</div>
+
+<!-- Visual proportion bar -->
+{% if total > 0 %}
+<div class="timeline-bar">
+  {% if past %}     <div class="tl-seg" style="flex:{{ past|length }};background:var(--r)"></div>{% endif %}
+  {% if within_30 %}<div class="tl-seg" style="flex:{{ within_30|length }};background:var(--a)"></div>{% endif %}
+  {% if within_90 %}<div class="tl-seg" style="flex:{{ within_90|length }};background:var(--y)"></div>{% endif %}
+  {% if within_12m %}<div class="tl-seg" style="flex:{{ within_12m|length }};background:var(--g)"></div>{% endif %}
+  {% if beyond %}   <div class="tl-seg" style="flex:{{ beyond|length }};background:var(--border)"></div>{% endif %}
+</div>
+{% endif %}
+
+<!-- ── Macro for a contract row ── -->
+{% macro contract_row(r, pill_class) %}
+<div class="renewal-row">
+  <div class="days-pill {{ pill_class }}">
+    {% if r.days < 0 %}
+      {{ (-r.days) }}d<br><span style="font-size:.6rem">{{ t('renewal_cal.ago') }}</span>
+    {% else %}
+      {{ r.days }}d<br><span style="font-size:.6rem">{{ t('renewal_cal.left') }}</span>
+    {% endif %}
+  </div>
+  <div style="flex:0 0 88px">
+    <div class="renewal-date">{{ r.expiry_date.strftime('%d %b %Y') }}</div>
+  </div>
+  <div class="renewal-name" style="flex:1;min-width:0">
+    <div>
+      <a href="{{ url_for('contract_detail', csi_id=r.csi_id) }}">{{ r.contract_name }}</a>
+      {% if r.csi_number %}<code class="ms-1" style="font-size:.72rem;color:var(--txt2)">{{ r.csi_number }}</code>{% endif %}
+      {% if r.is_ula %}<span class="badge ms-1" style="background:rgba(124,58,237,.12);color:#7c3aed;font-size:.62rem">ULA</span>{% endif %}
+    </div>
+    {% if r.owning_client %}<div class="renewal-client">{{ r.owning_client }}</div>{% endif %}
+  </div>
+  <div class="renewal-cost">
+    {% if r.annual_support_cost %}
+      {{ r.currency or 'USD' }} {{ '{:,.0f}'.format(r.annual_support_cost) }}<br>
+      <span style="font-size:.68rem">{{ t('renewal_cal.per_yr') }}</span>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+<!-- ── Expired ── -->
+{% if past %}
+<div class="band">
+  <div class="band-header crit">
+    <i class="bi bi-x-octagon-fill"></i>{{ t('renewal_cal.band_expired') }}
+    <span class="band-count">{{ past|length }}</span>
+  </div>
+  {% for r in past | sort(attribute='days') %}{{ contract_row(r, 'past') }}{% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Within 30 days ── -->
+<div class="band">
+  <div class="band-header crit">
+    <i class="bi bi-exclamation-octagon-fill"></i>{{ t('renewal_cal.band_30d') }}
+    <span class="band-count">{{ within_30|length }}</span>
+  </div>
+  {% if within_30 %}
+    {% for r in within_30 %}{{ contract_row(r, 'crit') }}{% endfor %}
+  {% else %}
+    <div class="empty-band">{{ t('renewal_cal.none_in_band') }}</div>
+  {% endif %}
+</div>
+
+<!-- ── 31–90 days ── -->
+<div class="band">
+  <div class="band-header warn">
+    <i class="bi bi-exclamation-triangle-fill"></i>{{ t('renewal_cal.band_90d') }}
+    <span class="band-count">{{ within_90|length }}</span>
+  </div>
+  {% if within_90 %}
+    {% for r in within_90 %}{{ contract_row(r, 'warn') }}{% endfor %}
+  {% else %}
+    <div class="empty-band">{{ t('renewal_cal.none_in_band') }}</div>
+  {% endif %}
+</div>
+
+<!-- ── 91 days – 12 months ── -->
+<div class="band">
+  <div class="band-header near">
+    <i class="bi bi-calendar-check"></i>{{ t('renewal_cal.band_12m') }}
+    <span class="band-count">{{ within_12m|length }}</span>
+  </div>
+  {% if within_12m %}
+    {% for r in within_12m %}{{ contract_row(r, 'near') }}{% endfor %}
+  {% else %}
+    <div class="empty-band">{{ t('renewal_cal.none_in_band') }}</div>
+  {% endif %}
+</div>
+
+<!-- ── Beyond 12 months ── -->
+{% if beyond %}
+<div class="band">
+  <div class="band-header muted">
+    <i class="bi bi-calendar2-plus"></i>{{ t('renewal_cal.band_beyond') }}
+    <span class="band-count">{{ beyond|length }}</span>
+  </div>
+  {% for r in beyond %}{{ contract_row(r, 'ok') }}{% endfor %}
+</div>
+{% endif %}
+
+{% if total == 0 %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-calendar-x" style="font-size:2.5rem"></i>
+  <p class="mt-2">{{ t('renewal_cal.no_contracts') }}</p>
+</div>
+{% endif %}
+
+{% endblock %}

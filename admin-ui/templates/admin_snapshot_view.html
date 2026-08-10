@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Snapshot {{ snap.snapshot_month.strftime('%B %Y') }} — {{ snap.client_name }} — Helios{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center gap-2 mb-3">
+  <a href="{{ url_for('admin_audit') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>{{ t('snapshot_view.back') }}
+  </a>
+  <h5 class="mb-0">
+    <i class="bi bi-camera me-2"></i>
+    {{ snap.client_name }} — {{ snap.snapshot_month.strftime('%B %Y') }}
+  </h5>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-auto">
+    <small class="text-muted d-block">{{ t('snapshot_view.taken_by') }}</small>
+    <strong>{{ snap.taken_by }}</strong>
+  </div>
+  <div class="col-auto">
+    <small class="text-muted d-block">{{ t('snapshot_view.taken_at') }}</small>
+    <strong>{{ snap.taken_at.strftime('%Y-%m-%d %H:%M') }}</strong>
+  </div>
+  <div class="col-auto">
+    <small class="text-muted d-block">Trigger</small>
+    {% if snap.snapshot_type == 'feature_activated' %}
+    <span class="badge" style="background:rgba(22,163,74,.12);color:#15803d;font-weight:600">
+      <i class="bi bi-lightning-charge-fill me-1"></i>Feature newly active
+    </span>
+    {% elif snap.snapshot_type == 'feature_dormant' %}
+    <span class="badge" style="background:rgba(234,179,8,.12);color:#a16207;font-weight:600">
+      <i class="bi bi-clock-history me-1"></i>Feature dormant &gt;1 year
+    </span>
+    {% else %}
+    <span class="badge" style="background:rgba(109,40,217,.1);color:#6d28d9;font-weight:600">
+      <i class="bi bi-person me-1"></i>Manual
+    </span>
+    {% endif %}
+  </div>
+  {% if snap.trigger_feature %}
+  <div class="col-auto">
+    <small class="text-muted d-block">Feature</small>
+    <strong>{{ snap.trigger_feature }}</strong>
+  </div>
+  {% endif %}
+  {% if snap.note %}
+  <div class="col-auto">
+    <small class="text-muted d-block">{{ t('label.notes') }}</small>
+    <strong>{{ snap.note }}</strong>
+  </div>
+  {% endif %}
+  <div class="col-auto">
+    <small class="text-muted d-block">{{ t('snapshot_view.lines') }}</small>
+    <strong>{{ lines|length }}</strong>
+  </div>
+</div>
+
+{% if lines %}
+<!-- Summary tiles -->
+{% set under   = lines | selectattr('compliance_status','equalto','under_licensed') | list | length %}
+{% set over    = lines | selectattr('compliance_status','equalto','over_licensed')  | list | length %}
+{% set ok      = lines | selectattr('compliance_status','equalto','compliant')      | list | length %}
+<div class="d-flex gap-3 mb-3 flex-wrap">
+  <div class="border rounded px-3 py-2 text-center">
+    <div class="fs-4 fw-bold text-danger">{{ under }}</div>
+    <div class="small text-muted">{{ t('snapshot_view.under_licensed') }}</div>
+  </div>
+  <div class="border rounded px-3 py-2 text-center">
+    <div class="fs-4 fw-bold text-success">{{ ok }}</div>
+    <div class="small text-muted">{{ t('snapshot_view.compliant') }}</div>
+  </div>
+  <div class="border rounded px-3 py-2 text-center">
+    <div class="fs-4 fw-bold text-secondary">{{ over }}</div>
+    <div class="small text-muted">{{ t('snapshot_view.over_licensed') }}</div>
+  </div>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-sm table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>{{ t('snapshot_view.col_hostname') }}</th>
+        <th>{{ t('snapshot_view.col_env') }}</th>
+        <th>{{ t('snapshot_view.col_product') }}</th>
+        <th>{{ t('snapshot_view.col_edition') }}</th>
+        <th class="text-end">{{ t('snapshot_view.col_required') }}</th>
+        <th class="text-end">{{ t('snapshot_view.col_assigned') }}</th>
+        <th class="text-end">{{ t('snapshot_view.col_delta') }}</th>
+        <th>{{ t('snapshot_view.col_status') }}</th>
+        <th>{{ t('snapshot_view.col_csi') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in lines %}
+      {% set status_cls = {
+        'under_licensed': 'table-danger',
+        'compliant': '',
+        'over_licensed': 'table-success'
+      }.get(l.compliance_status, '') %}
+      <tr class="{{ status_cls }}">
+        <td class="fw-semibold">{{ l.hostname }}</td>
+        <td><span class="badge bg-secondary">{{ l.environment or '' }}</span></td>
+        <td>{{ l.product_family or '' }}</td>
+        <td>{{ l.product_detail or '' }}</td>
+        <td class="text-end font-monospace">{{ l.licences_required or '—' }}</td>
+        <td class="text-end font-monospace">{{ l.licences_assigned or '—' }}</td>
+        <td class="text-end font-monospace
+            {% if l.surplus_deficit is not none and l.surplus_deficit < 0 %}text-danger fw-bold
+            {% elif l.surplus_deficit is not none and l.surplus_deficit > 0 %}text-success
+            {% endif %}">
+          {{ l.surplus_deficit if l.surplus_deficit is not none else '—' }}
+        </td>
+        <td>
+          {% if l.compliance_status == 'under_licensed' %}
+            <span class="badge bg-danger">{{ t('snapshot_view.badge_under') }}</span>
+          {% elif l.compliance_status == 'over_licensed' %}
+            <span class="badge bg-success">{{ t('snapshot_view.badge_over') }}</span>
+          {% elif l.compliance_status == 'compliant' %}
+            <span class="badge bg-success">{{ t('snapshot_view.badge_ok') }}</span>
+          {% else %}
+            <span class="badge bg-secondary">{{ l.compliance_status or '—' }}</span>
+          {% endif %}
+        </td>
+        <td class="small text-muted">{{ l.contract_ref or l.csi_number or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="text-muted">{{ t('snapshot_view.no_lines') }}</p>
+{% endif %}
+{% endblock %}

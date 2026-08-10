@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+{% block title %}Licence Summary — Helios{% endblock %}
+{% block content %}
+
+<style>
+  .ls-root {
+    --s1:         #6d28d9;
+    --s2:         #2563eb;
+    --s3:         #059669;
+    --s4:         #d97706;
+    --text-pri:   #0f0e0d;
+    --text-sec:   #52514e;
+    --text-muted: #8a8884;
+    --surface:    #ffffff;
+    --border:     #e4e2dc;
+    --bg:         #f4f6f8;
+    --track:      #e4e2dc;
+    --section-bg: #f4f6f8;
+  }
+  @media (prefers-color-scheme: dark) {
+    .ls-root {
+      --s1: #8b5cf6; --s2: #60a5fa; --s3: #34d399; --s4: #fbbf24;
+      --text-pri: #f0eeeb; --text-sec: #c3c2b7; --text-muted: #898781;
+      --surface: #1e1e1d; --border: #2e2e2b; --bg: #141413;
+      --track: #2e2e2b; --section-bg: #181817;
+    }
+  }
+  :root[data-theme="dark"]  .ls-root { --s1:#8b5cf6;--s2:#60a5fa;--s3:#34d399;--s4:#fbbf24;--text-pri:#f0eeeb;--text-sec:#c3c2b7;--text-muted:#898781;--surface:#1e1e1d;--border:#2e2e2b;--bg:#141413;--track:#2e2e2b;--section-bg:#181817; }
+  :root[data-theme="light"] .ls-root { --s1:#6d28d9;--s2:#2563eb;--s3:#059669;--s4:#d97706;--text-pri:#0f0e0d;--text-sec:#52514e;--text-muted:#8a8884;--surface:#ffffff;--border:#e4e2dc;--bg:#f4f6f8;--track:#e4e2dc;--section-bg:#f4f6f8; }
+
+  /* ── Section header ── */
+  .ls-section {
+    display: flex; align-items: center; gap: .55rem;
+    font-size: .7rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .09em;
+    color: var(--text-muted);
+    margin: 0 0 1rem;
+    padding: .6rem .9rem;
+    background: var(--section-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  /* ── Tile grid ── */
+  .tile-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+  }
+
+  /* ── Individual tile ── */
+  .tile {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem 1.1rem 1rem;
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .85rem;
+    transition: box-shadow .18s, transform .18s, border-color .18s;
+    cursor: pointer;
+  }
+  .tile:hover {
+    box-shadow: 0 4px 18px rgba(0,0,0,.1);
+    transform: translateY(-2px);
+    border-color: var(--s1);
+    color: inherit;
+  }
+
+  /* ── Tile header ── */
+  .tile-header {
+    width: 100%;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: .4rem;
+  }
+  .tile-name {
+    font-weight: 700;
+    font-size: .88rem;
+    color: var(--text-pri);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tile-count {
+    font-size: .65rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--track);
+    border-radius: 20px;
+    padding: .1rem .42rem;
+    flex-shrink: 0;
+  }
+
+  /* ── Donut ── */
+  .donut-wrap {
+    position: relative;
+    width: 92px;
+    height: 92px;
+    flex-shrink: 0;
+  }
+  .donut {
+    width: 92px;
+    height: 92px;
+    border-radius: 50%;
+  }
+  /* hollow centre */
+  .donut-hole {
+    position: absolute;
+    inset: 22%;
+    border-radius: 50%;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .donut-total {
+    font-size: .95rem;
+    font-weight: 800;
+    color: var(--text-pri);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .donut-label {
+    font-size: .52rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-top: 1px;
+  }
+
+  /* ── Product pills ── */
+  .pill-row {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: .3rem;
+  }
+  .pill-item {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    font-size: .72rem;
+    color: var(--text-sec);
+  }
+  .pill-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .pill-name { flex: 1; }
+  .pill-qty {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--text-pri);
+  }
+
+  /* ── Scope badge ── */
+  .tile-scope-badge {
+    font-size: .62rem;
+    font-weight: 600;
+    color: var(--s1);
+    background: rgba(109,40,217,.08);
+    border: 1px solid rgba(109,40,217,.18);
+    border-radius: 20px;
+    padding: .1rem .5rem;
+    letter-spacing: .03em;
+  }
+
+  /* ── Tile footer ── */
+  .tile-footer {
+    width: 100%;
+    padding-top: .7rem;
+    border-top: 1px solid var(--border);
+    font-size: .72rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: .3rem;
+  }
+  .tile:hover .tile-footer { color: var(--s1); }
+</style>
+
+<div class="ls-root">
+
+<div class="d-flex align-items-baseline gap-3 mb-4">
+  <h4 class="mb-0"><i class="bi bi-bar-chart-line me-1"></i>{{ t('licence_summary.title') }}</h4>
+</div>
+
+{# Colour palette cycling per product — 10 distinct hues #}
+{% set palette = ['#6d28d9','#2563eb','#059669','#d97706','#dc2626','#0891b2','#7c3aed','#65a30d','#c2410c','#0369a1'] %}
+
+{%- macro donut_tile(lines, total, href, title, badge_label, centre_label) %}
+  <a href="{{ href }}" class="tile">
+
+    <div class="tile-header">
+      <span class="tile-name">{{ title }}</span>
+      <span class="tile-count">{{ lines | length }}p</span>
+    </div>
+    {% if badge_label %}
+    <span class="tile-scope-badge"><i class="bi bi-lock-fill"></i> {{ badge_label }}</span>
+    {% endif %}
+
+    <div class="donut-wrap">
+      {% if total > 0 %}
+      {% set ns = namespace(cum=0) %}
+      <div class="donut" style="background: conic-gradient(
+        {%- for l in lines -%}
+          {%- set pct = (l.total_qty / total * 100) | round(2) -%}
+          {%- set start = ns.cum -%}
+          {%- set ns.cum = (ns.cum + pct) | round(2) -%}
+          {{ palette[loop.index0 % (palette | length)] }} {{ start }}% {{ ns.cum }}%{%- if not loop.last %},{% endif %}
+        {%- endfor %}
+      )"></div>
+      {% else %}
+      <div class="donut" style="background: var(--track)"></div>
+      {% endif %}
+      <div class="donut-hole">
+        <span class="donut-total">{{ "{:,}".format(total | int) }}</span>
+        <span class="donut-label">{{ centre_label }}</span>
+      </div>
+    </div>
+
+    <div class="pill-row">
+      {% for l in lines %}
+      <div class="pill-item">
+        <span class="pill-dot" style="background:{{ palette[loop.index0 % (palette | length)] }}"></span>
+        <span class="pill-name">{{ l.product_name }}</span>
+        <span class="pill-qty">{{ "{:,}".format(l.total_qty | int) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="tile-footer">
+      {{ t('licence_summary.view_detail') }} <i class="bi bi-arrow-right"></i>
+    </div>
+
+  </a>
+{%- endmacro %}
+
+<!-- ── Client-locked section ── -->
+{% if clients %}
+<div class="ls-section">
+  <i class="bi bi-lock-fill" style="color:var(--s1)"></i>
+  {{ t('licence_summary.client_locked') }}
+  <span style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">{{ clients | length }} client{{ 's' if clients | length != 1 }}</span>
+</div>
+
+<div class="tile-grid">
+  {% for client in clients %}
+  {% set total = client.lines | sum(attribute='total_qty') %}
+  {{ donut_tile(
+       client.lines, total,
+       url_for('licence_summary_client', client_code=client.client_code),
+       client.client_name or client.client_code,
+       t('licence_summary.locked_only'),
+       t('licence_summary.locked')
+     ) }}
+  {% endfor %}
+</div>
+
+{% else %}
+<p class="text-muted mb-4">{{ t('licence_summary.none_client') }}</p>
+{% endif %}
+
+<!-- ── Shared pool section ── -->
+<div class="ls-section" style="margin-top:.5rem">
+  <i class="bi bi-share" style="color:var(--s2)"></i>
+  {{ t('licence_summary.shared_pool') }}
+</div>
+
+{% if shared_lines %}
+{% set shared_total = shared_lines | sum(attribute='total_qty') %}
+<div class="tile-grid">
+  {{ donut_tile(
+       shared_lines, shared_total,
+       url_for('licence_summary_shared'),
+       t('licence_summary.shared_pool_label'),
+       none,
+       t('licence_summary.licences')
+     ) }}
+</div>
+{% else %}
+<p class="text-muted">{{ t('licence_summary.none_shared') }}</p>
+{% endif %}
+
+</div>
+{% endblock %}

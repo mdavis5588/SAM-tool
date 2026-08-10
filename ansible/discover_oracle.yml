@@ -17,6 +17,8 @@
 
   vars:
     sam_run_id: "{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}-{{ inventory_hostname | hash('md5') | truncate(6, true, '') }}"
+    sam_discovery_user: "sam_discovery"
+    sam_discovery_password: "{{ vault_sam_discovery_password }}"
     oracle_base_paths:
       - /u01/app/oracle
       - /oracle
@@ -146,33 +148,42 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s / as sysdba << 'EOF'
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SELECT
-          '{"version":"'     || version         || '",'  ||
-          '"edition":"'      || edition          || '",'  ||
-          '"db_name":"'      || name             || '",'  ||
-          '"platform_name":"'|| platform_name    || '",'  ||
-          '"created":"'      || TO_CHAR(created,'YYYY-MM-DD') || '"}'
-        FROM   v$instance  i
-        CROSS  JOIN v$database  d;
+          '{"version":"'       || SUBSTR(i.version,1,20)                         || '",'  ||
+          '"edition":"'        || SUBSTR(CASE
+                                   WHEN UPPER(v.banner) LIKE '%ENTERPRISE%'          THEN 'Enterprise Edition'
+                                   WHEN UPPER(v.banner) LIKE '%STANDARD EDITION 2%'  THEN 'Standard Edition 2'
+                                   WHEN UPPER(v.banner) LIKE '%STANDARD%'            THEN 'Standard Edition'
+                                   WHEN UPPER(v.banner) LIKE '%EXPRESS%'             THEN 'Express Edition'
+                                   ELSE 'Unknown' END, 1, 60)                   || '",'  ||
+          '"db_name":"'        || SUBSTR(d.name,1,30)                            || '",'  ||
+          '"db_unique_name":"' || SUBSTR(d.db_unique_name,1,64)                  || '",'  ||
+          '"is_cdb":"'         || d.cdb                                          || '",'  ||
+          '"log_mode":"'       || d.log_mode                                     || '",'  ||
+          '"created":"'        || TO_CHAR(d.created,'YYYY-MM-DD')                || '"}'
+        FROM   v$instance i
+        CROSS  JOIN v$database d
+        CROSS  JOIN (SELECT banner FROM v$version
+                     WHERE  UPPER(banner) LIKE '%ORACLE DATABASE%'
+                     AND    ROWNUM = 1) v;
         EXIT;
         EOF
       loop: "{{ sam_oracle_instances | default([]) }}"
       loop_control:
         label: "{{ item.sid }}"
       register: sqlplus_results
-      become: true
-      become_user: oracle
+      no_log: true
       ignore_errors: true
       changed_when: false
 
-    - name: Query installed options per instance
+    - name: Query installed options per instance (dba_registry)
       ansible.builtin.shell: |
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s / as sysdba << 'EOF'
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SELECT '{"option":"' || comp_name || '","version":"' || version || '","status":"' || status || '"}'
         FROM   dba_registry
@@ -184,13 +195,238 @@
       loop_control:
         label: "{{ item.sid }}"
       register: options_results
-      become: true
-      become_user: oracle
+      no_log: true
       ignore_errors: true
       changed_when: false
 
     # ------------------------------------------------------------------
-    # 5. ASSEMBLE FACT PAYLOAD
+    # 5. EXTENDED DISCOVERY — feature usage, NUP users, PDBs, RAC nodes
+    #    DBA_FEATURE_USAGE_STATISTICS replaces v$option — it records actual
+    #    detected usage counts and dates, not just what is installed.
+    # ------------------------------------------------------------------
+    - name: Query DBA_FEATURE_USAGE_STATISTICS for licence-relevant feature usage
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        SELECT '{"feature_name":"' || REPLACE(REPLACE(name,'\','\\'),'"','\"') ||
+               '","db_version":"'  || SUBSTR(version,1,20) ||
+               '","detected_usages":' || NVL(detected_usages,0) ||
+               ',"total_samples":'    || NVL(total_samples,0) ||
+               ',"currently_used":'   || CASE WHEN currently_used = 'TRUE' THEN 'true' ELSE 'false' END ||
+               ',"first_usage_date":' || CASE WHEN first_usage_date IS NOT NULL
+                                              THEN '"' || TO_CHAR(first_usage_date,'YYYY-MM-DD') || '"'
+                                              ELSE 'null' END ||
+               ',"last_usage_date":'  || CASE WHEN last_usage_date IS NOT NULL
+                                              THEN '"' || TO_CHAR(last_usage_date,'YYYY-MM-DD') || '"'
+                                              ELSE 'null' END || '}'
+        FROM   dba_feature_usage_statistics
+        WHERE  detected_usages > 0
+          AND  name NOT IN (
+               'ASO native encryption and checksumming',
+               'Automatic Maintenance - SQL Tuning Advisor',
+               'Automatic Maintenance - Space Advisor',
+               'Automatic Segment Advisor',
+               'Automatic SQL Tuning Advisor',
+               'EM Performance Page',
+               'File Mapping',
+               'Label Security',
+               'OLAP - Analytic Workspaces',
+               'Oracle Secure Backup',
+               'Real-Time SQL Monitoring',
+               'SQL Access Advisor',
+               'SQL Tuning Advisor',
+               'SQL Tuning Set (user)',
+               'Segment Advisor'
+               )
+        ORDER  BY name;
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: feature_usage_results
+      no_log: true
+      ignore_errors: true
+      changed_when: false
+
+    - name: Query dba_users for Named User Plus counting
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        SELECT
+          '{"nup_total_users":' || COUNT(*) ||
+          ',"nup_active_users":' || SUM(CASE WHEN account_status = 'OPEN' THEN 1 ELSE 0 END) ||
+          ',"nup_locked_users":' || SUM(CASE WHEN account_status LIKE '%LOCKED%' THEN 1 ELSE 0 END) ||
+          ',"nup_sample_users":' || '[' ||
+            LISTAGG('"' || username || '"', ',') WITHIN GROUP (ORDER BY username) ||
+          ']' || '}'
+        FROM (
+          SELECT username, account_status
+          FROM   dba_users
+          WHERE  oracle_maintained = 'N'
+             OR  oracle_maintained IS NULL
+          ORDER  BY username
+          FETCH FIRST 50 ROWS ONLY
+        );
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: nup_results
+      no_log: true
+      ignore_errors: true
+      changed_when: false
+
+    - name: Query v$pdbs for CDB/PDB topology with NUP counts and pack access (Oracle 12c+)
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF LONG 4000
+        WHENEVER SQLERROR CONTINUE
+        WITH pdb_params AS (
+          SELECT con_id,
+                 MAX(CASE WHEN LOWER(name) = 'control_management_pack_access'
+                          THEN UPPER(SUBSTR(value,1,64)) END) AS mgmt_pack,
+                 MAX(CASE WHEN LOWER(name) = 'enable_ddl_logging'
+                          THEN UPPER(SUBSTR(value,1,10)) END) AS ddl_log
+          FROM   gv$parameter
+          WHERE  LOWER(name) IN ('control_management_pack_access','enable_ddl_logging')
+            AND  inst_id = 1
+          GROUP  BY con_id
+        ),
+        pdb_nup AS (
+          SELECT con_id,
+                 SUM(CASE WHEN account_status = 'OPEN' AND oracle_maintained = 'N' THEN 1 ELSE 0 END) AS nup_active,
+                 SUM(CASE WHEN oracle_maintained = 'N' THEN 1 ELSE 0 END) AS nup_total
+          FROM   cdb_users
+          GROUP  BY con_id
+        )
+        SELECT '{"pdb_name":"'         || p.name              ||
+               '","con_id":'           || p.con_id            ||
+               ',"open_mode":"'        || p.open_mode         ||
+               '","restricted":"'      || NVL(p.restricted,'NO') ||
+               '","nup_active_users":' || NVL(n.nup_active,0) ||
+               ',"nup_total_users":'   || NVL(n.nup_total,0)  ||
+               ',"mgmt_pack_access":"' || NVL(pp.mgmt_pack,'NONE') ||
+               '","diagnostics_licensed":' || CASE WHEN NVL(pp.mgmt_pack,'NONE') IN ('DIAGNOSTIC','DIAGNOSTIC+TUNING') THEN 'true' ELSE 'false' END ||
+               ',"tuning_licensed":'   || CASE WHEN NVL(pp.mgmt_pack,'NONE') = 'DIAGNOSTIC+TUNING' THEN 'true' ELSE 'false' END ||
+               ',"ddl_logging":'       || CASE WHEN NVL(pp.ddl_log,'FALSE') = 'TRUE' THEN 'true' ELSE 'false' END ||
+               '}'
+        FROM   v$pdbs p
+        LEFT   JOIN pdb_params pp ON pp.con_id = p.con_id
+        LEFT   JOIN pdb_nup n     ON n.con_id  = p.con_id
+        ORDER  BY p.con_id;
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: pdb_results
+      no_log: true
+      ignore_errors: true
+      changed_when: false
+
+    - name: Query gv$instance for RAC cluster nodes
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        WHENEVER SQLERROR CONTINUE
+        SELECT '{"node_name":"' || host_name || '","node_number":' || instance_number ||
+               ',"instance_name":"' || instance_name || '"}'
+        FROM   gv$instance
+        ORDER  BY instance_number;
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: rac_results
+      no_log: true
+      ignore_errors: true
+      changed_when: false
+
+    - name: Query GV$PARAMETER for management pack access per container
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        WHENEVER SQLERROR CONTINUE
+        SELECT '{"con_id":' || con_id ||
+               ',"name":"'  || LOWER(name)         ||
+               '","value":"'|| SUBSTR(value,1,256) || '"}'
+        FROM   gv$parameter
+        WHERE  LOWER(name) IN ('control_management_pack_access','enable_ddl_logging')
+          AND  inst_id = 1
+        ORDER  BY con_id, name;
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: mgmt_pack_results
+      no_log: true
+      ignore_errors: true
+      changed_when: false
+
+    - name: Assemble extended instance data
+      ansible.builtin.set_fact:
+        sam_extended_instances: >-
+          {{
+            sam_oracle_instances | default([]) | map('combine', {}) | list
+            | zip(
+                nup_results.results         | map(attribute='stdout') | map('trim') | list,
+                pdb_results.results         | map(attribute='stdout') | map('trim') | list,
+                rac_results.results         | map(attribute='stdout') | map('trim') | list,
+                feature_usage_results.results | map(attribute='stdout') | map('trim') | list,
+                mgmt_pack_results.results   | map(attribute='stdout') | map('trim') | list
+              )
+            | list
+          }}
+
+    - name: Build extended instance payload list
+      ansible.builtin.set_fact:
+        sam_instances_extended: >-
+          {{
+            sam_instances_extended | default([]) + [{
+              'sid': item.0.sid,
+              'nup_total_users':  (item.1 | from_json).nup_total_users  | default(0),
+              'nup_active_users': (item.1 | from_json).nup_active_users | default(0),
+              'nup_locked_users': (item.1 | from_json).nup_locked_users | default(0),
+              'nup_sample_users': (item.1 | from_json).nup_sample_users | default([]),
+              'pdbs':          item.2.split('\n') | reject('equalto','') | map('from_json') | list,
+              'rac_nodes':     item.3.split('\n') | reject('equalto','') | map('from_json') | list,
+              'feature_usage': item.4.split('\n') | reject('equalto','') | map('from_json') | list,
+              'db_parameters': item.5.split('\n') | reject('equalto','') | map('from_json') | list
+            }]
+          }}
+      loop: "{{ sam_extended_instances | default([]) }}"
+      when: sam_extended_instances is defined
+
+    - name: Flatten db_parameters across all instances for options loading
+      ansible.builtin.set_fact:
+        sam_db_params: >-
+          {{
+            sam_instances_extended | default([])
+            | map(attribute='db_parameters') | flatten
+          }}
+      when: sam_instances_extended is defined
+
+    # ------------------------------------------------------------------
+    # 6. ASSEMBLE FACT PAYLOAD
     # ------------------------------------------------------------------
     - name: Assemble SAM discovery payload
       ansible.builtin.set_fact:
@@ -225,8 +461,16 @@
               | list
             }}
 
+    - name: Assemble SAM extended payload
+      ansible.builtin.set_fact:
+        sam_extended_payload:
+          run_id:        "{{ sam_run_id }}"
+          hostname:      "{{ inventory_hostname }}"
+          instances:     "{{ sam_instances_extended | default([]) }}"
+          db_parameters: "{{ sam_db_params | default([]) }}"
+
     # ------------------------------------------------------------------
-    # 6. WRITE TO POSTGRESQL
+    # 7. WRITE TO POSTGRESQL
     # ------------------------------------------------------------------
     - name: Load SAM payload into PostgreSQL
       community.postgresql.postgresql_query:
@@ -240,6 +484,91 @@
           payload: "{{ sam_payload | to_json }}"
       delegate_to: localhost
       ignore_errors: true
+
+    - name: Load extended SAM payload into PostgreSQL (RAC, PDB, NUP)
+      community.postgresql.postgresql_query:
+        db:             "{{ sam_db_name }}"
+        login_host:     "{{ sam_db_host }}"
+        login_port:     "{{ sam_db_port }}"
+        login_user:     "{{ sam_db_user }}"
+        login_password: "{{ sam_db_password }}"
+        query: "SELECT {{ sam_client_schema }}.upsert_oracle_extended_discovery(%(payload)s::jsonb)"
+        named_args:
+          payload: "{{ sam_extended_payload | to_json }}"
+      delegate_to: localhost
+      ignore_errors: true
+
+    # Determine which management packs are licensed from the collected db_parameters.
+    # control_management_pack_access values: NONE | DIAGNOSTIC | DIAGNOSTIC+TUNING
+    - name: Derive management pack access flags from db_parameters
+      ansible.builtin.set_fact:
+        sam_mgmt_pack_value: >-
+          {{
+            (sam_db_params | default([])
+              | selectattr('name', 'equalto', 'control_management_pack_access')
+              | map(attribute='value') | list | first | upper) if
+            (sam_db_params | default([]) | selectattr('name', 'equalto', 'control_management_pack_access') | list | length > 0)
+            else 'NONE'
+          }}
+
+    - name: Set diagnostics and tuning pack flags
+      ansible.builtin.set_fact:
+        sam_diagnostics_licensed: "{{ sam_mgmt_pack_value in ['DIAGNOSTIC', 'DIAGNOSTIC+TUNING'] }}"
+        sam_tuning_licensed:      "{{ sam_mgmt_pack_value == 'DIAGNOSTIC+TUNING' }}"
+
+    # Detect ASO usage: look for encryption/security keywords in feature_usage
+    - name: Set ASO licensed flag from feature usage keywords
+      ansible.builtin.set_fact:
+        sam_aso_licensed: >-
+          {{
+            sam_instances_extended | default([])
+            | map(attribute='feature_usage') | flatten
+            | map(attribute='feature_name') | map('lower')
+            | select('search', 'encrypt|redact|securefile|label security|advanced security|tde|rman encryption|network encryption')
+            | list | length > 0
+          }}
+
+    # Build the list of licensed option names to upsert
+    - name: Collect licensed option names
+      ansible.builtin.set_fact:
+        sam_licensed_options: >-
+          {{
+            (['Diagnostics Pack'] if sam_diagnostics_licensed | bool else []) +
+            (['Tuning Pack']      if sam_tuning_licensed      | bool else []) +
+            (['Advanced Security'] if sam_aso_licensed        | bool else [])
+          }}
+
+    # Insert/update each licensed option into oracle_options for every instance on this server.
+    # oracle_options has: instance_id, option_name, status, discovery_run_id — no server_id, no is_active.
+    - name: Upsert licensed management pack options into oracle_options
+      community.postgresql.postgresql_query:
+        db:             "{{ sam_db_name }}"
+        login_host:     "{{ sam_db_host }}"
+        login_port:     "{{ sam_db_port }}"
+        login_user:     "{{ sam_db_user }}"
+        login_password: "{{ sam_db_password }}"
+        query: |
+          INSERT INTO {{ sam_client_schema }}.oracle_options
+              (instance_id, option_name, status, discovery_run_id)
+          SELECT i.instance_id,
+                 %(option_name)s,
+                 'TRUE',
+                 %(run_id)s
+          FROM   {{ sam_client_schema }}.oracle_instances i
+          JOIN   {{ sam_client_schema }}.oracle_servers   s ON s.server_id = i.server_id
+          WHERE  s.hostname = %(hostname)s
+          ON CONFLICT (instance_id, option_name) DO UPDATE SET
+              status           = 'TRUE',
+              discovery_run_id = EXCLUDED.discovery_run_id,
+              recorded_at      = NOW()
+        named_args:
+          option_name: "{{ item }}"
+          run_id:      "{{ sam_run_id }}"
+          hostname:    "{{ inventory_hostname }}"
+      loop: "{{ sam_licensed_options }}"
+      delegate_to: localhost
+      ignore_errors: true
+      when: sam_licensed_options | length > 0
 
     - name: Print discovery summary
       ansible.builtin.debug:

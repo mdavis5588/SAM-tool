@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}Servers — Helios{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-server"></i> Servers</h4>
+</div>
+
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item">
+    <a class="nav-link active" href="{{ url_for('servers') }}">
+      <i class="bi bi-database me-1"></i>Database Servers
+      <span class="badge bg-secondary ms-1">{{ servers | length }}</span>
+      {% if se2_count > 0 %}
+        <span class="badge bg-danger ms-1" title="SE2 violations">
+          <i class="bi bi-exclamation-triangle"></i> {{ se2_count }}
+        </span>
+      {% endif %}
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('weblogic_servers') }}">
+      <i class="bi bi-boxes me-1"></i>WebLogic Servers
+    </a>
+  </li>
+</ul>
+
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover table-striped align-middle mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>Owner</th>
+            <th>Hostname</th>
+            <th>Environment</th>
+            <th>Licence Metric</th>
+            <th>Licence Type</th>
+            <th class="text-center">Required</th>
+            <th class="text-center">Assigned</th>
+            <th>Compliance</th>
+            <th>Last Seen</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in servers %}
+          <tr><td colspan="10" style="padding:0;border:0;height:6px;background:#f8f9fa"></td></tr>
+          <tr>
+            <td>
+              <span class="badge bg-primary">{{ s._client_code }}</span>
+            </td>
+            <td>
+              <strong>{{ s.hostname }}</strong>
+              {% if s.is_exadata %}
+                <span class="badge bg-warning text-dark ms-1"
+                      title="Exadata detected — additional licence obligations may apply">
+                  <i class="bi bi-grid-3x3-gap-fill me-1"></i>Exadata
+                </span>
+              {% endif %}
+              {% if s.cpu_unvalidated %}
+                <span class="badge bg-warning text-dark ms-1"
+                      title="CPU model not in Oracle core factor table — licence calculation may be wrong">
+                  <i class="bi bi-cpu"></i> CPU?
+                </span>
+              {% endif %}
+              {% if s.datacenter %}<br><small class="text-muted">{{ s.datacenter }}</small>{% endif %}
+              {% if s.ip_address %}<br><small><code>{{ s.ip_address }}</code></small>{% endif %}
+            </td>
+            <td>{{ s.environment | title }}</td>
+            <td>
+              {% if s.licence_metric == 'named_user_plus' %}
+                <span class="badge" style="background:#6f42c1">Named User Plus</span>
+              {% else %}
+                <span class="badge bg-primary">Processor Perpetual</span>
+              {% endif %}
+              {% if s.metric_overridden %}
+                <br><small class="text-muted"><i class="bi bi-pencil-fill"></i> Manually set</small>
+              {% endif %}
+            </td>
+
+            <!-- Licence type breakdown -->
+            <td style="min-width:200px">
+              {% if s.licence_rows %}
+                {% for row in s.licence_rows %}
+                <div class="{% if not loop.last %}mb-2 pb-2 border-bottom{% endif %} small fw-semibold">
+                  {% if row.product_detail %}
+                    {{ row.product_detail }}
+                  {% else %}
+                    {{ row.product_family | replace('oracle_','') | replace('_',' ') | title }}
+                  {% endif %}
+                </div>
+                {% endfor %}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+
+            <!-- Required per licence type -->
+            <td class="text-center">
+              {% if s.licence_rows %}
+                {% for row in s.licence_rows %}
+                <div class="{% if not loop.last %}mb-2 pb-2 border-bottom{% endif %}">
+                  {% if (row.licences_required | int) == 0 %}
+                    <span class="badge bg-danger" title="0 licences required — check CPU topology data">
+                      <i class="bi bi-exclamation-triangle-fill me-1"></i>0
+                    </span>
+                  {% else %}
+                    <span class="badge bg-secondary">{{ row.licences_required }}</span>
+                  {% endif %}
+                </div>
+                {% endfor %}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+
+            <!-- Assigned per licence type -->
+            <td class="text-center">
+              {% if s.has_ula %}
+                <span style="color:#7c3aed;font-weight:600"><i class="bi bi-infinity me-1"></i>ULA</span>
+              {% elif s.licence_rows %}
+                {% for row in s.licence_rows %}
+                <div class="{% if not loop.last %}mb-2 pb-2 border-bottom{% endif %}">
+                  {% set assigned = row.total_licensed | int %}
+                  {% if assigned >= (row.licences_required | int) %}
+                    <span class="badge bg-success">{{ assigned }}</span>
+                  {% elif assigned > 0 %}
+                    <span class="badge bg-warning text-dark">{{ assigned }}</span>
+                  {% else %}
+                    <span class="badge bg-danger">0</span>
+                  {% endif %}
+                </div>
+                {% endfor %}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+
+            <!-- Compliance per licence type -->
+            <td>
+              {% if s.has_ula %}
+                <span class="badge bg-success"><i class="bi bi-check-circle"></i> Compliant</span>
+              {% elif s.licence_rows %}
+                {% for row in s.licence_rows %}
+                <div class="{% if not loop.last %}mb-2 pb-2 border-bottom{% endif %}">
+                  {% if row.compliance_status == 'compliant' %}
+                    <span class="badge bg-success"><i class="bi bi-check-circle"></i> Compliant</span>
+                  {% else %}
+                    <span class="badge bg-danger"><i class="bi bi-x-circle"></i> Under-licensed</span>
+                  {% endif %}
+                </div>
+                {% endfor %}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+
+            <td><small>{{ s.last_seen or '—' }}</small></td>
+
+            <td style="white-space:nowrap">
+              <a href="{{ url_for('edit_server', server_id=s.server_id) }}"
+                 class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-pencil"></i> {{ t('action.edit') }}
+              </a>
+              {% if can_write_licences %}
+              <form method="post" action="{{ url_for('edit_server', server_id=s.server_id) }}"
+                    style="display:inline"
+                    onsubmit="return confirm('{{ t('servers.confirm_remove') }}')">
+                <input type="hidden" name="action" value="deactivate_server">
+                <button type="submit" class="btn btn-sm btn-outline-danger ms-1">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="10" class="text-center text-muted py-4">{{ t('servers.none') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

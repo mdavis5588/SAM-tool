@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+{% block title %}Contracts — Helios{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-file-earmark-text"></i> {{ t('contracts.title') }}</h4>
+  <span class="badge bg-secondary ms-2" id="visible-count">{{ contracts | length }}</span>
+  <a href="{{ url_for('add_contract') }}" class="btn btn-primary btn-sm ms-auto">
+    <i class="bi bi-plus-circle me-1"></i>{{ t('contracts.add') }}
+  </a>
+</div>
+
+<!-- Filter bar -->
+<div class="card shadow-sm mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label form-label-sm mb-1">Owner</label>
+        <select id="filter-owner" class="form-select form-select-sm">
+          <option value="">{{ t('contracts.filter_owner') }}</option>
+          <option value="__unowned__">{{ t('contracts.no_owner') }}</option>
+          {% for c in all_clients %}
+          <option value="{{ c.client_code }}">{{ c.client_name }} ({{ c.client_code }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label form-label-sm mb-1">Sharing Policy</label>
+        <select id="filter-policy" class="form-select form-select-sm">
+          <option value="">{{ t('contracts.filter_policy') }}</option>
+          {% for p in sharing_policies %}
+          <option value="{{ p }}">{{ p | replace('_',' ') | title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label form-label-sm mb-1">Status</label>
+        <select id="filter-status" class="form-select form-select-sm">
+          <option value="">{{ t('contracts.filter_status') }}</option>
+          <option value="active">{{ t('label.active') }}</option>
+          <option value="expired">{{ t('label.expired') }}</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label form-label-sm mb-1">Type</label>
+        <select id="filter-ula" class="form-select form-select-sm">
+          <option value="">All types</option>
+          <option value="ula">ULA only</option>
+          <option value="standard">Standard only</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-sm btn-outline-secondary" id="btn-clear-filters">
+          <i class="bi bi-x-circle"></i> {{ t('action.clear') }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-sm mb-0" id="contracts-table">
+      <colgroup>
+        <col style="width:12%">  {# CSI Number #}
+        <col style="width:24%">  {# Product #}
+        <col style="width:14%">  {# Metric #}
+        <col style="width:6%">   {# Quantity #}
+        <col style="width:6%">   {# Consumed #}
+        <col style="width:6%">   {# Available #}
+        <col style="width:12%">  {# Total Cost #}
+        <col style="width:12%">  {# Price per Seat #}
+        <col style="width:8%">   {# Actions #}
+      </colgroup>
+      <thead class="table-dark">
+        <tr>
+          <th>{{ t('label.csi_number') }}</th>
+          <th>{{ t('label.product') }}</th>
+          <th>{{ t('label.metric') }}</th>
+          <th class="text-end">{{ t('label.quantity') }}</th>
+          <th class="text-end">{{ t('label.consumed') }}</th>
+          <th class="text-end">{{ t('label.available') }}</th>
+          <th class="text-end">{{ t('label.total_cost') }}</th>
+          <th class="text-end">{{ t('contracts.price_per_seat') }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in contracts %}
+
+        {# ── CSI header row ── #}
+        <tr class="contract-spacer"><td colspan="9" style="padding:0;border:0;height:8px;background:#f8f9fa"></td></tr>
+        <tr class="contract-group table-secondary"
+            data-owner="{{ c.owning_client or '' }}"
+            data-policy="{{ c.sharing_policy }}"
+            data-status="{{ c.status }}"
+            data-ula="{{ 'ula' if c.is_ula else 'standard' }}"
+            data-csi="{{ c.csi_id }}">
+          <td class="fw-bold">
+            <code>{{ c.csi_number or '—' }}</code>
+          </td>
+          <td colspan="7">
+            {% if c.owning_client %}
+              <span class="badge bg-primary me-1">{{ c.owning_client }}</span>
+            {% endif %}
+            {% if c.sharing_policy == 'shareable' %}
+              <span class="badge bg-success me-1">Shareable</span>
+            {% elif c.sharing_policy == 'client_locked' %}
+              <span class="badge bg-warning text-dark me-1">Client Locked</span>
+            {% else %}
+              <span class="badge bg-secondary me-1">{{ c.sharing_policy | replace('_',' ') | title }}</span>
+            {% endif %}
+            {% if c.is_ula %}
+              <span class="badge me-1" style="background:rgba(124,58,237,.15);color:#7c3aed;border:1px solid rgba(124,58,237,.3)"><i class="bi bi-infinity me-1"></i>ULA</span>
+            {% endif %}
+            {% if c.status == 'active' %}
+              <span class="badge bg-success">Active</span>
+            {% elif c.status == 'expired' %}
+              <span class="badge bg-danger">Expired</span>
+            {% else %}
+              <span class="badge bg-secondary">{{ c.status | title }}</span>
+            {% endif %}
+            {% if c.support_expiry %}
+              <small class="text-muted ms-2">
+                expires
+                {% if c.support_expiry.strftime('%Y-%m-%d') < today %}
+                  <span class="text-danger fw-bold">{{ c.support_expiry }}</span>
+                {% elif (c.support_expiry - today_date).days < 90 %}
+                  <span class="text-warning fw-bold">{{ c.support_expiry }}</span>
+                {% else %}
+                  {{ c.support_expiry }}
+                {% endif %}
+              </small>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            <a href="{{ url_for('contract_detail', csi_id=c.csi_id) }}"
+               class="btn btn-sm btn-outline-secondary py-0">
+              <i class="bi bi-eye"></i> {{ t('action.view') }}
+            </a>
+          </td>
+        </tr>
+
+        {# ── One row per entitlement line ── #}
+        {% for l in c.lines %}
+        <tr class="contract-line" data-csi="{{ c.csi_id }}">
+          <td class="text-muted ps-4 small">
+            <i class="bi bi-arrow-return-right"></i>
+          </td>
+          <td>{{ l.product_name }}</td>
+          <td>
+            {% if l.license_metric in ('processor', 'processor_perpetual') %}
+              <span class="badge bg-secondary">Processor Perpetual</span>
+            {% elif l.license_metric == 'named_user_plus' %}
+              <span class="badge bg-info text-dark">Named User Plus</span>
+            {% else %}
+              <span class="badge bg-light text-dark border">{{ l.license_metric | replace('_',' ') | title }}</span>
+            {% endif %}
+          </td>
+          <td class="text-end">{{ (l.quantity | int) if l.quantity else '—' }}</td>
+          <td class="text-end">
+            {% if l.consumed %}
+              <span class="fw-semibold">{{ l.consumed | int }}</span>
+            {% else %}
+              <span class="text-muted">0</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            {% set qty = l.quantity or 0 %}
+            {% if qty %}
+              {% if l.available == 0 %}
+                <span class="badge bg-danger">0</span>
+              {% elif l.available * 5 < qty %}
+                <span class="badge bg-warning text-dark">{{ l.available | int }}</span>
+              {% else %}
+                <span class="badge bg-success">{{ l.available | int }}</span>
+              {% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-end">
+            {% if c.is_ula %}
+              <span class="badge" style="background:rgba(124,58,237,.12);color:#7c3aed">ULA</span>
+            {% elif l.total_price %}
+              <small>{{ c.currency or 'USD' }} {{ '{:,.2f}'.format(l.total_price) }}</small>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            {% if c.is_ula %}
+              <span class="text-muted">—</span>
+            {% elif l.total_price and l.quantity %}
+              <small>{{ c.currency or 'USD' }} {{ '{:,.2f}'.format(l.total_price / l.quantity) }}</small>
+            {% elif l.unit_price %}
+              <small>{{ c.currency or 'USD' }} {{ '{:,.2f}'.format(l.unit_price) }}</small>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td></td>
+        </tr>
+        {% else %}
+        <tr class="contract-line" data-csi="{{ c.csi_id }}">
+          <td></td>
+          <td colspan="8" class="text-muted small fst-italic">{{ t('contracts.no_lines') }}</td>
+        </tr>
+        {% endfor %}
+
+        {% else %}
+        <tr>
+          <td colspan="9" class="text-center text-muted py-4">{{ t('contracts.none') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const today = "{{ today }}";
+
+(function () {
+  const filterOwner  = document.getElementById('filter-owner');
+  const filterPolicy = document.getElementById('filter-policy');
+  const filterStatus = document.getElementById('filter-status');
+  const filterUla    = document.getElementById('filter-ula');
+  const countBadge   = document.getElementById('visible-count');
+
+  function applyFilters() {
+    const owner  = filterOwner.value;
+    const policy = filterPolicy.value;
+    const status = filterStatus.value;
+    const ula    = filterUla.value;
+    let visible = 0;
+
+    // Hide/show each CSI header row and its line rows together
+    const spacers = document.querySelectorAll('tr.contract-spacer');
+    spacers.forEach(s => s.style.display = 'none');
+
+    document.querySelectorAll('tr.contract-group').forEach(hdr => {
+      const rowOwner  = hdr.dataset.owner;
+      const rowPolicy = hdr.dataset.policy;
+      const rowStatus = hdr.dataset.status;
+      const rowUla    = hdr.dataset.ula;
+      const csiId     = hdr.dataset.csi;
+
+      const show = (!owner  || (owner === '__unowned__' ? rowOwner === '' : rowOwner === owner))
+                && (!policy || rowPolicy === policy)
+                && (!status || rowStatus === status)
+                && (!ula    || rowUla === ula);
+
+      const spacer = hdr.previousElementSibling;
+      if (spacer && spacer.classList.contains('contract-spacer')) {
+        spacer.style.display = show ? '' : 'none';
+      }
+      hdr.style.display = show ? '' : 'none';
+      document.querySelectorAll(`tr.contract-line[data-csi="${csiId}"]`).forEach(lr => {
+        lr.style.display = show ? '' : 'none';
+      });
+      if (show) visible++;
+    });
+
+    countBadge.textContent = visible;
+  }
+
+  filterOwner .addEventListener('change', applyFilters);
+  filterPolicy.addEventListener('change', applyFilters);
+  filterStatus.addEventListener('change', applyFilters);
+  filterUla   .addEventListener('change', applyFilters);
+
+  document.getElementById('btn-clear-filters').addEventListener('click', () => {
+    filterOwner.value  = '';
+    filterPolicy.value = '';
+    filterStatus.value = '';
+    filterUla.value    = '';
+    applyFilters();
+  });
+})();
+</script>
+{% endblock %}

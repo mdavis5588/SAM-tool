@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+{% block title %}{{ t('cost_opt.title') }} — Helios{% endblock %}
+{% block content %}
+
+<style>
+  :root {
+    --r:#dc2626; --r-lo:rgba(220,38,38,.1);
+    --a:#d97706; --a-lo:rgba(217,119,6,.1);
+    --g:#16a34a; --g-lo:rgba(22,163,74,.1);
+    --acc:#7c3aed; --acc-lo:rgba(124,58,237,.1);
+    --border:#e2e8f0; --card:#fff; --txt:#0f172a; --txt2:#64748b; --page:#f8fafc;
+  }
+  @media (prefers-color-scheme:dark) {
+    :root { --border:#1e293b;--card:#1e293b;--page:#0f172a;--txt:#f1f5f9;--txt2:#94a3b8;
+            --r-lo:rgba(220,38,38,.15);--a-lo:rgba(217,119,6,.15);--g-lo:rgba(22,163,74,.15);--acc-lo:rgba(124,58,237,.15); }
+  }
+  :root[data-theme="dark"]  { --border:#1e293b;--card:#1e293b;--page:#0f172a;--txt:#f1f5f9;--txt2:#94a3b8; }
+  :root[data-theme="light"] { --border:#e2e8f0;--card:#fff;--page:#f8fafc;--txt:#0f172a;--txt2:#64748b; }
+  body { background:var(--page); }
+
+  .kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; margin-bottom:1.5rem; }
+  @media(max-width:700px){ .kpi-row{grid-template-columns:repeat(2,1fr);} }
+  .kpi-tile { background:var(--card);border:1px solid var(--border);border-radius:10px;padding:.9rem 1rem;text-align:center; }
+  .kpi-n { font-size:1.7rem;font-weight:800;line-height:1;font-variant-numeric:tabular-nums; }
+  .kpi-l { font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--txt2);margin-top:.2rem; }
+
+  .finding { background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:1.25rem;overflow:hidden; }
+  .finding-header {
+    display:flex;align-items:center;gap:.6rem;padding:.7rem 1rem;
+    font-weight:700;font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;
+    border-bottom:1px solid var(--border);
+  }
+  .finding-header.crit  { background:var(--r-lo);color:var(--r); }
+  .finding-header.warn  { background:var(--a-lo);color:var(--a); }
+  .finding-header.info  { background:var(--acc-lo);color:var(--acc); }
+  .finding-count {
+    margin-left:auto;font-size:.72rem;font-weight:700;
+    padding:.12rem .5rem;border-radius:20px;background:rgba(0,0,0,.08);
+  }
+
+  .util-wrap { display:flex;align-items:center;gap:.5rem;min-width:120px; }
+  .util-track { flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden; }
+  .util-fill  { height:100%;border-radius:3px; }
+  .util-pct   { font-size:.75rem;font-variant-numeric:tabular-nums;color:var(--txt2);width:32px;text-align:right; }
+
+  .waste-badge {
+    font-size:.72rem;font-weight:700;padding:.15rem .5rem;border-radius:6px;
+    white-space:nowrap;font-variant-numeric:tabular-nums;
+  }
+  .waste-badge.high { background:var(--r-lo);color:var(--r); }
+  .waste-badge.med  { background:var(--a-lo);color:var(--a); }
+
+  .empty-msg { padding:.75rem 1rem;color:var(--txt2);font-size:.83rem;font-style:italic; }
+  @media print { .no-print{display:none!important;} }
+</style>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h4 class="mb-0"><i class="bi bi-lightbulb me-2"></i>{{ t('cost_opt.title') }}</h4>
+    <div class="text-muted" style="font-size:.82rem">{{ t('cost_opt.subtitle') }} · {{ today.strftime('%d %B %Y') }}</div>
+  </div>
+  <button onclick="window.print()" class="btn btn-sm btn-outline-secondary no-print">
+    <i class="bi bi-printer me-1"></i>{{ t('cost_opt.print') }}
+  </button>
+</div>
+
+<div class="kpi-row">
+  <div class="kpi-tile">
+    <div class="kpi-n" style="color:var(--r)">{{ unused|length }}</div>
+    <div class="kpi-l">{{ t('cost_opt.kpi_unused_lines') }}</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="kpi-n" style="color:var(--a)">{{ low_util|length }}</div>
+    <div class="kpi-l">{{ t('cost_opt.kpi_low_util') }}</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="kpi-n" style="color:var(--txt)">{{ total_unused_licences }}</div>
+    <div class="kpi-l">{{ t('cost_opt.kpi_unused_units') }}</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="kpi-n" style="color:var(--r)">
+      {% if total_wasted_cost %}${{ '{:,.0f}'.format(total_wasted_cost) }}{% else %}—{% endif %}
+    </div>
+    <div class="kpi-l">{{ t('cost_opt.kpi_wasted') }}</div>
+  </div>
+</div>
+
+<!-- Finding 1: Completely unused -->
+<div class="finding">
+  <div class="finding-header crit">
+    <i class="bi bi-slash-circle-fill"></i>{{ t('cost_opt.finding_unused') }}
+    <span class="finding-count">{{ unused|length }}</span>
+  </div>
+  {% if unused %}
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>{{ t('cost_opt.col_contract') }}</th>
+          <th>{{ t('cost_opt.col_client') }}</th>
+          <th>{{ t('cost_opt.col_product') }}</th>
+          <th class="text-end">{{ t('cost_opt.col_purchased') }}</th>
+          <th class="text-end">{{ t('cost_opt.col_consumed') }}</th>
+          <th>{{ t('cost_opt.col_util') }}</th>
+          <th class="text-end">{{ t('cost_opt.col_wasted') }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in unused %}
+        <tr>
+          <td>
+            <a href="{{ url_for('contract_detail', csi_id=r.csi_id) }}" style="font-weight:500">{{ r.contract_name }}</a>
+            {% if r.csi_number %}<br><code style="font-size:.72rem;color:var(--txt2)">{{ r.csi_number }}</code>{% endif %}
+          </td>
+          <td style="font-size:.82rem">{{ r.owning_client or '—' }}</td>
+          <td style="font-size:.82rem">{{ r.product_name }}</td>
+          <td class="text-end">{{ r.quantity }}</td>
+          <td class="text-end"><span class="text-muted">0</span></td>
+          <td>
+            <div class="util-wrap">
+              <div class="util-track"><div class="util-fill" style="width:0%;background:var(--r)"></div></div>
+              <span class="util-pct">0%</span>
+            </div>
+          </td>
+          <td class="text-end">
+            {% if r.wasted_cost %}
+            <span class="waste-badge high">{{ r.currency or 'USD' }} {{ '{:,.0f}'.format(r.wasted_cost) }}</span>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td>
+            <a href="{{ url_for('contract_detail', csi_id=r.csi_id) }}"
+               class="btn btn-sm btn-outline-secondary py-0">{{ t('cost_opt.view') }}</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-msg"><i class="bi bi-check-circle-fill text-success me-1"></i>{{ t('cost_opt.ok_unused') }}</div>
+  {% endif %}
+</div>
+
+<!-- Finding 2: Low utilisation -->
+<div class="finding">
+  <div class="finding-header warn">
+    <i class="bi bi-battery-half"></i>{{ t('cost_opt.finding_low') }}
+    <span class="finding-count">{{ low_util|length }}</span>
+  </div>
+  {% if low_util %}
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>{{ t('cost_opt.col_contract') }}</th>
+          <th>{{ t('cost_opt.col_client') }}</th>
+          <th>{{ t('cost_opt.col_product') }}</th>
+          <th class="text-end">{{ t('cost_opt.col_purchased') }}</th>
+          <th class="text-end">{{ t('cost_opt.col_consumed') }}</th>
+          <th class="text-end">{{ t('cost_opt.col_unused') }}</th>
+          <th>{{ t('cost_opt.col_util') }}</th>
+          <th class="text-end">{{ t('cost_opt.col_wasted') }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in low_util %}
+        <tr>
+          <td>
+            <a href="{{ url_for('contract_detail', csi_id=r.csi_id) }}" style="font-weight:500">{{ r.contract_name }}</a>
+            {% if r.csi_number %}<br><code style="font-size:.72rem;color:var(--txt2)">{{ r.csi_number }}</code>{% endif %}
+          </td>
+          <td style="font-size:.82rem">{{ r.owning_client or '—' }}</td>
+          <td style="font-size:.82rem">{{ r.product_name }}</td>
+          <td class="text-end">{{ r.quantity }}</td>
+          <td class="text-end">{{ r.consumed }}</td>
+          <td class="text-end"><span class="text-warning fw-semibold">{{ r.available }}</span></td>
+          <td>
+            <div class="util-wrap">
+              <div class="util-track">
+                <div class="util-fill" style="width:{{ r.util_pct }}%;background:{% if r.util_pct < 25 %}var(--r){% else %}var(--a){% endif %}"></div>
+              </div>
+              <span class="util-pct">{{ r.util_pct }}%</span>
+            </div>
+          </td>
+          <td class="text-end">
+            {% if r.wasted_cost %}
+            <span class="waste-badge {% if r.wasted_cost > 10000 %}high{% else %}med{% endif %}">
+              {{ r.currency or 'USD' }} {{ '{:,.0f}'.format(r.wasted_cost) }}
+            </span>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td>
+            <a href="{{ url_for('contract_detail', csi_id=r.csi_id) }}"
+               class="btn btn-sm btn-outline-secondary py-0">{{ t('cost_opt.view') }}</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-msg"><i class="bi bi-check-circle-fill text-success me-1"></i>{{ t('cost_opt.ok_low') }}</div>
+  {% endif %}
+</div>
+
+<!-- Finding 3: Contracts with no lines -->
+<div class="finding">
+  <div class="finding-header info">
+    <i class="bi bi-file-earmark-x"></i>{{ t('cost_opt.finding_empty') }}
+    <span class="finding-count">{{ empty_contracts|length }}</span>
+  </div>
+  {% if empty_contracts %}
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead class="table-light">
+        <tr><th>{{ t('cost_opt.col_contract') }}</th><th>{{ t('cost_opt.col_client') }}</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for r in empty_contracts %}
+        <tr>
+          <td>
+            <a href="{{ url_for('contract_detail', csi_id=r.csi_id) }}" style="font-weight:500">{{ r.contract_name }}</a>
+            {% if r.csi_number %}<code class="ms-1" style="font-size:.72rem;color:var(--txt2)">{{ r.csi_number }}</code>{% endif %}
+          </td>
+          <td style="font-size:.82rem">{{ r.owning_client or '—' }}</td>
+          <td class="text-end">
+            <a href="{{ url_for('contract_detail', csi_id=r.csi_id) }}"
+               class="btn btn-sm btn-outline-primary py-0">{{ t('cost_opt.add_lines') }}</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-msg"><i class="bi bi-check-circle-fill text-success me-1"></i>{{ t('cost_opt.ok_empty') }}</div>
+  {% endif %}
+</div>
+
+<!-- Finding 4: ULAs expiring within 12 months -->
+<div class="finding">
+  <div class="finding-header warn">
+    <i class="bi bi-infinity"></i>{{ t('cost_opt.finding_ula') }}
+    <span class="finding-count">{{ ula_risks|length }}</span>
+  </div>
+  {% if ula_risks %}
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>{{ t('cost_opt.col_contract') }}</th>
+          <th>{{ t('cost_opt.col_client') }}</th>
+          <th>{{ t('cost_opt.col_ula_expiry') }}</th>
+          <th class="text-end">{{ t('cost_opt.col_servers') }}</th>
+          <th>{{ t('cost_opt.col_action') }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in ula_risks %}
+        <tr>
+          <td>
+            <a href="{{ url_for('contract_detail', csi_id=r.csi_id) }}" style="font-weight:500">{{ r.contract_name }}</a>
+            {% if r.csi_number %}<br><code style="font-size:.72rem;color:var(--txt2)">{{ r.csi_number }}</code>{% endif %}
+          </td>
+          <td style="font-size:.82rem">{{ r.owning_client or '—' }}</td>
+          <td>
+            <span class="{% if r.days < 90 %}text-danger fw-bold{% else %}text-warning fw-semibold{% endif %}">
+              {{ r.ula_expiry.strftime('%d %b %Y') }}
+            </span>
+            <span class="ms-1 badge" style="font-size:.68rem;background:{% if r.days<90 %}var(--r-lo){% else %}var(--a-lo){% endif %};color:{% if r.days<90 %}var(--r){% else %}var(--a){% endif %}">{{ r.days }}d</span>
+          </td>
+          <td class="text-end">
+            <span class="fw-semibold {% if r.server_count == 0 %}text-danger{% endif %}">{{ r.server_count }}</span>
+          </td>
+          <td style="font-size:.78rem;color:var(--txt2)">
+            {% if r.server_count == 0 %}
+              <i class="bi bi-exclamation-triangle text-danger me-1"></i>{{ t('cost_opt.no_servers') }}
+            {% elif r.days < 90 %}
+              <i class="bi bi-clock text-warning me-1"></i>{{ t('cost_opt.certify') }}
+            {% else %}
+              <i class="bi bi-info-circle me-1"></i>{{ t('cost_opt.review') }}
+            {% endif %}
+          </td>
+          <td>
+            <a href="{{ url_for('contract_detail', csi_id=r.csi_id) }}"
+               class="btn btn-sm btn-outline-secondary py-0">{{ t('cost_opt.view') }}</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-msg"><i class="bi bi-check-circle-fill text-success me-1"></i>{{ t('cost_opt.ok_ula') }}</div>
+  {% endif %}
+</div>
+
+{% endblock %}

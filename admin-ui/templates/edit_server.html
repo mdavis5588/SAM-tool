@@ -1,0 +1,898 @@
+{% extends "base.html" %}
+{% block title %}{{ server.hostname }} — Helios{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('servers') }}">Servers</a></li>
+    <li class="breadcrumb-item active">{{ server.hostname }}</li>
+  </ol>
+</nav>
+
+<div class="d-flex gap-2 mb-3 flex-wrap">
+  <a href="{{ url_for('server_history', server_id=server.server_id) }}"
+     class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-clock-history"></i> Change History
+  </a>
+  {% if can_write_licences %}
+  {% if server.is_active %}
+  <form method="post" style="display:inline"
+        onsubmit="return confirm('{{ t('servers.confirm_remove') }}')">
+    <input type="hidden" name="action" value="deactivate_server">
+    <button type="submit" class="btn btn-sm btn-outline-danger">
+      <i class="bi bi-trash me-1"></i>{{ t('servers.btn_remove') }}
+    </button>
+  </form>
+  {% else %}
+  <div class="alert alert-warning d-inline-flex align-items-center gap-2 py-1 px-3 mb-0" style="font-size:.85rem">
+    <i class="bi bi-exclamation-triangle"></i> This server has been removed from inventory.
+    <form method="post" style="display:inline">
+      <input type="hidden" name="action" value="reactivate_server">
+      <button type="submit" class="btn btn-sm btn-warning ms-2">
+        <i class="bi bi-arrow-counterclockwise me-1"></i>{{ t('servers.btn_reactivate') }}
+      </button>
+    </form>
+  </div>
+  {% endif %}
+  {% endif %}
+</div>
+
+<!-- SE2 violations banner -->
+{% if se2_violations %}
+<div class="alert alert-danger d-flex gap-2 mb-3">
+  <i class="bi bi-exclamation-triangle-fill fs-5 flex-shrink-0"></i>
+  <div>
+    <strong>Oracle SE2 Licence Violation Detected</strong>
+    {% for v in se2_violations %}
+    <div class="mt-1">
+      <code>{{ v.oracle_sid }}</code> — {{ v.violation_summary }}.
+      {% if v.socket_violation %}
+        SE2 permits max 2 CPU sockets; this server has {{ v.cpu_sockets }}.
+      {% endif %}
+      {% if v.rac_violation %}
+        SE2 RAC clusters are limited to 2 nodes; this cluster has {{ v.rac_node_count }}.
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- CPU validation warning -->
+{% if cpu_validation and cpu_validation.factor_unknown %}
+<div class="alert alert-warning d-flex gap-2 mb-3">
+  <i class="bi bi-cpu fs-5 flex-shrink-0"></i>
+  <div>
+    <strong>Unrecognised CPU Model:</strong> <code>{{ cpu_validation.cpu_model }}</code>
+    ({{ cpu_validation.cpu_sockets }} socket(s) × {{ cpu_validation.cores_per_socket }} core(s) = {{ cpu_validation.total_physical_cores }} cores).
+    This CPU model was not found in the Oracle Processor Core Factor Table — licence calculations
+    may be using an incorrect factor.
+    <a href="https://www.oracle.com/assets/processor-core-factor-table-070634.pdf"
+       target="_blank" class="alert-link">Check the Oracle factor table</a>
+    and add the correct entry to <code>shared.core_factor_table</code>.
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-4">
+
+  <!-- Left column: server info + metric + instances -->
+  <div class="col-lg-4">
+
+    <!-- Server summary -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-dark text-white">
+        <i class="bi bi-server"></i> {{ server.hostname }}
+      </div>
+      <div class="card-body">
+        {% if can_write_licences %}
+        <form method="post">
+          <input type="hidden" name="action" value="update_server_details">
+          <table class="table table-sm table-borderless mb-2">
+            <tr>
+              <th class="text-nowrap" style="width:35%">Environment</th>
+              <td>
+                <select name="environment" class="form-select form-select-sm">
+                  {% for env in ['production','development','test','staging','dr','sandbox'] %}
+                  <option value="{{ env }}" {% if server.environment == env %}selected{% endif %}>{{ env | title }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+            </tr>
+            <tr>
+              <th>Datacenter</th>
+              <td><input type="text" name="datacenter" class="form-control form-control-sm"
+                         value="{{ server.datacenter or '' }}" placeholder="e.g. UK-LON-DC1"></td>
+            </tr>
+            <tr>
+              <th>IP Address</th>
+              <td><input type="text" name="ip_address" class="form-control form-control-sm"
+                         value="{{ server.ip_address or '' }}" placeholder="e.g. 10.0.0.1"></td>
+            </tr>
+            <tr><th>Last Seen</th><td class="pt-2">{{ server.last_seen or '—' }}</td></tr>
+            {% if cpu_validation %}
+            <tr><th>Processor</th><td class="pt-2">
+              <span class="text-break">{{ cpu_validation.cpu_model or '—' }}</span>
+              {% if cpu_validation.cpu_architecture %}
+                <span class="badge bg-secondary ms-1">{{ cpu_validation.cpu_architecture }}</span>
+              {% endif %}
+              {% if cpu_validation.is_exadata %}
+                <span class="badge bg-warning text-dark ms-1" title="Exadata detected — additional licence obligations may apply"><i class="bi bi-grid-3x3-gap-fill me-1"></i>Exadata</span>
+              {% endif %}
+            </td></tr>
+            <tr><th>Physical Cores</th><td class="pt-2">
+              {{ cpu_validation.cpu_sockets }} socket{{ 's' if cpu_validation.cpu_sockets != 1 }} ×
+              {{ cpu_validation.cores_per_socket }} core{{ 's' if cpu_validation.cores_per_socket != 1 }}
+              = <strong>{{ cpu_validation.total_physical_cores }}</strong>
+            </td></tr>
+            <tr><th>Core Factor</th><td class="pt-2">
+              {% if cpu_validation.validated_factor %}
+                <span class="badge bg-success">{{ cpu_validation.validated_factor }}</span>
+                <small class="text-muted ms-1">→ {{ (cpu_validation.total_physical_cores * cpu_validation.validated_factor) | round(1) }} licence units</small>
+              {% else %}
+                <span class="badge bg-warning text-dark">Unknown</span>
+                <small class="text-muted ms-1">CPU not in core factor table</small>
+              {% endif %}
+            </td></tr>
+            {% endif %}
+          </table>
+          <div class="d-grid">
+            <button type="submit" class="btn btn-sm btn-primary">
+              <i class="bi bi-floppy me-1"></i>Save Server Details
+            </button>
+          </div>
+        </form>
+        {% else %}
+        <table class="table table-sm table-borderless mb-0">
+          <tr><th>Environment</th><td>{{ server.environment | title }}</td></tr>
+          <tr><th>Datacenter</th><td>{{ server.datacenter or '—' }}</td></tr>
+          <tr><th>IP Address</th><td><code>{{ server.ip_address or '—' }}</code></td></tr>
+          <tr><th>Last Seen</th><td>{{ server.last_seen or '—' }}</td></tr>
+          {% if cpu_validation %}
+          <tr><th>Processor</th><td>
+            <span class="text-break">{{ cpu_validation.cpu_model or '—' }}</span>
+            {% if cpu_validation.cpu_architecture %}
+              <span class="badge bg-secondary ms-1">{{ cpu_validation.cpu_architecture }}</span>
+            {% endif %}
+            {% if cpu_validation.is_exadata %}
+              <span class="badge bg-warning text-dark ms-1" title="Exadata detected — additional licence obligations may apply"><i class="bi bi-grid-3x3-gap-fill me-1"></i>Exadata</span>
+            {% endif %}
+          </td></tr>
+          <tr><th>Physical Cores</th><td>
+            {{ cpu_validation.cpu_sockets }} socket{{ 's' if cpu_validation.cpu_sockets != 1 }} ×
+            {{ cpu_validation.cores_per_socket }} core{{ 's' if cpu_validation.cores_per_socket != 1 }}
+            = <strong>{{ cpu_validation.total_physical_cores }}</strong>
+          </td></tr>
+          <tr><th>Core Factor</th><td>
+            {% if cpu_validation.validated_factor %}
+              <span class="badge bg-success">{{ cpu_validation.validated_factor }}</span>
+              <small class="text-muted ms-1">→ {{ (cpu_validation.total_physical_cores * cpu_validation.validated_factor) | round(1) }} licence units</small>
+            {% else %}
+              <span class="badge bg-warning text-dark">Unknown</span>
+              <small class="text-muted ms-1">CPU not in core factor table</small>
+            {% endif %}
+          </td></tr>
+          {% endif %}
+        </table>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Licence metric -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-header"><i class="bi bi-sliders"></i> Licence Metric</div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          Controls how Oracle licence requirements are calculated for this server.
+          <strong>Processor Perpetual</strong> is the default for all servers.
+        </p>
+        <form method="post">
+          <input type="hidden" name="action" value="set_metric">
+          <div class="mb-3">
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="radio" name="metric"
+                     id="m_proc" value="processor_perpetual"
+                     {% if server.licence_metric == 'processor_perpetual' %}checked{% endif %}>
+              <label class="form-check-label" for="m_proc">
+                <strong>Processor Perpetual</strong>
+                <span class="badge bg-primary ms-1">Default</span><br>
+                <small class="text-muted">Physical cores × core factor (EE) or sockets (SE2)</small>
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="metric"
+                     id="m_nup" value="named_user_plus"
+                     {% if server.licence_metric == 'named_user_plus' %}checked{% endif %}>
+              <label class="form-check-label" for="m_nup">
+                <strong>Named User Plus</strong><br>
+                <small class="text-muted">25 NUP per EE processor licence minimum; 10 per SE2</small>
+              </label>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="bi bi-check-lg"></i> Save Metric
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Oracle instances on this server -->
+    {% if instances %}
+    <div class="card shadow-sm">
+      <div class="card-header"><i class="bi bi-database"></i> Oracle Instances</div>
+      <ul class="list-group list-group-flush">
+        {% for i in instances %}
+        <li class="list-group-item">
+          <strong>{{ i.oracle_sid }}</strong>
+          <span class="badge bg-secondary ms-1">{{ i.edition or '?' }}</span>
+          <small class="text-muted d-block">{{ i.db_version or '' }}</small>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <!-- WebLogic Domains -->
+    {% if wls_domains %}
+    <div class="card shadow-sm mt-3">
+      <div class="card-header"><i class="bi bi-boxes"></i> WebLogic Domains</div>
+      {% for d in wls_domains %}
+      <div class="{% if not loop.last %}border-bottom{% endif %} p-3">
+
+        <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+          <div>
+            <strong>{{ d.domain_name }}</strong>
+            {% if d.wls_edition %}
+            <span class="badge ms-1" style="background:rgba(124,58,237,.12);color:#5b21b6;font-size:.68rem">
+              {{ d.wls_edition }}
+            </span>
+            {% endif %}
+            {% if d.wls_version %}
+            <span class="badge bg-secondary ms-1" style="font-size:.68rem">v{{ d.wls_version }}</span>
+            {% endif %}
+          </div>
+          {% if d.last_seen %}
+          <small class="text-muted text-nowrap">{{ d.last_seen }}</small>
+          {% endif %}
+        </div>
+
+        {% if d.admin_server_host %}
+        <div class="small text-muted mb-2">
+          <i class="bi bi-hdd-network me-1"></i>Admin:
+          <code>{{ d.admin_server_host }}{% if d.admin_server_port %}:{{ d.admin_server_port }}{% endif %}</code>
+        </div>
+        {% endif %}
+
+        {% if d.managed_servers %}
+        <div class="mb-2">
+          <div class="text-muted" style="font-size:.67rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.35rem">
+            Managed Servers ({{ d.managed_servers | length }})
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-borderless mb-0" style="font-size:.8rem">
+              <thead class="table-light">
+                <tr>
+                  <th>Name</th>
+                  <th>Port</th>
+                  <th>Cluster</th>
+                  <th>Machine</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for ms in d.managed_servers %}
+                <tr>
+                  <td>{{ ms.managed_server_name }}</td>
+                  <td class="text-muted">{{ ms.listen_port or '—' }}</td>
+                  <td class="text-muted">{{ ms.cluster_name or '—' }}</td>
+                  <td class="text-muted">{{ ms.machine_name or '—' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endif %}
+
+        {% if d.installed_products %}
+        <div>
+          <div class="text-muted" style="font-size:.67rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.35rem">
+            Installed Products
+          </div>
+          <div class="d-flex flex-wrap gap-1">
+            {% for p in d.installed_products %}
+            <span class="badge bg-light text-dark border" style="font-size:.73rem">
+              {{ p.product_name }}{% if p.product_version %} <span class="text-muted">{{ p.product_version }}</span>{% endif %}
+            </span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Client contacts -->
+    <div class="card shadow-sm mt-3">
+      <div class="card-header"><i class="bi bi-person-lines-fill"></i> Client Contacts</div>
+      <div class="card-body">
+        <form method="post">
+          <input type="hidden" name="action" value="save_contacts">
+          {% for i in range(1, 4) %}
+          {% set c = client_contacts[loop.index0] if loop.index0 < client_contacts|length else none %}
+          <div class="{% if not loop.last %}mb-3 pb-3 border-bottom{% endif %}">
+            <div class="text-muted small fw-semibold mb-1">Contact {{ i }}</div>
+            <div class="mb-1">
+              <input type="text" class="form-control form-control-sm"
+                     name="contact_name_{{ i }}" placeholder="Full name"
+                     value="{{ c.full_name if c else '' }}">
+            </div>
+            <div class="mb-1">
+              <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-envelope"></i></span>
+                <input type="email" class="form-control form-control-sm"
+                       name="contact_email_{{ i }}" placeholder="Email"
+                       value="{{ c.email if c else '' }}">
+              </div>
+            </div>
+            <div>
+              <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-telephone"></i></span>
+                <input type="text" class="form-control form-control-sm"
+                       name="contact_phone_{{ i }}" placeholder="Phone"
+                       value="{{ c.phone if c else '' }}">
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+          <div class="mt-3">
+            <button type="submit" class="btn btn-sm btn-primary">
+              <i class="bi bi-floppy"></i> Save Contacts
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right column: CSI assignments + licence position -->
+  <div class="col-lg-8">
+
+    <!-- Licence summary table -->
+    {% if licence_position %}
+    <div class="card shadow-sm mb-3">
+      <div class="card-header py-2 d-flex align-items-center justify-content-between">
+        <span class="fw-semibold"><i class="bi bi-clipboard-check me-1"></i> Licence Summary</span>
+        {% set _ula_active = assignments | selectattr('is_ula') | list | length > 0 %}
+        {% if _ula_active %}
+          <span class="badge" style="background:rgba(124,58,237,.15);color:#7c3aed"><i class="bi bi-infinity me-1"></i>ULA Coverage</span>
+        {% else %}
+          {% set total_short = licence_position | selectattr('compliance_status', 'ne', 'compliant') | list | length %}
+          {% if total_short == 0 %}
+            <span class="badge bg-success">All lines covered</span>
+          {% else %}
+            <span class="badge bg-danger">{{ total_short }} line(s) need licences</span>
+          {% endif %}
+        {% endif %}
+      </div>
+      {% set _is_nup = server.licence_metric == 'named_user_plus' %}
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Product</th>
+              <th class="text-end">Required</th>
+              {% if _is_nup %}
+              <th class="text-end" title="Minimum NUP licences based on processors/sockets">
+                Min NUP
+                <i class="bi bi-info-circle text-muted" style="font-size:.7rem"></i>
+              </th>
+              <th class="text-end" title="Active named users discovered by Ansible">
+                NUP Users
+                <i class="bi bi-info-circle text-muted" style="font-size:.7rem"></i>
+              </th>
+              {% endif %}
+              <th class="text-end">Assigned</th>
+              <th class="text-end">Still needed</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set _ula_active = assignments | selectattr('is_ula') | list | length > 0 %}
+            {% for row in licence_position %}
+            {%- set _nup_min   = row.get('nup_minimum') -%}
+            {%- set _nup_users = row.get('nup_active_users') -%}
+            {%- if _is_nup and _nup_min is not none -%}
+              {%- set _effective_required = ([_nup_min, _nup_users if _nup_users is not none else 0] | max) | int -%}
+            {%- else -%}
+              {%- set _effective_required = row.licences_required -%}
+            {%- endif -%}
+            {% set still_needed = [_effective_required - row.total_licensed, 0] | max %}
+            <tr>
+              <td>
+                {% if row.product_family == 'oracle_database' %}<i class="bi bi-database me-1 text-muted"></i>
+                {% elif row.product_family == 'oracle_weblogic' %}<i class="bi bi-boxes me-1 text-muted"></i>
+                {% endif %}
+                {{ row.product_detail or (row.product_family | replace('_',' ') | title) }}
+                {% if _is_nup and row.get('licence_metric') == 'named_user_plus' %}
+                <span style="font-size:.62rem;font-weight:700;padding:.1rem .35rem;border-radius:4px;
+                             background:rgba(124,58,237,.1);color:#7c3aed;margin-left:.3rem">NUP</span>
+                {% endif %}
+              </td>
+              <td class="text-end" style="font-variant-numeric:tabular-nums">{{ _effective_required }}</td>
+              {% if _is_nup %}
+              <td class="text-end" style="font-variant-numeric:tabular-nums">
+                {% if row.get('nup_minimum') is not none %}
+                  <span style="color:#7c3aed;font-weight:600">{{ row.nup_minimum | int }}</span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td class="text-end" style="font-variant-numeric:tabular-nums">
+                {% if row.get('nup_active_users') is not none %}
+                  {{ row.nup_active_users | int }}
+                {% else %}
+                  <span class="text-muted small">Not discovered</span>
+                {% endif %}
+              </td>
+              {% endif %}
+              <td class="text-end">
+                {% if _ula_active %}
+                  <span style="color:#7c3aed;font-weight:600"><i class="bi bi-infinity me-1"></i>ULA</span>
+                {% else %}
+                  {{ row.total_licensed | int }}
+                {% endif %}
+              </td>
+              <td class="text-end">
+                {% if _ula_active %}
+                  <span class="badge bg-success"><i class="bi bi-check-circle"></i> Compliant</span>
+                {% elif still_needed == 0 %}
+                  <span class="badge bg-success"><i class="bi bi-check-circle"></i> Covered</span>
+                {% else %}
+                  <span class="badge bg-danger">{{ still_needed }} short</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ULA toggle — appears once between licence summary and CSI cards -->
+    {% set _ula_list = assignments | selectattr('is_ula') | list %}
+    {% set server_ula_assignment = _ula_list[0] if _ula_list else none %}
+
+    {% if server_ula_assignment or all_server_ulas %}
+    <div class="mb-3 px-3 py-2 rounded-3"
+         style="border:1.5px solid {% if server_ula_assignment %}rgba(124,58,237,.35){% else %}rgba(124,58,237,.18){% endif %};
+                background:{% if server_ula_assignment %}rgba(124,58,237,.08){% else %}rgba(124,58,237,.03){% endif %}">
+
+      {% if server_ula_assignment %}
+      <!-- Toggle ON — ULA active -->
+      <form method="post" id="removeUlaForm"
+            onsubmit="return confirm('Remove ULA? You will need to re-add individual CSI assignments.')">
+        <input type="hidden" name="action" value="remove_ula">
+        <div class="d-flex align-items-center gap-3">
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="ulaToggleSwitch"
+                   checked style="width:2.5em;height:1.3em;cursor:pointer"
+                   onchange="document.getElementById('removeUlaForm').submit()">
+            <label class="form-check-label fw-semibold ms-1" for="ulaToggleSwitch" style="color:#7c3aed;cursor:pointer">
+              <i class="bi bi-infinity me-1"></i>Assigned to ULA
+            </label>
+          </div>
+          <span style="font-size:.82rem;color:#64748b">
+            {{ server_ula_assignment.contract_name }}
+            {% if server_ula_assignment.csi_number %}
+              &nbsp;·&nbsp;<code style="font-size:.75rem">{{ server_ula_assignment.csi_number }}</code>
+            {% endif %}
+          </span>
+        </div>
+      </form>
+
+      {% else %}
+      <!-- Toggle OFF — ULA available -->
+      <div class="d-flex align-items-center gap-3 flex-wrap">
+        <div class="form-check form-switch mb-0">
+          <input class="form-check-input" type="checkbox" id="ulaToggleSwitch"
+                 style="width:2.5em;height:1.3em;cursor:pointer"
+                 onchange="document.getElementById('ulaPickerRow').style.display = this.checked ? '' : 'none'">
+          <label class="form-check-label fw-semibold ms-1" for="ulaToggleSwitch" style="color:#7c3aed;cursor:pointer">
+            <i class="bi bi-infinity me-1"></i>Assign to ULA
+          </label>
+        </div>
+        <span class="text-muted" style="font-size:.8rem">Toggle on to cover this server under a ULA</span>
+      </div>
+      <div id="ulaPickerRow" style="display:none" class="mt-2">
+        {% if all_server_ulas | length == 1 %}
+        <form method="post">
+          <input type="hidden" name="action" value="assign_ula">
+          <input type="hidden" name="csi_id" value="{{ all_server_ulas[0].csi_id }}">
+          <div class="d-flex align-items-center gap-2">
+            <span style="font-size:.82rem;color:#64748b">
+              {{ all_server_ulas[0].contract_name }}
+              {% if all_server_ulas[0].csi_number %}<code class="ms-1" style="font-size:.75rem">{{ all_server_ulas[0].csi_number }}</code>{% endif %}
+              {% if all_server_ulas[0].ula_expiry %}&nbsp;· expires {{ all_server_ulas[0].ula_expiry }}{% endif %}
+            </span>
+            <button type="submit" class="btn btn-sm btn-primary"
+                    onclick="return confirm('Assign this server to ULA \'{{ all_server_ulas[0].contract_name }}\'?\n\nThis will remove all individual CSI assignments.')">
+              Confirm
+            </button>
+          </div>
+        </form>
+        {% else %}
+        <form method="post" class="d-flex align-items-center gap-2 flex-wrap">
+          <input type="hidden" name="action" value="assign_ula">
+          <select name="csi_id" class="form-select form-select-sm" style="max-width:320px" required>
+            <option value="">— select ULA —</option>
+            {% for u in all_server_ulas %}
+            <option value="{{ u.csi_id }}">
+              {{ u.contract_name }}{% if u.csi_number %} · {{ u.csi_number }}{% endif %}{% if u.ula_expiry %} · expires {{ u.ula_expiry }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn btn-sm btn-primary"
+                  onclick="return confirm('Assign this server to the selected ULA?\n\nThis will remove all individual CSI assignments.')">
+            Confirm
+          </button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+
+    </div>
+    {% endif %}
+
+    <!-- Per-line CSI assignment cards (hidden when ULA is active) -->
+    {% if not server_ula_assignment %}
+    <h6 class="text-muted text-uppercase fw-semibold mb-2" style="font-size:.75rem; letter-spacing:.08em">
+      CSI Assignments
+    </h6>
+
+    {% for row in licence_position %}
+    {% set line_key = row.product_family ~ '|' ~ (row.product_detail or '') %}
+    {% set still_needed = ([row.licences_required - row.total_licensed, 0] | max) %}
+    <div class="card shadow-sm mb-3 {% if still_needed > 0 %}border-warning{% endif %}">
+      <div class="card-header d-flex align-items-center justify-content-between py-2">
+        <div>
+          <span class="fw-semibold">
+            {% if row.product_family == 'oracle_database' %}
+              <i class="bi bi-database me-1"></i>
+            {% elif row.product_family == 'oracle_weblogic' %}
+              <i class="bi bi-boxes me-1"></i>
+            {% endif %}
+            {{ row.product_detail or (row.product_family | replace('_',' ') | title) }}
+          </span>
+          <small class="text-muted ms-2">{{ row.product_family | replace('_',' ') | title }}</small>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          {% if (row.licences_required | int) == 0 %}
+            <span class="badge bg-danger" title="0 licences required — check CPU topology data">
+              <i class="bi bi-exclamation-triangle-fill me-1"></i>0 required
+            </span>
+          {% else %}
+            <span class="badge bg-secondary">{{ row.licences_required | int }} required</span>
+          {% endif %}
+          <span class="badge bg-primary">{{ row.total_licensed | int }} assigned</span>
+          {% if still_needed == 0 %}
+            <span class="badge bg-success"><i class="bi bi-check-circle"></i> Covered</span>
+          {% else %}
+            <span class="badge bg-danger"><i class="bi bi-exclamation-circle"></i> {{ still_needed }} still needed</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card-body p-0">
+        {% set line_maps = [] %}
+        {% for a in assignments %}
+          {% if a.product_family == row.product_family and a.product_detail == row.product_detail and not a.is_ula %}
+            {% set _ = line_maps.append(a) %}
+          {% endif %}
+        {% endfor %}
+
+        {% if line_maps %}
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>CSI Number</th><th>Contract</th><th>Licences</th><th>Expiry</th><th>Notes</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in line_maps %}
+            <tr>
+              <td><code>{{ a.csi_number or '—' }}</code></td>
+              <td>{{ a.contract_name }}</td>
+              <td>{{ (a.licences_consumed | int) if a.licences_consumed is not none else '—' }}</td>
+              <td>
+                {% if a.support_expiry %}
+                  <span class="{% if a.support_expiry < today_date %}text-danger{% endif %}">{{ a.support_expiry }}</span>
+                {% else %}—{% endif %}
+              </td>
+              <td><small>{{ a.notes or '' }}</small></td>
+              <td>
+                {% if current_role in ('client','dba') %}
+                <form method="post" action="{{ url_for('assignment_propose') }}"
+                      onsubmit="return confirm('Submit a removal request for approval?')">
+                  <input type="hidden" name="request_type"    value="remove">
+                  <input type="hidden" name="server_id"       value="{{ server.server_id }}">
+                  <input type="hidden" name="product_family"  value="{{ a.product_family }}">
+                  <input type="hidden" name="map_id_to_remove" value="{{ a.map_id }}">
+                  <button type="submit" class="btn btn-sm btn-outline-warning">
+                    <i class="bi bi-hourglass-split"></i> Propose Remove
+                  </button>
+                </form>
+                {% else %}
+                <form method="post" onsubmit="return confirm('Remove this CSI assignment?')">
+                  <input type="hidden" name="action" value="remove_csi">
+                  <input type="hidden" name="map_id" value="{{ a.map_id }}">
+                  <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="px-3 py-2 text-muted small">No CSI assigned to this line.</div>
+        {% endif %}
+
+        <!-- Add individual CSI -->
+        {% set line_csis = compatible_csis_by_line.get(line_key, []) %}
+        {% set line_full = row.remaining_capacity is not none and row.remaining_capacity <= 0 %}
+        {% set line_locked = (not line_csis) or line_full %}
+        <div class="border-top px-3 py-2 bg-light">
+          {% if not line_csis %}
+          <div class="small text-muted mb-2"><i class="bi bi-info-circle"></i> No active CSI contract covers this product/edition yet.</div>
+          {% elif line_full %}
+          <div class="small text-muted mb-2"><i class="bi bi-check-circle"></i> This line already has its full {{ row.licences_required | int }} licence(s) assigned.</div>
+          {% endif %}
+          {% if current_role in ('client','dba') %}
+          <div class="small text-info mb-2">
+            <i class="bi bi-info-circle"></i>
+            Assignments require approval — your request will be sent to a contracting user or superadmin.
+            <a href="{{ url_for('assignment_queue') }}">View your pending requests →</a>
+          </div>
+          {% endif %}
+          <form method="post"
+                action="{{ url_for('assignment_propose') if current_role in ('client','dba') else '' }}"
+                class="row g-2 align-items-end">
+            <input type="hidden" name="action"         value="assign_csi">
+            <input type="hidden" name="request_type"   value="assign">
+            <input type="hidden" name="server_id"      value="{{ server.server_id }}">
+            <input type="hidden" name="product_family" value="{{ row.product_family }}">
+            <input type="hidden" name="product_detail" value="{{ row.product_detail or '' }}">
+            <div class="col-md-5">
+              <label class="form-label form-label-sm mb-1">
+                {% if current_role in ('client','dba') %}Propose CSI Contract{% else %}Add CSI Contract{% endif %}
+              </label>
+              <select name="csi_id" class="form-select form-select-sm" required {% if line_locked %}disabled{% endif %}>
+                <option value="">— select —</option>
+                {% set locked_csis = line_csis | selectattr('sharing_policy', 'equalto', 'client_locked') | list %}
+                {% set shared_csis = line_csis | rejectattr('sharing_policy', 'equalto', 'client_locked') | list %}
+                {% if locked_csis %}
+                <optgroup label="★ Client-Locked — use first">
+                  {% for c in locked_csis %}
+                  <option value="{{ c.csi_id }}" {% if c.csi_available == 0 %}disabled{% endif %} style="color:#198754;font-weight:600">
+                    {{ c.csi_number or 'No CSI#' }} &nbsp;|&nbsp; {{ c.csi_available }} avail{% if c.unit_price %} &nbsp;|&nbsp; ${{ '{:,.0f}'.format(c.unit_price) }}/seat{% endif %}
+                  </option>
+                  {% endfor %}
+                </optgroup>
+                {% endif %}
+                {% if shared_csis %}
+                <optgroup label="Shared Pool">
+                  {% for c in shared_csis %}
+                  <option value="{{ c.csi_id }}" {% if c.csi_available == 0 %}disabled{% endif %}>
+                    {{ c.csi_number or 'No CSI#' }} &nbsp;|&nbsp; {{ c.csi_available }} avail{% if c.unit_price %} &nbsp;|&nbsp; ${{ '{:,.0f}'.format(c.unit_price) }}/seat{% endif %}
+                  </option>
+                  {% endfor %}
+                </optgroup>
+                {% endif %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label form-label-sm mb-1">Licences consumed</label>
+              <input type="number" step="0.5" min="0"
+                     {% if row.remaining_capacity is not none %}max="{{ row.remaining_capacity }}"{% endif %}
+                     name="licences_consumed" class="form-control form-control-sm"
+                     placeholder="max {{ row.remaining_capacity if row.remaining_capacity is not none else row.licences_required }}"
+                     {% if line_locked %}disabled{% endif %}>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label form-label-sm mb-1">Notes</label>
+              <input type="text" name="notes" class="form-control form-control-sm" {% if line_locked %}disabled{% endif %}>
+            </div>
+            <div class="col-auto">
+              {% if current_role in ('client','dba') %}
+              <button type="submit" class="btn btn-warning btn-sm" {% if line_locked %}disabled{% endif %}>
+                <i class="bi bi-hourglass-split me-1"></i>Propose
+              </button>
+              {% else %}
+              <button type="submit" class="btn btn-success btn-sm" {% if line_locked %}disabled{% endif %}>
+                <i class="bi bi-plus-lg"></i>
+              </button>
+              {% endif %}
+            </div>
+          </form>
+        </div>
+
+      </div>
+    </div>
+    {% endfor %}
+    {% endif %}{# end if not server_ula_assignment #}
+
+    {% endif %}{# end if licence_position #}
+
+    <!-- Java installations -->
+    {% if java_installations %}
+    <div class="card shadow-sm mb-4">
+      <div class="card-header d-flex align-items-center">
+        <span><i class="bi bi-cup-hot"></i> Java Installations</span>
+        <span class="badge bg-secondary ms-2">{{ java_installations | length }}</span>
+        {% set exempt_count = java_installations | selectattr('licence_exempt') | list | length %}
+        {% if exempt_count > 0 %}
+          <span class="badge bg-success ms-1">{{ exempt_count }} exempt</span>
+        {% endif %}
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Java Home</th>
+              <th>Edition / Version</th>
+              <th>Licence Status</th>
+              <th>Exemption</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for j in java_installations %}
+            <tr>
+              <td>
+                <code class="small">{{ j.java_home }}</code>
+                {% if j.java_vendor %}<br><small class="text-muted">{{ j.java_vendor }}</small>{% endif %}
+              </td>
+              <td>
+                {{ j.java_edition or '—' }}
+                {% if j.java_version %}<br><small class="text-muted">{{ j.java_version }}</small>{% endif %}
+              </td>
+              <td>
+                {% if j.licence_exempt %}
+                  <span class="badge bg-success"><i class="bi bi-shield-check"></i> Exempt</span>
+                {% elif j.requires_licence %}
+                  <span class="badge bg-danger"><i class="bi bi-exclamation-circle"></i> Licence required</span>
+                {% else %}
+                  <span class="badge bg-secondary">No licence needed</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if j.licence_exempt %}
+                  <small>
+                    <strong>{{ j.exempt_reason | replace('_', ' ') | title }}</strong>
+                    {% if j.exempt_notes %}<br>{{ j.exempt_notes }}{% endif %}
+                    {% if j.exempt_set_by %}<br><span class="text-muted">by {{ j.exempt_set_by }}{% if j.exempt_set_at %} on {{ j.exempt_set_at }}{% endif %}</span>{% endif %}
+                  </small>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td>
+                <button class="btn btn-sm btn-outline-secondary"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#java-exempt-{{ j.java_id }}">
+                  <i class="bi bi-pencil"></i>
+                </button>
+              </td>
+            </tr>
+            <!-- Inline exemption editor (collapsible) -->
+            <tr class="collapse" id="java-exempt-{{ j.java_id }}">
+              <td colspan="5" class="bg-light p-3">
+                <form method="post" class="row g-2 align-items-end">
+                  <input type="hidden" name="action"  value="set_java_exempt">
+                  <input type="hidden" name="java_id" value="{{ j.java_id }}">
+
+                  {% if j.licence_exempt %}
+                  <!-- Currently exempt — offer to clear it -->
+                  <div class="col-auto">
+                    <input type="hidden" name="exempt" value="0">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                      <i class="bi bi-x-circle"></i> Remove exemption
+                    </button>
+                  </div>
+                  {% else %}
+                  <!-- Not currently exempt — offer to set it -->
+                  <input type="hidden" name="exempt" value="1">
+                  <div class="col-md-3">
+                    <label class="form-label form-label-sm">Exemption reason <span class="text-danger">*</span></label>
+                    <select name="exempt_reason" class="form-select form-select-sm" required>
+                      <option value="">— select reason —</option>
+                      <option value="oracle_oem">Oracle Enterprise Manager (OEM)</option>
+                      <option value="oracle_database_jvm">Oracle Database JVM (built-in)</option>
+                      <option value="oracle_weblogic">Oracle WebLogic Server</option>
+                      <option value="oracle_fusion_middleware">Oracle Fusion Middleware</option>
+                      <option value="oracle_forms_reports">Oracle Forms / Reports</option>
+                      <option value="custom">Custom / Other (specify in notes)</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label form-label-sm">Notes</label>
+                    <input type="text" name="exempt_notes" class="form-control form-control-sm"
+                           placeholder="e.g. covered by OEM licence CSI-12345">
+                  </div>
+                  <div class="col-auto">
+                    <button type="submit" class="btn btn-sm btn-success">
+                      <i class="bi bi-shield-check"></i> Mark as exempt
+                    </button>
+                  </div>
+                  {% endif %}
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+  {# ── Oracle Options & Detected Licensed Products ──────────── #}
+  {% if oracle_options or detected_products %}
+  <div class="card mb-4">
+    <div class="card-header d-flex align-items-center gap-2">
+      <i class="bi bi-shield-check"></i>
+      <span>Oracle Licensed Options &amp; Packs</span>
+    </div>
+    <div class="card-body">
+
+      {% if oracle_options %}
+      <div class="mb-3">
+        <div class="text-muted fw-semibold mb-2" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;">
+          <i class="bi bi-toggle-on me-1"></i>Installed Options (v$OPTION)
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          {% for o in oracle_options %}
+          <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle" style="font-size:.8rem;">
+            <i class="bi bi-check-circle me-1"></i>{{ o.option_name }}
+            {% if o.option_version %}<span class="opacity-75 ms-1">{{ o.option_version }}</span>{% endif %}
+          </span>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if detected_products %}
+      <div>
+        <div class="text-muted fw-semibold mb-2" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;">
+          <i class="bi bi-graph-up me-1"></i>Detected from Feature Usage (DBA_FEATURE_USAGE_STATISTICS)
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          {% for p in detected_products %}
+          <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle" style="font-size:.8rem;">
+            <i class="bi bi-exclamation-circle me-1"></i>{{ p.product }}
+            {% if p.last_usage_date %}<span class="opacity-75 ms-1">last used {{ p.last_usage_date }}</span>{% endif %}
+          </span>
+          {% endfor %}
+        </div>
+        <div class="text-muted mt-2" style="font-size:.75rem;">
+          <i class="bi bi-info-circle me-1"></i>Features with detected usage mapped to licensed products — verify licensing requirements.
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+  {% endif %}
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Pass today's date to Jinja for expiry colouring
+const today = "{{ today }}";
+</script>
+{% endblock %}

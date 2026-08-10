@@ -1,0 +1,330 @@
+{% extends "base.html" %}
+{% block title %}Oracle Price List — Helios{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h4 class="mb-0 fw-semibold"><i class="bi bi-tag me-2 text-primary"></i>Oracle Product List Prices</h4>
+    <p class="text-muted small mb-0 mt-1">
+      Manage Oracle Technology Global Price List entries used for licence cost calculations.
+    </p>
+    <div class="alert alert-warning d-flex gap-2 align-items-center py-2 px-3 mt-2 mb-0" style="font-size:.85rem;">
+      <i class="bi bi-exclamation-triangle-fill flex-shrink-0"></i>
+      These are published Oracle list prices and <strong>do not include any negotiated discounts</strong>. Actual costs will vary based on your Oracle agreement.
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    <form method="post" action="{{ url_for('oracle_price_list_seed') }}"
+          onsubmit="return confirm('This will load {{ oracle_price_count }} Oracle published list prices (Apr 2026). Existing entries for the same product/metric/date will be updated. Continue?')">
+      <button type="submit" class="btn btn-outline-success">
+        <i class="bi bi-cloud-download me-1"></i> Load Oracle Published Prices
+      </button>
+    </form>
+    <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#importPriceModal">
+      <i class="bi bi-file-earmark-excel me-1"></i> Import from Excel
+    </button>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#priceModal"
+            onclick="openPriceModal()">
+      <i class="bi bi-plus-lg me-1"></i> Add Price
+    </button>
+  </div>
+</div>
+
+{% if db_error %}
+<div class="alert alert-danger mb-4" role="alert">
+  <i class="bi bi-exclamation-triangle-fill me-1"></i>
+  <strong>Database error:</strong> <code>{{ db_error }}</code>
+</div>
+{% endif %}
+
+{% if seeded is not none %}
+<div class="alert alert-success alert-dismissible mb-4" role="alert">
+  <i class="bi bi-check-circle-fill me-1"></i>
+  Loaded <strong>{{ seeded }}</strong> Oracle Technology Global Price List entries (Apr 2026).
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% elif seed_err %}
+<div class="alert alert-danger alert-dismissible mb-4" role="alert">
+  <i class="bi bi-exclamation-triangle-fill me-1"></i>
+  Failed to load prices: <code>{{ seed_err }}</code>
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% elif imported is not none %}
+<div class="alert alert-success alert-dismissible mb-4" role="alert">
+  <i class="bi bi-check-circle-fill me-1"></i>
+  Import complete — <strong>{{ imported }}</strong> price(s) updated{% if skipped %}, {{ skipped }} skipped{% endif %}.
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% elif import_err %}
+<div class="alert alert-danger alert-dismissible mb-4" role="alert">
+  <i class="bi bi-exclamation-triangle-fill me-1"></i>
+  Import failed: <code>{{ import_err }}</code>
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<style>
+  .price-table th, .price-table td { white-space: nowrap; vertical-align: middle; }
+  .price-table th { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: #6c757d; }
+  .price-table td.col-product { white-space: normal; min-width: 220px; }
+  .price-table td.col-price, .price-table th.col-price { width: 130px; }
+  .price-table td.col-support, .price-table th.col-support { width: 140px; }
+  .price-table td.col-metric { width: 140px; }
+  .price-table td.col-currency { width: 70px; }
+  .price-table td.col-date { width: 110px; }
+  .price-table td.col-current { width: 70px; text-align: center; }
+  .price-table th.col-current { width: 70px; text-align: center; }
+  .price-table td.col-notes { min-width: 150px; }
+  .price-table td.col-actions { width: 80px; }
+</style>
+
+{% set processor_prices = prices | selectattr('metric', 'equalto', 'processor') | list %}
+{% set nup_prices = prices | selectattr('metric', 'equalto', 'named_user_plus') | list %}
+{% set other_prices = prices | rejectattr('metric', 'in', ['processor', 'named_user_plus']) | list %}
+
+{% macro price_table(rows) %}
+<div class="table-responsive">
+  <table class="table table-sm table-hover mb-0 price-table" style="font-variant-numeric: tabular-nums;">
+    <thead class="table-light">
+      <tr>
+        <th>Product</th>
+        <th class="col-price text-end">List Price</th>
+        <th class="col-support text-end">Annual Support <span class="fw-normal">(22%)</span></th>
+        <th class="col-currency">CCY</th>
+        <th class="col-date">Effective</th>
+        <th class="col-current">Current</th>
+        <th class="col-notes">Notes</th>
+        <th class="col-actions"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in rows %}
+      <tr>
+        <td class="col-product">{{ p.product_name }}</td>
+        <td class="col-price text-end fw-semibold">${{ "{:,.2f}".format(p.list_price) }}</td>
+        <td class="col-support text-end text-muted">${{ "{:,.2f}".format(p.list_price * 22 / 100) }}</td>
+        <td class="col-currency text-muted small">{{ p.currency }}</td>
+        <td class="col-date text-muted small">{{ p.effective_date }}</td>
+        <td class="col-current">
+          {% if p.is_current %}
+            <span class="badge bg-success">Yes</span>
+          {% else %}
+            <span class="badge bg-secondary">No</span>
+          {% endif %}
+        </td>
+        <td class="col-notes text-muted small">{{ p.notes or '' }}</td>
+        <td class="col-actions text-end">
+          <button class="btn btn-sm btn-outline-secondary me-1"
+                  data-bs-toggle="modal" data-bs-target="#priceModal"
+                  onclick="openPriceModal({{ p.price_id }}, '{{ p.product_name|e }}', '{{ p.metric }}', {{ p.list_price }}, '{{ p.currency }}', '{{ p.effective_date }}', {{ p.is_current|lower }}, '{{ (p.notes or '')|e }}')">
+            <i class="bi bi-pencil"></i>
+          </button>
+          <form method="post" action="{{ url_for('oracle_price_list') }}"
+                style="display:inline"
+                onsubmit="return confirm('Delete this price entry?')">
+            <input type="hidden" name="action" value="delete_price">
+            <input type="hidden" name="price_id" value="{{ p.price_id }}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">
+              <i class="bi bi-trash"></i>
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{% if prices %}
+
+<!-- Tab nav (outside card to avoid overlap) -->
+<ul class="nav nav-tabs mb-0" id="priceTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="tab-proc-btn" data-bs-toggle="tab"
+            data-bs-target="#tab-proc" type="button" role="tab">
+      <i class="bi bi-cpu me-1"></i>Processor Perpetual
+      <span class="badge bg-secondary ms-1" style="font-size:.7rem">{{ processor_prices|length }}</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="tab-nup-btn" data-bs-toggle="tab"
+            data-bs-target="#tab-nup" type="button" role="tab">
+      <i class="bi bi-people me-1"></i>Named User Plus
+      <span class="badge bg-secondary ms-1" style="font-size:.7rem">{{ nup_prices|length }}</span>
+    </button>
+  </li>
+  {% if other_prices %}
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="tab-other-btn" data-bs-toggle="tab"
+            data-bs-target="#tab-other" type="button" role="tab">
+      <i class="bi bi-tag me-1"></i>Other
+      <span class="badge bg-secondary ms-1" style="font-size:.7rem">{{ other_prices|length }}</span>
+    </button>
+  </li>
+  {% endif %}
+</ul>
+
+<!-- Tab content in a card, border-top removed so it joins the tab bar -->
+<div class="tab-content card shadow-sm" id="priceTabContent" style="border-top-left-radius:0">
+  <div class="tab-pane fade show active" id="tab-proc" role="tabpanel">
+    {% if processor_prices %}
+      {{ price_table(processor_prices) }}
+    {% else %}
+    <div class="p-3 text-muted small"><i class="bi bi-inbox me-1"></i>No processor licence prices configured.</div>
+    {% endif %}
+  </div>
+  <div class="tab-pane fade" id="tab-nup" role="tabpanel">
+    {% if nup_prices %}
+      {{ price_table(nup_prices) }}
+    {% else %}
+    <div class="p-3 text-muted small"><i class="bi bi-inbox me-1"></i>No named user plus prices configured.</div>
+    {% endif %}
+  </div>
+  {% if other_prices %}
+  <div class="tab-pane fade" id="tab-other" role="tabpanel">
+    {{ price_table(other_prices) }}
+  </div>
+  {% endif %}
+</div>
+
+{% else %}
+<div class="card shadow-sm">
+  <div class="card-body text-muted">
+    <i class="bi bi-inbox me-1"></i>
+    No prices configured yet. Import an Oracle Technology Global Price List (.xlsx) or add entries manually.
+  </div>
+</div>
+{% endif %}
+
+<!-- Add / Edit price modal -->
+<div class="modal fade" id="priceModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('oracle_price_list') }}">
+        <input type="hidden" name="action" value="save_price">
+        <input type="hidden" name="price_id" id="pm-price-id">
+        <div class="modal-header">
+          <h5 class="modal-title" id="pm-title">Add Price</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Product Name</label>
+            <input type="text" name="product_name" id="pm-product-name" class="form-control" required
+                   placeholder="e.g. Oracle Database Enterprise Edition">
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Metric</label>
+              <select name="metric" id="pm-metric" class="form-select" required>
+                <option value="processor">Processor</option>
+                <option value="named_user_plus">Named User Plus</option>
+                <option value="socket">Socket</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">List Price (USD)</label>
+              <div class="input-group">
+                <span class="input-group-text">$</span>
+                <input type="number" name="list_price" id="pm-list-price" class="form-control"
+                       step="0.01" min="0" required>
+              </div>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Currency</label>
+              <input type="text" name="currency" id="pm-currency" class="form-control"
+                     value="USD" maxlength="3">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Effective Date</label>
+              <input type="date" name="effective_date" id="pm-effective-date" class="form-control">
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+              <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" name="is_current" value="1"
+                       id="pm-is-current" checked>
+                <label class="form-check-label fw-semibold" for="pm-is-current">Current</label>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="form-label fw-semibold">Notes</label>
+            <input type="text" name="notes" id="pm-notes" class="form-control"
+                   placeholder="e.g. Oracle Technology Price List Jan-2025">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Import prices modal -->
+<div class="modal fade" id="importPriceModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('oracle_price_list') }}" enctype="multipart/form-data">
+        <input type="hidden" name="action" value="import_prices">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-file-earmark-excel me-1"></i> Import Oracle Price List</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small mb-3">
+            Upload an Oracle Technology Global Price List spreadsheet (.xlsx).
+            Rows with a recognised product name and processor or NUP price will be upserted
+            into the price catalogue.
+          </p>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Price List File <span class="text-danger">*</span></label>
+            <input type="file" name="price_file" class="form-control" accept=".xlsx,.xls" required>
+            <div class="form-text">Oracle Technology Price List — .xlsx format</div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Effective Date</label>
+              <input type="date" name="import_date" class="form-control">
+              <div class="form-text">Leave blank to use today's date</div>
+            </div>
+            <div class="col-md-6 d-flex align-items-end pb-1">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="mark_current" value="1"
+                       id="imp-mark-current" checked>
+                <label class="form-check-label fw-semibold" for="imp-mark-current">Mark as current prices</label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-upload me-1"></i> Import
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function openPriceModal(id, name, metric, price, currency, effDate, isCurrent, notes) {
+  document.getElementById('pm-price-id').value       = id || '';
+  document.getElementById('pm-product-name').value   = name || '';
+  document.getElementById('pm-list-price').value     = price || '';
+  document.getElementById('pm-currency').value       = currency || 'USD';
+  document.getElementById('pm-effective-date').value = effDate || '';
+  document.getElementById('pm-is-current').checked   = isCurrent !== false;
+  document.getElementById('pm-notes').value          = notes || '';
+  document.getElementById('pm-title').textContent    = id ? 'Edit Price' : 'Add Price';
+  const metricSel = document.getElementById('pm-metric');
+  if (metric) metricSel.value = metric;
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,227 @@
+---
+# =============================================================================
+# Oracle SAM — VMware vCenter Discovery
+# Discovers vSphere clusters, hosts, and VMs to determine the full Oracle
+# licence footprint required (Oracle does not accept VMware as hard partitioning).
+#
+# Prerequisites:
+#   pip install pyVmomi
+#   ansible-galaxy collection install community.vmware
+#
+# Usage:
+#   ansible-playbook ansible/playbooks/discover_vmware.yml \
+#     -i ansible/inventory/hosts.yml \
+#     --limit vcenter_prod
+#
+# Inventory variables required per host:
+#   vcenter_hostname  — vCenter FQDN or IP
+#   vcenter_username  — service account (read-only is sufficient)
+#   vcenter_password  — password (use Ansible Vault)
+#   sam_client_code   — which SAM client this vCenter belongs to
+# =============================================================================
+
+- name: Discover VMware vSphere clusters and Oracle VM footprint
+  hosts: vcenter_servers
+  gather_facts: false
+  vars:
+    sam_db_host:     "{{ lookup('env', 'SAM_DB_HOST') | default('localhost') }}"
+    sam_db_port:     "{{ lookup('env', 'SAM_DB_PORT') | default('5432') }}"
+    sam_db_name:     "{{ lookup('env', 'SAM_DB_NAME') | default('samdb') }}"
+    sam_db_user:     "{{ lookup('env', 'SAM_DB_USER') | default('sam_admin') }}"
+    sam_db_password: "{{ lookup('env', 'SAM_DB_PASSWORD') }}"
+    run_id:          "vmware-{{ inventory_hostname }}-{{ ansible_date_time.epoch | default(lookup('pipe','date +%s')) }}"
+
+    # Keywords in VM name / guest OS that indicate Oracle workloads
+    oracle_db_keywords:  ['oracle', 'orcl', 'oradb', 'database']
+    oracle_wls_keywords: ['weblogic', 'wls', 'jboss', 'middleware']
+    oracle_java_keywords: ['java', 'jdk', 'jre', 'tomcat', 'jboss']
+
+  tasks:
+
+    # ------------------------------------------------------------------ #
+    # Section 1: Gather cluster topology from vCenter
+    # ------------------------------------------------------------------ #
+
+    - name: Gather vCenter cluster information
+      community.vmware.vmware_cluster_info:
+        hostname:   "{{ vcenter_hostname }}"
+        username:   "{{ vcenter_username }}"
+        password:   "{{ vcenter_password }}"
+        validate_certs: false
+      register: cluster_info
+      delegate_to: localhost
+
+    - name: Gather ESXi host facts per cluster
+      community.vmware.vmware_host_facts:
+        hostname:   "{{ vcenter_hostname }}"
+        username:   "{{ vcenter_username }}"
+        password:   "{{ vcenter_password }}"
+        esxi_hostname: "{{ item }}"
+        validate_certs: false
+      loop: "{{ cluster_info.clusters | dict2items | map(attribute='value.hosts') | flatten | map(attribute='name') | list }}"
+      register: host_facts
+      delegate_to: localhost
+      ignore_errors: true
+
+    - name: Gather VM inventory
+      community.vmware.vmware_vm_info:
+        hostname:   "{{ vcenter_hostname }}"
+        username:   "{{ vcenter_username }}"
+        password:   "{{ vcenter_password }}"
+        validate_certs: false
+        vm_type: vm
+      register: vm_info
+      delegate_to: localhost
+
+    # ------------------------------------------------------------------ #
+    # Section 2: Build JSON payload and load into SAM database
+    # ------------------------------------------------------------------ #
+
+    - name: Build and load VMware discovery data
+      vars:
+        host_facts_map: >-
+          {{ dict(host_facts.results
+               | selectattr('ansible_facts', 'defined')
+               | map(attribute='ansible_facts')
+               | map(attribute='ansible_hostname', default='')
+               | zip(host_facts.results
+                   | selectattr('ansible_facts', 'defined')
+                   | map(attribute='ansible_facts'))
+               | list) }}
+      block:
+        - name: Upsert clusters, hosts, and VMs into SAM database
+          community.postgresql.postgresql_query:
+            db:       "{{ sam_db_name }}"
+            login_host: "{{ sam_db_host }}"
+            port:     "{{ sam_db_port }}"
+            login_user: "{{ sam_db_user }}"
+            login_password: "{{ sam_db_password }}"
+            query: |
+              WITH ins_cluster AS (
+                INSERT INTO sam_admin.vmware_clusters
+                  (cluster_name, vcenter_host, datacenter, client_id,
+                   discovery_run_id, last_seen)
+                VALUES (
+                  %(cluster_name)s,
+                  %(vcenter_host)s,
+                  %(datacenter)s,
+                  (SELECT client_id FROM sam_admin.clients
+                   WHERE client_code = %(client_code)s LIMIT 1),
+                  %(run_id)s,
+                  NOW()
+                )
+                ON CONFLICT (vcenter_host, cluster_name) DO UPDATE SET
+                  datacenter       = EXCLUDED.datacenter,
+                  client_id        = EXCLUDED.client_id,
+                  discovery_run_id = EXCLUDED.discovery_run_id,
+                  last_seen        = NOW()
+                RETURNING cluster_id
+              )
+              SELECT cluster_id FROM ins_cluster
+            named_args:
+              cluster_name: "{{ item.key }}"
+              vcenter_host: "{{ vcenter_hostname }}"
+              datacenter:   "{{ item.value.datacenter | default('') }}"
+              client_code:  "{{ sam_client_code | default('') }}"
+              run_id:       "{{ run_id }}"
+          loop: "{{ cluster_info.clusters | dict2items }}"
+          register: cluster_ids
+          delegate_to: localhost
+
+        - name: Upsert ESXi hosts
+          community.postgresql.postgresql_query:
+            db:       "{{ sam_db_name }}"
+            login_host: "{{ sam_db_host }}"
+            port:     "{{ sam_db_port }}"
+            login_user: "{{ sam_db_user }}"
+            login_password: "{{ sam_db_password }}"
+            query: |
+              INSERT INTO sam_admin.vmware_hosts
+                (cluster_id, hostname, cpu_model, cpu_sockets,
+                 cores_per_socket, memory_gb, discovery_run_id, last_seen)
+              VALUES (
+                (SELECT cluster_id FROM sam_admin.vmware_clusters
+                 WHERE vcenter_host = %(vcenter_host)s
+                   AND cluster_name = %(cluster_name)s),
+                %(hostname)s, %(cpu_model)s, %(cpu_sockets)s,
+                %(cores_per_socket)s, %(memory_gb)s, %(run_id)s, NOW()
+              )
+              ON CONFLICT (cluster_id, hostname) DO UPDATE SET
+                cpu_model        = EXCLUDED.cpu_model,
+                cpu_sockets      = EXCLUDED.cpu_sockets,
+                cores_per_socket = EXCLUDED.cores_per_socket,
+                memory_gb        = EXCLUDED.memory_gb,
+                is_active        = TRUE,
+                discovery_run_id = EXCLUDED.discovery_run_id,
+                last_seen        = NOW()
+            named_args:
+              vcenter_host:    "{{ vcenter_hostname }}"
+              cluster_name:    "{{ item.value.cluster | default('') }}"
+              hostname:        "{{ item.key }}"
+              cpu_model:       "{{ (host_facts_map[item.key] | default({})).ansible_processor | default(['unknown']) | first }}"
+              cpu_sockets:     "{{ (host_facts_map[item.key] | default({})).ansible_processor_count | default(1) | int }}"
+              cores_per_socket: "{{ (host_facts_map[item.key] | default({})).ansible_processor_cores | default(1) | int }}"
+              memory_gb:       "{{ ((host_facts_map[item.key] | default({})).ansible_memtotal_mb | default(0) | int / 1024) | round(1) }}"
+              run_id:          "{{ run_id }}"
+          loop: "{{ cluster_info.clusters | dict2items | map(attribute='value.hosts') | flatten }}"
+          delegate_to: localhost
+          ignore_errors: true
+
+        - name: Upsert VMs with Oracle workload detection
+          community.postgresql.postgresql_query:
+            db:       "{{ sam_db_name }}"
+            login_host: "{{ sam_db_host }}"
+            port:     "{{ sam_db_port }}"
+            login_user: "{{ sam_db_user }}"
+            login_password: "{{ sam_db_password }}"
+            query: |
+              INSERT INTO sam_admin.vmware_vms
+                (cluster_id, vm_name, vm_uuid, guest_hostname, guest_ip,
+                 power_state, vcpu_count, memory_mb,
+                 has_oracle_db, has_oracle_wls, has_oracle_java,
+                 discovery_run_id, last_seen)
+              VALUES (
+                (SELECT cluster_id FROM sam_admin.vmware_clusters
+                 WHERE vcenter_host = %(vcenter_host)s
+                   AND cluster_name = %(cluster_name)s),
+                %(vm_name)s, %(vm_uuid)s, %(guest_hostname)s, %(guest_ip)s,
+                %(power_state)s, %(vcpu_count)s, %(memory_mb)s,
+                %(has_oracle_db)s, %(has_oracle_wls)s, %(has_oracle_java)s,
+                %(run_id)s, NOW()
+              )
+              ON CONFLICT (cluster_id, vm_name) DO UPDATE SET
+                vm_uuid         = EXCLUDED.vm_uuid,
+                guest_hostname  = EXCLUDED.guest_hostname,
+                guest_ip        = EXCLUDED.guest_ip,
+                power_state     = EXCLUDED.power_state,
+                vcpu_count      = EXCLUDED.vcpu_count,
+                memory_mb       = EXCLUDED.memory_mb,
+                has_oracle_db   = EXCLUDED.has_oracle_db,
+                has_oracle_wls  = EXCLUDED.has_oracle_wls,
+                has_oracle_java = EXCLUDED.has_oracle_java,
+                discovery_run_id = EXCLUDED.discovery_run_id,
+                last_seen       = NOW()
+            named_args:
+              vcenter_host:   "{{ vcenter_hostname }}"
+              cluster_name:   "{{ item.cluster | default('') }}"
+              vm_name:        "{{ item.guest_name }}"
+              vm_uuid:        "{{ item.uuid | default(None) }}"
+              guest_hostname: "{{ item.ip_address | default(None) }}"
+              guest_ip:       "{{ item.ip_address | default(None) }}"
+              power_state:    "{{ item.power_state | default('unknown') }}"
+              vcpu_count:     "{{ item.num_cpu | default(1) | int }}"
+              memory_mb:      "{{ item.memory_mb | default(0) | int }}"
+              has_oracle_db:  "{{ oracle_db_keywords | map('lower') | select('in', (item.guest_name | lower)) | list | length > 0 }}"
+              has_oracle_wls: "{{ oracle_wls_keywords | map('lower') | select('in', (item.guest_name | lower)) | list | length > 0 }}"
+              has_oracle_java: "{{ oracle_java_keywords | map('lower') | select('in', (item.guest_name | lower)) | list | length > 0 }}"
+              run_id:         "{{ run_id }}"
+          loop: "{{ vm_info.virtual_machines }}"
+          delegate_to: localhost
+          ignore_errors: true
+
+    - name: VMware discovery summary
+      debug:
+        msg: >
+          vCenter {{ vcenter_hostname }} discovery complete (run_id={{ run_id }}).
+          Clusters: {{ cluster_info.clusters | length }}.
+          VMs: {{ vm_info.virtual_machines | length }}.

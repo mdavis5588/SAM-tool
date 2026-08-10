@@ -1,0 +1,375 @@
+{% extends "base.html" %}
+{% block title %}Monthly Shared Pool Overview — FinOps — Helios{% endblock %}
+
+{% block content %}
+<style>
+  .mo-root {
+    --s1:         #6d28d9;
+    --text-pri:   #0b0b0b;
+    --text-sec:   #52514e;
+    --text-muted: #898781;
+    --surface:    #fcfcfb;
+    --gridline:   #e1e0d9;
+    --track:      #e1e0d9;
+  }
+  @media (prefers-color-scheme: dark) {
+    .mo-root {
+      --s1:         #7c3aed;
+      --text-pri:   #ffffff;
+      --text-sec:   #c3c2b7;
+      --text-muted: #898781;
+      --surface:    #1a1a19;
+      --gridline:   #2c2c2a;
+      --track:      #2c2c2a;
+    }
+  }
+
+  .kpi-strip {
+    display: flex; gap: 1.25rem; flex-wrap: wrap;
+    margin-bottom: 2rem; padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--gridline);
+  }
+  .kpi { display: flex; flex-direction: column; }
+  .kpi-label { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); margin-bottom: .15rem; }
+  .kpi-value { font-size: 1.6rem; font-weight: 700; color: var(--text-pri); line-height: 1; font-variant-numeric: tabular-nums; }
+  .kpi-value.purple { color: var(--s1); }
+  .kpi-divider { width: 1px; background: var(--gridline); align-self: stretch; margin: .1rem 0; }
+
+  /* Client cards */
+  .client-card {
+    border: 1px solid var(--gridline);
+    border-left: 4px solid var(--s1);
+    border-radius: 8px; overflow: hidden; margin-bottom: .6rem;
+  }
+  .client-header {
+    display: grid; grid-template-columns: 1fr auto auto;
+    align-items: center; gap: 1rem;
+    padding: .85rem 1.1rem;
+    cursor: pointer; background: var(--surface);
+    border: none; width: 100%; text-align: left;
+    transition: background .12s;
+  }
+  .client-header:hover { background: rgba(109,40,217,.04); }
+  .client-header[aria-expanded="true"] { border-bottom: 1px solid var(--gridline); }
+  .client-name-text { font-weight: 700; font-size: .95rem; color: var(--text-pri); }
+  .client-sub { font-size: .72rem; color: var(--text-muted); margin-top: .1rem; }
+  .chevron { color: var(--text-muted); transition: transform .2s; font-size: .85rem; }
+  .client-header[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+
+  .client-total-val { font-size: 1rem; font-weight: 700; color: var(--s1); font-variant-numeric: tabular-nums; text-align: right; }
+  .client-total-sub { font-size: .68rem; color: var(--text-muted); text-align: right; margin-top: .1rem; }
+
+  /* CSI table inside each card */
+  .client-detail { padding: .75rem 1.1rem 1rem; background: rgba(109,40,217,.02); }
+  .csi-table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+  .csi-table th {
+    font-size: .67rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--text-muted); padding: .4rem .6rem;
+    border-bottom: 2px solid var(--gridline); text-align: left; white-space: nowrap;
+    background: rgba(109,40,217,.04);
+  }
+  .csi-table th.num { text-align: right; }
+  .csi-table td { padding: .5rem .6rem; border-bottom: 1px solid var(--gridline); color: var(--text-sec); vertical-align: middle; }
+  .csi-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .csi-table tbody tr:hover td { background: rgba(109,40,217,.03); }
+  .csi-table tbody tr:last-child td { border-bottom: none; }
+  .csi-table tfoot td { font-weight: 700; color: var(--text-pri); border-top: 2px solid var(--gridline); padding-top: .5rem; border-bottom: none; background: rgba(109,40,217,.04); }
+  .csi-table tfoot td.num { text-align: right; }
+  .csi-chip { font-size: .7rem; font-weight: 600; padding: .1rem .4rem; border-radius: 4px; background: rgba(109,40,217,.1); color: var(--s1); white-space: nowrap; }
+
+  /* History table */
+  .history-section { margin-top: 2.5rem; }
+  .history-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+  .history-table thead th {
+    font-size: .67rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--text-muted); padding: .45rem .75rem;
+    border-bottom: 2px solid var(--gridline); text-align: left; white-space: nowrap;
+    background: rgba(109,40,217,.04);
+  }
+  .history-table thead th.num { text-align: right; }
+  .history-table tbody tr.month-row { cursor: pointer; transition: background .1s; }
+  .history-table tbody tr.month-row:hover td { background: rgba(109,40,217,.04); }
+  .history-table tbody tr.month-row td {
+    padding: .6rem .75rem; border-bottom: 1px solid var(--gridline);
+    color: var(--text-sec); vertical-align: middle;
+  }
+  .history-table tbody tr.month-row td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .history-table tbody tr.month-row td:first-child { font-weight: 700; color: var(--text-pri); }
+  .month-cost-val { font-weight: 700; color: var(--s1); font-variant-numeric: tabular-nums; }
+  .snap-meta-inline { font-size: .7rem; color: var(--text-muted); font-weight: 400; margin-left: .4rem; }
+  .expand-icon { font-size: .72rem; color: var(--text-muted); transition: transform .2s; }
+  .month-row[aria-expanded="true"] .expand-icon { transform: rotate(180deg); }
+
+  /* Per-month detail rows */
+  .detail-row td { padding: 0 !important; border-bottom: 2px solid var(--gridline) !important; }
+  .detail-inner { padding: .6rem .75rem .9rem 2.5rem; background: rgba(109,40,217,.02); }
+  .detail-client-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  .detail-client-table th {
+    font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--text-muted); padding: .35rem .6rem;
+    border-bottom: 1px solid var(--gridline); text-align: left;
+  }
+  .detail-client-table th.num { text-align: right; }
+  .detail-client-table td { padding: .4rem .6rem; border-bottom: 1px solid var(--gridline); color: var(--text-sec); }
+  .detail-client-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .detail-client-table tbody tr:last-child td { border-bottom: none; }
+  .detail-client-table tfoot td {
+    font-weight: 700; color: var(--text-pri);
+    border-top: 2px solid var(--gridline); padding-top: .4rem; border-bottom: none;
+  }
+  .detail-client-table tfoot td.num { text-align: right; color: var(--s1); }
+  .fy-label-row td {
+    font-size: .67rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--text-muted); padding: .9rem .75rem .3rem;
+    border-bottom: none; background: transparent;
+  }
+  .type-badge {
+    display: inline-flex; align-items: center; gap: .25rem;
+    font-size: .67rem; font-weight: 700; white-space: nowrap;
+    padding: .15rem .45rem; border-radius: 20px;
+  }
+  .type-badge.shared { background: rgba(109,164,236,.15); color: #1a60b0; }
+  .type-badge.locked { background: rgba(109,40,217,.12); color: var(--s1); }
+  @media (prefers-color-scheme: dark) {
+    .type-badge.shared { background: rgba(109,164,236,.18); color: #86b6ef; }
+    .type-badge.locked { background: rgba(124,58,237,.18); color: #a78bfa; }
+  }
+</style>
+
+<div class="mo-root">
+
+<div class="d-flex align-items-baseline gap-2 mb-1">
+  <h4 class="mb-0">
+    <i class="bi bi-calendar-month me-1" style="color:var(--s1)"></i>
+    Monthly Shared Pool Overview
+  </h4>
+</div>
+<p class="text-muted small mb-4">
+  Monthly shared pool cost per client and CSI — licences in use × unit price ÷ 12.
+  <span class="badge" style="background:rgba(109,40,217,.1);color:var(--s1);font-weight:600;font-size:.72rem">Admin / Contracting only</span>
+</p>
+
+<ul class="nav nav-tabs mb-4">
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('finops_annual_overview') }}">
+      <i class="bi bi-calendar-check me-1"></i>Annual Client Totals
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="{{ url_for('finops_monthly_overview') }}">
+      <i class="bi bi-calendar-month me-1"></i>Monthly Shared Pool Overview
+    </a>
+  </li>
+</ul>
+
+{# ── Live section header ── #}
+<h5 class="mb-3">Live — {{ this_month.strftime('%B %Y') }}</h5>
+
+{% if not live_rows %}
+<div class="alert alert-info mb-4">No shared pool usage found across any clients.</div>
+{% else %}
+
+{% set grand_total    = live_rows | sum(attribute='monthly_cost') %}
+{% set grand_licences = live_rows | sum(attribute='total_licences') | int %}
+
+<div class="kpi-strip">
+  <div class="kpi">
+    <span class="kpi-label">Total Monthly Cost</span>
+    <span class="kpi-value purple">${{ "{:,.0f}".format(grand_total) }}</span>
+  </div>
+  <div class="kpi-divider"></div>
+  <div class="kpi">
+    <span class="kpi-label">Licences in Use</span>
+    <span class="kpi-value">{{ grand_licences }}</span>
+  </div>
+  <div class="kpi-divider"></div>
+  <div class="kpi">
+    <span class="kpi-label">Clients Using Pool</span>
+    <span class="kpi-value">{{ live_rows | length }}</span>
+  </div>
+</div>
+
+{# ── Live client cards ── #}
+{% for c in live_rows %}
+{% set card_id = "live-" ~ loop.index %}
+<div class="client-card">
+  <button class="client-header" type="button"
+          data-bs-toggle="collapse" data-bs-target="#{{ card_id }}"
+          aria-expanded="true" aria-controls="{{ card_id }}">
+    <div>
+      <div class="client-name-text">
+        <i class="bi bi-building text-muted me-1" style="font-size:.85rem"></i>
+        <a href="{{ url_for('finops_client', client_code=c.client_code) }}"
+           onclick="event.stopPropagation()" style="color:inherit;text-decoration:none">{{ c.client_name }}</a>
+      </div>
+      <div class="client-sub">{{ c.csi_lines | length }} CSI{{ 's' if c.csi_lines | length != 1 }} · {{ c.total_licences | int }} licence{{ 's' if c.total_licences != 1 }} in use</div>
+    </div>
+    <div>
+      <div class="client-total-val">${{ "{:,.0f}".format(c.monthly_cost) }}<span style="font-size:.75rem;font-weight:400;color:var(--text-muted)">/mo</span></div>
+    </div>
+    <i class="bi bi-chevron-down chevron"></i>
+  </button>
+
+  <div class="collapse show" id="{{ card_id }}">
+    <div class="client-detail">
+      <table class="csi-table">
+        <thead>
+          <tr>
+            <th>CSI Number</th>
+            <th>Contract</th>
+            <th>Product</th>
+            <th>Type</th>
+            <th class="num">Licences in Use</th>
+            <th class="num">Unit Price</th>
+            <th class="num">Monthly Cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ln in c.csi_lines %}
+          <tr>
+            <td><span class="csi-chip">{{ ln.csi_number }}</span></td>
+            <td style="color:var(--text-sec)">{{ ln.contract_name or '—' }}</td>
+            <td style="font-weight:600;color:var(--text-pri)">{{ ln.product_name or '—' }}</td>
+            <td><span class="type-badge shared"><i class="bi bi-people-fill"></i>Shared Pool</span></td>
+            <td class="num"><strong>{{ ln.licences_used | int }}</strong></td>
+            <td class="num">${{ "{:,.2f}".format(ln.unit_price) }}</td>
+            <td class="num" style="font-weight:700;color:var(--s1)">${{ "{:,.0f}".format(ln.monthly_cost) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        {% if c.csi_lines | length > 1 %}
+        <tfoot>
+          <tr>
+            <td colspan="4">Total</td>
+            <td class="num">{{ c.total_licences | int }}</td>
+            <td class="num"></td>
+            <td class="num">${{ "{:,.0f}".format(c.monthly_cost) }}</td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{# ── Historical snapshots ── #}
+{% if fy_history %}
+<div class="history-section">
+  <h5 class="mb-3">Historical Snapshots</h5>
+  <div style="overflow-x:auto">
+  <table class="history-table">
+    <thead>
+      <tr>
+        <th>Month</th>
+        <th class="num">Clients</th>
+        <th class="num">Licences in Use</th>
+        <th class="num">Monthly Cost</th>
+        <th class="num">Recorded</th>
+        <th style="width:28px"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% set prev_fy = namespace(val='') %}
+      {% for fy_label, months in fy_history %}
+        {% for snap in months %}
+        {% set snap_total    = snap.clients | sum(attribute='monthly_cost') %}
+        {% set snap_licences = snap.clients | sum(attribute='total_licences') | int %}
+        {% set snap_clients  = snap.clients | length %}
+        {% set row_id = "hist-" ~ snap.snapshot_month.strftime('%Y%m') %}
+
+        {% if fy_label != prev_fy.val %}
+        <tr class="fy-label-row">
+          <td colspan="6">
+            <i class="bi bi-calendar3 me-1" style="color:var(--s1)"></i>{{ fy_label }}
+          </td>
+        </tr>
+        {% set prev_fy.val = fy_label %}
+        {% endif %}
+
+        <tr class="month-row" data-bs-toggle="collapse" data-bs-target="#{{ row_id }}"
+            aria-expanded="false" aria-controls="{{ row_id }}">
+          <td>
+            <i class="bi bi-camera me-1" style="font-size:.75rem;color:var(--text-muted)"></i>
+            {{ snap.snapshot_month.strftime('%B %Y') }}
+          </td>
+          <td class="num">{{ snap_clients }}</td>
+          <td class="num">{{ snap_licences }}</td>
+          <td class="num"><span class="month-cost-val">${{ "{:,.0f}".format(snap_total) }}</span></td>
+          <td class="num" style="font-size:.75rem">{{ snap.taken_at.strftime('%d %b %Y') }}<span class="snap-meta-inline">by {{ snap.taken_by }}</span></td>
+          <td class="num"><i class="bi bi-chevron-down expand-icon"></i></td>
+        </tr>
+
+        <tr class="detail-row">
+          <td colspan="6">
+            <div class="collapse" id="{{ row_id }}">
+              <div class="detail-inner">
+                <table class="detail-client-table">
+                  <thead>
+                    <tr>
+                      <th>Client</th>
+                      <th>CSI</th>
+                      <th>Product</th>
+                      <th>Type</th>
+                      <th class="num">Licences</th>
+                      <th class="num">Unit Price</th>
+                      <th class="num">Monthly Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for c in snap.clients %}
+                    {% for ln in c.csi_lines %}
+                    <tr>
+                      {% if loop.first %}
+                      <td rowspan="{{ c.csi_lines | length }}" style="font-weight:600;color:var(--text-pri);vertical-align:top;padding-top:.55rem">
+                        <i class="bi bi-building me-1" style="font-size:.8rem;color:var(--text-muted)"></i>{{ c.client_name }}
+                      </td>
+                      {% endif %}
+                      <td><span class="csi-chip">{{ ln.csi_number }}</span></td>
+                      <td style="color:var(--text-pri)">{{ ln.product_name or '—' }}</td>
+                      <td><span class="type-badge shared"><i class="bi bi-people-fill"></i>Shared Pool</span></td>
+                      <td class="num"><strong>{{ ln.licences_used | int }}</strong></td>
+                      <td class="num">${{ "{:,.2f}".format(ln.unit_price) }}</td>
+                      <td class="num" style="font-weight:700;color:var(--s1)">${{ "{:,.0f}".format(ln.monthly_cost) }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% endfor %}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colspan="4">Total</td>
+                      <td class="num">{{ snap_licences }}</td>
+                      <td class="num"></td>
+                      <td class="num">${{ "{:,.0f}".format(snap_total) }}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </td>
+        </tr>
+
+        {% endfor %}
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% else %}
+<div class="text-muted small mt-4">
+  <i class="bi bi-info-circle me-1"></i>No historical snapshots yet. Use <strong>Audit &amp; Snapshots</strong> in Operations to record a snapshot.
+</div>
+{% endif %}
+
+</div>
+
+<script>
+  document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(trigger => {
+    const target = document.querySelector(trigger.dataset.bsTarget);
+    if (!target) return;
+    target.addEventListener('show.bs.collapse', () => trigger.setAttribute('aria-expanded', 'true'));
+    target.addEventListener('hide.bs.collapse', () => trigger.setAttribute('aria-expanded', 'false'));
+  });
+</script>
+{% endblock %}

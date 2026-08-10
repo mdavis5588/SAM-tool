@@ -3,18 +3,18 @@
 -- Run this after schema files to create roles, clients, and seed data.
 --
 -- Execute in order:
---   psql oracle_sam -f database/admin/01_admin_schema.sql
---   psql oracle_sam -f database/shared/02_shared_schema.sql
---   psql oracle_sam -f database/client_template/03_client_template_functions.sql
---   psql oracle_sam -f database/migrations/00_init.sql
+--   psql oracle_sam -f database/01_admin_schema.sql
+--   psql oracle_sam -f database/02_shared_schema.sql
+--   psql oracle_sam -f database/03_client_template_functions.sql
+--   psql oracle_sam -f database/00_init.sql
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
 -- 1. DATABASE ROLES
 -- ---------------------------------------------------------------------------
-CREATE ROLE sam_loader     WITH LOGIN PASSWORD 'admin';   -- Ansible writes
-CREATE ROLE sam_reader     WITH LOGIN PASSWORD 'admin';   -- Power BI reads
-CREATE ROLE sam_admin_role WITH LOGIN PASSWORD 'admin';    -- Full admin
+DO $$ BEGIN CREATE ROLE sam_loader     WITH LOGIN PASSWORD 'admin'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE ROLE sam_reader     WITH LOGIN PASSWORD 'admin'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE ROLE sam_admin_role WITH LOGIN PASSWORD 'admin'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Loader: read shared/admin, write to client schemas (granted per schema below)
 GRANT USAGE  ON SCHEMA shared, sam_admin TO sam_loader;
@@ -40,8 +40,15 @@ GRANT ALL ON ALL FUNCTIONS IN SCHEMA sam_admin TO sam_admin_role;
 -- ---------------------------------------------------------------------------
 -- 2. PROVISION CLIENTS
 -- ---------------------------------------------------------------------------
-SELECT sam_admin.provision_client('acme',   'Acme Corp',   'admin@acme.example.com');
-SELECT sam_admin.provision_client('globex', 'Globex Corp', 'admin@globex.example.com');
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM sam_admin.clients WHERE client_code = 'acme') THEN
+    PERFORM sam_admin.provision_client('acme', 'Acme Corp', 'admin@acme.example.com');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM sam_admin.clients WHERE client_code = 'globex') THEN
+    PERFORM sam_admin.provision_client('globex', 'Globex Corp', 'admin@globex.example.com');
+  END IF;
+END $$;
 
 -- Add more clients:
 -- SELECT sam_admin.provision_client('contoso', 'Contoso Ltd', 'sam@contoso.example.com');
@@ -82,13 +89,16 @@ SELECT shared.refresh_cross_client_summary();
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_reference = 'ORD-2023-0001') THEN
+    RAISE NOTICE 'Contract ORD-2023-0001 already exists — skipping seed.'; RETURN;
+  END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'Group Oracle DB EE Pool 2023',
     p_csi_number     => '11111111',
     p_vendor_ref     => 'ORD-2023-0001',
     p_purchase_date  => '2023-01-01',
     p_support_start  => '2023-01-01',
-    p_support_expiry => '2026-01-01',
+    p_support_expiry => '2029-01-01',
     p_currency       => 'USD',
     p_policy         => 'shareable',
     p_notes          => 'Group EE pool shared across Acme (60) and Globex (40)'
@@ -106,10 +116,10 @@ BEGIN
     p_notes          => 'Base EE licence'
   );
 
-  -- Line 2: Diagnostic Pack (required for AWR, ADDM, ASH)
+  -- Line 2: Diagnostics Pack (required for AWR, ADDM, ASH)
   PERFORM shared.add_csi_line(
     p_csi_id         => v_csi,
-    p_product_name   => 'Oracle Diagnostic Pack',
+    p_product_name   => 'Oracle Diagnostics Pack',
     p_product_family => 'oracle_database',
     p_metric         => 'processor',
     p_quantity       => 100,
@@ -151,13 +161,16 @@ END $$;
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_reference = 'ORD-2023-0002') THEN
+    RAISE NOTICE 'Contract ORD-2023-0002 already exists — skipping seed.'; RETURN;
+  END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'Group WebLogic Server EE Pool 2023',
     p_csi_number     => '22222222',
     p_vendor_ref     => 'ORD-2023-0002',
     p_purchase_date  => '2023-06-01',
     p_support_start  => '2023-06-01',
-    p_support_expiry => '2026-06-01',
+    p_support_expiry => '2029-06-01',
     p_currency       => 'USD',
     p_policy         => 'shareable',
     p_notes          => 'WLS pool — Acme currently using full allocation'
@@ -196,13 +209,16 @@ END $$;
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_reference = 'ORD-2022-0099') THEN
+    RAISE NOTICE 'Contract ORD-2022-0099 already exists — skipping seed.'; RETURN;
+  END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'Globex SE2 Contract 2022',
     p_csi_number     => '33333333',
     p_vendor_ref     => 'ORD-2022-0099',
     p_purchase_date  => '2022-01-01',
     p_support_start  => '2022-01-01',
-    p_support_expiry => '2025-01-01',
+    p_support_expiry => '2028-01-01',
     p_currency       => 'USD',
     p_locked_to      => 'globex',       -- client_locked, auto-assigns to globex
     p_notes          => 'Purchased under Globex legal entity — cannot be shared'
@@ -227,6 +243,9 @@ END $$;
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_reference = 'ORD-2024-0010') THEN
+    RAISE NOTICE 'Contract ORD-2024-0010 already exists — skipping seed.'; RETURN;
+  END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'Acme Advanced Security 2024',
     p_csi_number     => '55555555',
@@ -257,6 +276,9 @@ END $$;
 DO $$
 DECLARE v_csi INTEGER;
 BEGIN
+  IF EXISTS (SELECT 1 FROM shared.csi_contracts WHERE vendor_reference = 'ORD-2024-0022') THEN
+    RAISE NOTICE 'Contract ORD-2024-0022 already exists — skipping seed.'; RETURN;
+  END IF;
   v_csi := shared.add_csi(
     p_contract_name  => 'New EE Purchase Q1 2024',
     p_csi_number     => '44444444',

@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block title %}{{ t('admin_audit.title') }} — Helios{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h4 class="mb-0"><i class="bi bi-journal-text me-2"></i>{{ t('admin_audit.title') }}</h4>
+  {% if is_superadmin %}
+  <form method="post" action="{{ url_for('admin_audit_purge') }}"
+        onsubmit="return confirm('{{ t('admin_audit.purge_confirm') }}')">
+    <button class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-trash me-1"></i>{{ t('admin_audit.btn_purge') }}
+    </button>
+  </form>
+  {% endif %}
+</div>
+
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-3" id="auditTabs">
+  <li class="nav-item">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-snapshots">
+      <i class="bi bi-camera me-1"></i>{{ t('admin_audit.tab_snapshots') }}
+      <span class="badge bg-secondary ms-1">{{ snapshots|length }}</span>
+    </button>
+  </li>
+  {% if is_superadmin %}
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-activity">
+      <i class="bi bi-clock-history me-1"></i>{{ t('admin_audit.tab_activity') }}
+      <span class="badge bg-secondary ms-1">{{ audit_rows|length }}</span>
+    </button>
+  </li>
+  {% endif %}
+</ul>
+
+<div class="tab-content">
+
+  <!-- ===== Snapshots Tab ===== -->
+  <div class="tab-pane fade show active" id="tab-snapshots">
+
+    {% if current_role in ('superadmin', 'dba', 'contracting') %}
+    <div class="row g-4 mb-4">
+
+      <!-- Licence Position snapshot form -->
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header fw-semibold">
+            <i class="bi bi-server me-1"></i>Licence Position Snapshot
+          </div>
+          <div class="card-body">
+            <p class="text-muted small mb-3">Records the full licence position for a client — every server, product, and compliance status.</p>
+            <form method="post" action="{{ url_for('admin_snapshot_take') }}" class="row g-2 align-items-end">
+              <div class="col-12">
+                <label class="form-label">{{ t('label.client') }}</label>
+                <select name="client_id" class="form-select" required>
+                  <option value="">— select —</option>
+                  {% for c in all_clients %}
+                  <option value="{{ c.client_id }}">{{ c.client_name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-12">
+                <label class="form-label">{{ t('admin_audit.take_note') }}</label>
+                <input type="text" name="note" class="form-control" placeholder="{{ t('admin_audit.take_note_hint') }}">
+              </div>
+              <div class="col-12">
+                <button class="btn btn-primary w-100">
+                  <i class="bi bi-camera me-1"></i>{{ t('admin_audit.btn_take') }}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Shared Pool snapshot form -->
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header fw-semibold">
+            <i class="bi bi-people-fill me-1"></i>Monthly Shared Pool Snapshot
+          </div>
+          <div class="card-body">
+            <p class="text-muted small mb-3">Records the current shared pool licence usage and monthly cost for a client.</p>
+            <form method="post" action="{{ url_for('admin_pool_snapshot_take') }}" class="row g-2 align-items-end">
+              <div class="col-12">
+                <label class="form-label">{{ t('label.client') }}</label>
+                <select name="client_id" class="form-select" required>
+                  <option value="">— select —</option>
+                  {% for c in all_clients %}
+                  <option value="{{ c.client_id }}">{{ c.client_name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-12">
+                <label class="form-label">Note (optional)</label>
+                <input type="text" name="note" class="form-control" placeholder="e.g. end-of-month billing">
+              </div>
+              <div class="col-12">
+                <button class="btn btn-outline-primary w-100">
+                  <i class="bi bi-camera me-1"></i>Take Pool Snapshot
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    {% endif %}
+
+    <!-- Combined snapshot list -->
+    {% set all_snaps = (snapshots + pool_snapshots) | sort(attribute='snapshot_month', reverse=true) %}
+    {% if all_snaps %}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>{{ t('admin_audit.col_month') }}</th>
+            <th>{{ t('admin_audit.col_client') }}</th>
+            <th>Type</th>
+            <th>{{ t('admin_audit.col_lines') }}</th>
+            <th>{{ t('admin_audit.col_taken_by') }}</th>
+            <th>{{ t('admin_audit.col_taken_at') }}</th>
+            <th>{{ t('admin_audit.col_note') }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in all_snaps %}
+          <tr>
+            <td class="fw-semibold">{{ s.snapshot_month.strftime('%B %Y') }}</td>
+            <td>{{ s.client_name }}</td>
+            <td>
+              {% if s.snap_type == 'shared_pool' %}
+              <span class="badge" style="background:rgba(109,164,236,.15);color:#1a60b0;font-weight:600">
+                <i class="bi bi-people-fill me-1"></i>Shared Pool
+              </span>
+              {% elif s.get('snapshot_type') == 'feature_activated' %}
+              <span class="badge" style="background:rgba(22,163,74,.12);color:#15803d;font-weight:600"
+                    title="{{ s.trigger_feature or '' }}">
+                <i class="bi bi-lightning-charge-fill me-1"></i>Auto — Feature On
+              </span>
+              {% elif s.get('snapshot_type') == 'feature_dormant' %}
+              <span class="badge" style="background:rgba(234,179,8,.12);color:#a16207;font-weight:600"
+                    title="{{ s.trigger_feature or '' }}">
+                <i class="bi bi-clock-history me-1"></i>Auto — Feature Dormant
+              </span>
+              {% else %}
+              <span class="badge" style="background:rgba(109,40,217,.1);color:#6d28d9;font-weight:600">
+                <i class="bi bi-server me-1"></i>Licence Position
+              </span>
+              {% endif %}
+            </td>
+            <td>{{ s.line_count }}</td>
+            <td>{{ s.taken_by }}</td>
+            <td class="text-muted small">{{ s.taken_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td class="text-muted small">
+              {% if s.get('trigger_feature') %}
+              <span class="fw-medium">{{ s.trigger_feature }}</span>
+              {% if s.note %}<br><span class="text-muted">{{ s.note }}</span>{% endif %}
+              {% else %}
+              {{ s.note or '' }}
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% if s.snap_type != 'shared_pool' %}
+              <a href="{{ url_for('admin_snapshot_view', snapshot_id=s.snapshot_id) }}"
+                 class="btn btn-sm btn-outline-primary me-1">
+                <i class="bi bi-eye"></i>
+              </a>
+              {% endif %}
+              {% if current_role in ('superadmin', 'dba', 'contracting') %}
+              {% if s.snap_type == 'shared_pool' %}
+              <form method="post"
+                    action="{{ url_for('admin_pool_snapshot_delete', snapshot_id=s.snapshot_id) }}"
+                    style="display:inline"
+                    onsubmit="return confirm('Delete this shared pool snapshot?')">
+                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+              </form>
+              {% else %}
+              <form method="post"
+                    action="{{ url_for('admin_snapshot_delete', snapshot_id=s.snapshot_id) }}"
+                    style="display:inline"
+                    onsubmit="return confirm('{{ t('admin_audit.confirm_delete_snap') }}')">
+                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+              </form>
+              {% endif %}
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted">{{ t('admin_audit.no_snapshots') }}</p>
+    {% endif %}
+  </div>
+
+  <!-- ===== User Activity Tab ===== -->
+  <div class="tab-pane fade" id="tab-activity">
+
+    <!-- Filter controls -->
+    <div class="row g-2 mb-3">
+      <div class="col-md-4">
+        <input type="text" id="auditSearch" class="form-control form-control-sm"
+               placeholder="{{ t('admin_audit.filter_placeholder') }}">
+      </div>
+      <div class="col-md-3">
+        <select id="auditActionFilter" class="form-select form-select-sm">
+          <option value="">{{ t('admin_audit.filter_all_actions') }}</option>
+          {% set seen_actions = namespace(v=[]) %}
+          {% for r in audit_rows %}
+            {% if r.action not in seen_actions.v %}
+              {% set _ = seen_actions.v.append(r.action) %}
+              <option value="{{ r.action }}">{{ r.action }}</option>
+            {% endif %}
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    {% if audit_rows %}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle" id="auditTable">
+        <thead class="table-light">
+          <tr>
+            <th>{{ t('admin_audit.col_when') }}</th>
+            <th>{{ t('admin_audit.col_user') }}</th>
+            <th>{{ t('admin_audit.col_role') }}</th>
+            <th>{{ t('admin_audit.col_action') }}</th>
+            <th>{{ t('admin_audit.col_entity') }}</th>
+            <th>{{ t('label.client') }}</th>
+            <th>{{ t('admin_audit.col_changes') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in audit_rows %}
+          {% set action_cls = {
+              'server': 'text-primary',
+              'csi': 'text-success',
+              'user': 'text-warning',
+              'snapshot': 'text-info'
+            }.get(r.action.split('.')[0], '') %}
+          <tr data-action="{{ r.action }}"
+              data-text="{{ r.username }} {{ r.action }} {{ r.entity_name or '' }} {{ r.client_schema or '' }}">
+            <td class="text-muted small text-nowrap">
+              {{ r.created_at.strftime('%Y-%m-%d %H:%M') }}
+            </td>
+            <td class="fw-semibold">{{ r.username }}</td>
+            <td><span class="badge bg-secondary">{{ r.user_role or '' }}</span></td>
+            <td><code class="{{ action_cls }}">{{ r.action }}</code></td>
+            <td class="small">
+              {% if r.entity_type %}<span class="text-muted">{{ r.entity_type }}:</span> {% endif %}
+              {{ r.entity_name or r.entity_id or '' }}
+            </td>
+            <td class="small text-muted">{{ r.client_schema or '' }}</td>
+            <td class="small">
+              {% if r.old_values or r.new_values %}
+              <button class="btn btn-link btn-sm p-0" onclick="toggleDiff(this)"
+                      data-old='{{ r.old_values or "{}" }}'
+                      data-new='{{ r.new_values or "{}" }}'>
+                <i class="bi bi-chevron-down"></i>
+              </button>
+              <div class="diff-block" style="display:none;font-family:monospace;font-size:.75rem;margin-top:.25rem"></div>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="text-muted small">{{ audit_rows|length }} — {{ t('admin_audit.activity_retention') }}</p>
+    {% else %}
+    <p class="text-muted">{{ t('admin_audit.no_activity') }}</p>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+// Filter
+const searchInput = document.getElementById('auditSearch');
+const actionFilter = document.getElementById('auditActionFilter');
+function filterTable() {
+  const q = (searchInput ? searchInput.value : '').toLowerCase();
+  const a = (actionFilter ? actionFilter.value : '');
+  document.querySelectorAll('#auditTable tbody tr').forEach(tr => {
+    const text = (tr.dataset.text || '').toLowerCase();
+    const act  = tr.dataset.action || '';
+    tr.style.display = ((!q || text.includes(q)) && (!a || act === a)) ? '' : 'none';
+  });
+}
+if (searchInput) searchInput.addEventListener('input', filterTable);
+if (actionFilter) actionFilter.addEventListener('change', filterTable);
+
+// Diff expand
+function toggleDiff(btn) {
+  const block = btn.nextElementSibling;
+  if (block.style.display === 'none') {
+    const oldV = JSON.parse(btn.dataset.old || '{}');
+    const newV = JSON.parse(btn.dataset.new || '{}');
+    const keys = [...new Set([...Object.keys(oldV), ...Object.keys(newV)])];
+    let html = '';
+    keys.forEach(k => {
+      const o = oldV[k] !== undefined ? JSON.stringify(oldV[k]) : '—';
+      const n = newV[k] !== undefined ? JSON.stringify(newV[k]) : '—';
+      if (o !== n) {
+        html += `<div><span class="text-muted">${k}:</span> <del class="text-danger">${o}</del> → <ins class="text-success" style="text-decoration:none">${n}</ins></div>`;
+      } else {
+        html += `<div><span class="text-muted">${k}:</span> ${o}</div>`;
+      }
+    });
+    block.innerHTML = html || '<em class="text-muted">no field detail</em>';
+    block.style.display = 'block';
+    btn.innerHTML = '<i class="bi bi-chevron-up"></i>';
+  } else {
+    block.style.display = 'none';
+    btn.innerHTML = '<i class="bi bi-chevron-down"></i>';
+  }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,93 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Run database migrations on the PostgreSQL VM
+  # ---------------------------------------------------------------------------
+  migrate:
+    name: Database Migrations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Write SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DB_SSH_KEY }}" > ~/.ssh/db_key
+          chmod 600 ~/.ssh/db_key
+          ssh-keyscan -H "${{ secrets.DB_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Copy migration files to DB server
+        run: |
+          scp -i ~/.ssh/db_key -o StrictHostKeyChecking=no \
+            database/*.sql \
+            ${{ secrets.DB_SSH_USER }}@${{ secrets.DB_HOST }}:/tmp/sam-migrations/
+
+      - name: Run migrations
+        run: |
+          ssh -i ~/.ssh/db_key \
+              -o StrictHostKeyChecking=no \
+              ${{ secrets.DB_SSH_USER }}@${{ secrets.DB_HOST }} \
+              bash << 'ENDSSH'
+            set -e
+            cd /tmp/sam-migrations
+
+            echo "Running migrations..."
+
+            # Core schema files (idempotent — safe to re-run)
+            sudo -u postgres psql oracle_sam -f 01_admin_schema.sql
+            sudo -u postgres psql oracle_sam -f 02_shared_schema.sql
+            sudo -u postgres psql oracle_sam -f 03_client_template_functions.sql
+
+            # Numbered migration files (run in order)
+            for f in $(ls 0[0-9]_migration_*.sql 2>/dev/null | sort); do
+              echo "Applying $f..."
+              sudo -u postgres psql oracle_sam -f "$f"
+            done
+
+            echo "Migrations complete."
+          ENDSSH
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Rebuild and restart the Docker app on the app VM
+  # ---------------------------------------------------------------------------
+  deploy-app:
+    name: Deploy App
+    runs-on: ubuntu-latest
+    needs: migrate        # only deploy app if migrations succeeded
+    steps:
+      - name: Write SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.APP_SSH_KEY }}" > ~/.ssh/app_key
+          chmod 600 ~/.ssh/app_key
+          ssh-keyscan -H "${{ secrets.APP_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Pull latest code and rebuild container
+        run: |
+          ssh -i ~/.ssh/app_key \
+              -o StrictHostKeyChecking=no \
+              ${{ secrets.APP_SSH_USER }}@${{ secrets.APP_HOST }} \
+              bash << 'ENDSSH'
+            set -e
+
+            REPO_DIR="${{ secrets.APP_REPO_DIR }}"
+            cd "$REPO_DIR"
+
+            echo "Pulling latest code..."
+            git pull origin main
+
+            echo "Rebuilding Docker container..."
+            cd admin-ui
+            sudo docker compose down
+            sudo docker compose build --no-cache
+            sudo docker compose up -d
+
+            echo "Deployment complete."
+            sudo docker ps --filter name=sam
+          ENDSSH

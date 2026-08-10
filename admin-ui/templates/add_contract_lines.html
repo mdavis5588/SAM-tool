@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}Add Licence Lines — Helios{% endblock %}
+{% block content %}
+
+<style>
+  .form-card {
+    background: #fff;
+    border: 1px solid #e3e6ea;
+    border-radius: 10px;
+    padding: 1.75rem 2rem;
+    max-width: 820px;
+  }
+  @media (prefers-color-scheme: dark) {
+    .form-card { background: #1e1e1d; border-color: #2c2c2a; }
+  }
+  .field-label {
+    font-size: .75rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .05em;
+    color: #6c757d; margin-bottom: .3rem;
+  }
+  .lines-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+  .lines-table th {
+    font-size: .68rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; color: #898781;
+    padding: .4rem .5rem; border-bottom: 2px solid #e3e6ea; text-align: left;
+  }
+  .lines-table td {
+    padding: .45rem .5rem; border-bottom: 1px solid #e3e6ea;
+    vertical-align: middle;
+  }
+  .lines-table tbody tr:last-child td { border-bottom: none; }
+</style>
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('contracts') }}">Contracts</a></li>
+    <li class="breadcrumb-item active">{{ contract.contract_name }}</li>
+  </ol>
+</nav>
+
+<h4 class="mb-1"><i class="bi bi-list-ul me-1"></i>{{ t('add_lines.title') }}</h4>
+<p class="text-muted small mb-4">
+  Contract: <strong>{{ contract.contract_name }}</strong>
+  {% if contract.csi_number %}<span class="ms-1 text-muted">(CSI {{ contract.csi_number }})</span>{% endif %}
+</p>
+
+<!-- ── Existing lines ── -->
+{% if lines %}
+<div class="mb-4">
+  <div class="field-label mb-2">{{ t('add_lines.lines_added') }}</div>
+  <div style="overflow-x:auto">
+    <table class="lines-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Product</th>
+          <th>Family</th>
+          <th>Metric</th>
+          <th class="text-end">Qty</th>
+          <th class="text-end">Unit Price</th>
+          <th class="text-end">Total</th>
+          <th class="text-end">Ann. Support</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in lines %}
+        <tr>
+          <td class="text-muted">{{ l.line_number }}</td>
+          <td><strong>{{ l.product_name }}</strong></td>
+          <td><span class="badge bg-secondary">{{ l.product_family | replace('_',' ') | title }}</span></td>
+          <td class="text-muted">{{ l.license_metric | replace('_',' ') }}</td>
+          <td class="text-end">{{ l.quantity | int }}</td>
+          <td class="text-end">{% if l.unit_price %}${{ "{:,.2f}".format(l.unit_price) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          <td class="text-end">{% if l.total_price %}<strong>${{ "{:,.0f}".format(l.total_price) }}</strong>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          <td class="text-end">{% if l.annual_support_cost %}<span style="color:#2a78d6">${{ "{:,.0f}".format(l.annual_support_cost) }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Add line form ── -->
+<div class="form-card shadow-sm mb-4">
+  <div class="field-label mb-3">{{ t('add_lines.add_line') }}</div>
+  <form method="post">
+    <input type="hidden" name="action" value="add_line">
+
+    <div class="row g-3 mb-3">
+      <div class="col-md-6">
+        <div class="field-label">{{ t('add_lines.product_name') }} <span class="text-danger">*</span></div>
+        <input type="text" name="product_name" class="form-control" required
+               placeholder="e.g. Oracle Database Enterprise Edition"
+               list="product-suggestions">
+        <datalist id="product-suggestions">
+          <option value="Oracle Database Enterprise Edition">
+          <option value="Oracle Database Standard Edition 2">
+          <option value="Oracle Diagnostics Pack">
+          <option value="Oracle Tuning Pack">
+          <option value="Oracle Partitioning">
+          <option value="Oracle Advanced Security">
+          <option value="Oracle Database Vault">
+          <option value="Oracle Label Security">
+          <option value="Oracle WebLogic Server Enterprise Edition">
+          <option value="Oracle WebLogic Server Standard Edition">
+          <option value="Oracle Java SE">
+          <option value="Oracle Coherence Enterprise Edition">
+        </datalist>
+      </div>
+      <div class="col-md-3">
+        <div class="field-label">{{ t('add_lines.product_family') }}</div>
+        <select name="product_family" class="form-select">
+          <option value="oracle_database" selected>Oracle Database</option>
+          <option value="oracle_weblogic">WebLogic</option>
+          <option value="oracle_middleware">Middleware</option>
+          <option value="oracle_java">Java</option>
+          <option value="oracle_coherence">Coherence</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <div class="field-label">{{ t('add_lines.licence_metric') }}</div>
+        <select name="license_metric" class="form-select">
+          <option value="processor" selected>Processor</option>
+          <option value="named_user_plus">Named User Plus</option>
+          <option value="ula">ULA</option>
+          <option value="cloud_license">Cloud Licence</option>
+          <option value="full_use">Full Use</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+      <div class="col-md-3">
+        <div class="field-label">Quantity <span class="text-danger">*</span></div>
+        <input type="number" name="quantity" class="form-control" required
+               min="0" step="1" placeholder="0">
+      </div>
+      <div class="col-md-3">
+        <div class="field-label">{{ t('add_lines.unit_price') }}</div>
+        <div class="input-group">
+          <span class="input-group-text">$</span>
+          <input type="number" name="unit_price" class="form-control"
+                 min="0" step="0.01" placeholder="0.00">
+        </div>
+        <div class="form-text">Per licence unit</div>
+      </div>
+      <div class="col-md-3">
+        <div class="field-label">{{ t('add_lines.annual_support') }}</div>
+        <div class="input-group">
+          <span class="input-group-text">$</span>
+          <input type="number" name="annual_support_cost" class="form-control"
+                 min="0" step="0.01" placeholder="0.00">
+        </div>
+        <div class="form-text">Total for this line</div>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-outline-primary">
+      <i class="bi bi-plus-circle me-1"></i>Add Line
+    </button>
+  </form>
+</div>
+
+<!-- ── Finish ── -->
+<form method="post">
+  <input type="hidden" name="action" value="done">
+  <div class="d-flex gap-2 align-items-center">
+    <button type="submit" class="btn btn-primary">
+      <i class="bi bi-check-circle me-1"></i>{{ t('add_lines.done_view') }}
+    </button>
+    <span class="text-muted small">{{ t('add_lines.keep_adding') }}</span>
+  </div>
+</form>
+
+{% endblock %}

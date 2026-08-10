@@ -1,0 +1,1809 @@
+{% extends "base.html" %}
+{% block title %}Licence Options Analysis — Helios{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <i class="bi bi-calculator fs-4 text-purple"></i>
+  <h4 class="mb-0">Licence Options Analysis</h4>
+</div>
+<p class="text-muted small mb-4">
+  Compare on-premises Oracle licensing cost against OCI cloud equivalents — BYOL and Licence Included.
+  Select an existing server or enter hardware specs manually.
+  Oracle's standard support rate of <strong>22%</strong> is applied throughout.
+</p>
+
+<!-- ================================================================
+     MODE TABS + ANALYSIS FORM
+     ================================================================ -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header p-0">
+    <ul class="nav nav-tabs card-header-tabs px-3" id="modeTabs">
+      <li class="nav-item">
+        <a class="nav-link {% if form_vals.mode != 'manual' %}active{% endif %}"
+           href="#" data-mode="server" id="tab-server">
+          <i class="bi bi-server me-1"></i> Select Server
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if form_vals.mode == 'manual' %}active{% endif %}"
+           href="#" data-mode="manual" id="tab-manual">
+          <i class="bi bi-pencil-square me-1"></i> Manual Entry
+        </a>
+      </li>
+    </ul>
+  </div>
+  <div class="card-body">
+
+    <!-- SERVER MODE -->
+    <form method="get" action="{{ url_for('licence_analysis') }}" id="form-server"
+          {% if form_vals.mode == 'manual' %}style="display:none"{% endif %}>
+      <input type="hidden" name="mode" value="server">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Client</label>
+          <select name="client_id" id="sv-client" class="form-select" required>
+            <option value="">— select client —</option>
+            {% for c in clients %}
+              <option value="{{ c.client_id }}"
+                {% if form_vals.client_id|string == c.client_id|string %}selected{% endif %}>
+                {{ c.client_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Server</label>
+          <select name="server_id" id="sv-server" class="form-select" required>
+            <option value="">— select client first —</option>
+            {% for s in server_list %}
+              <option value="{{ s.server_id }}"
+                      data-cores="{{ s.total_physical_cores }}"
+                      data-sockets="{{ s.cpu_sockets }}"
+                      data-cps="{{ s.cores_per_socket }}"
+                {% if form_vals.server_id|string == s.server_id|string %}selected{% endif %}>
+                {{ s.hostname }}
+                ({{ s.environment or 'prod' }} · {{ s.total_physical_cores }} cores)
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold">Horizon (years)</label>
+          <input type="number" name="horizon_years" class="form-control" min="1" max="20"
+                 value="{{ form_vals.horizon_years or '5' }}">
+        </div>
+        <div class="col-md-3 d-flex flex-column justify-content-end">
+          <button type="submit" class="btn btn-primary w-100">
+            <i class="bi bi-play-fill me-1"></i> Run Analysis
+          </button>
+        </div>
+      </div>
+    </form>
+
+    <!-- MANUAL MODE -->
+    <form method="get" action="{{ url_for('licence_analysis') }}" id="form-manual"
+          {% if form_vals.mode != 'manual' %}style="display:none"{% endif %}>
+      <input type="hidden" name="mode" value="manual">
+      <div class="row g-3 align-items-start">
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Client <span class="text-muted fw-normal">(optional)</span></label>
+          <select name="m_client_id" class="form-select" title="Selects client-locked licences in the pool">
+            <option value="">— all / no client —</option>
+            {% for c in clients %}
+              <option value="{{ c.client_id }}"
+                {% if form_vals.m_client_id|string == c.client_id|string %}selected{% endif %}>
+                {{ c.client_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Hostname / Label <span class="text-muted fw-normal">(optional)</span></label>
+          <input type="text" name="m_hostname" class="form-control" placeholder="e.g. db-prod-01"
+                 value="{{ form_vals.m_hostname }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold">Physical Cores <span class="text-danger">*</span></label>
+          <input type="number" name="m_cores" class="form-control" min="1" step="1" required
+                 value="{{ form_vals.m_cores }}" placeholder="sockets × cores/socket"
+                 title="Total physical cores: sockets × cores per socket">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold">RAM (GB) <span class="text-muted fw-normal">(optional)</span></label>
+          <input type="number" name="m_ram_gb" class="form-control" min="0" step="1"
+                 value="{{ form_vals.m_ram_gb }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Oracle Edition</label>
+          <select name="m_edition" class="form-select">
+            <option value="Enterprise Edition" {% if form_vals.m_edition == 'Enterprise Edition' %}selected{% endif %}>Enterprise Edition</option>
+            <option value="Standard Edition 2" {% if form_vals.m_edition == 'Standard Edition 2' %}selected{% endif %}>Standard Edition 2</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold">Horizon (years)</label>
+          <input type="number" name="horizon_years" class="form-control" min="1" max="20"
+                 value="{{ form_vals.horizon_years or '5' }}">
+        </div>
+      </div>
+
+      <!-- Oracle Database options (EE only) -->
+      <div class="mt-3 border-top pt-3">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <span class="fw-semibold small">Oracle Database Options</span>
+          <span class="text-muted small">— select additional options licensed on this server (priced per processor, same as the base edition)</span>
+        </div>
+        <div class="row g-2">
+          {% for param, label, _, _ in manual_db_options %}
+          <div class="col-6 col-md-4 col-lg-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="{{ param }}" value="1"
+                     id="mopt_{{ param }}"
+                     {% if param in form_vals.m_options %}checked{% endif %}>
+              <label class="form-check-label small" for="mopt_{{ param }}">{{ label }}</label>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="mt-3">
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-play-fill me-1"></i> Run Analysis
+        </button>
+      </div>
+    </form>
+
+    <!-- Vendor Quote Adjustments -->
+    <div class="mt-4 border-top pt-3">
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <i class="bi bi-sliders text-muted"></i>
+        <span class="fw-semibold small">Vendor Quote Adjustments</span>
+        <span class="text-muted small">— enter costs from vendor quotes to add on top of list prices</span>
+      </div>
+      <div class="row g-2">
+
+        <!-- On-Premises -->
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="card border-0 bg-light h-100">
+            <div class="card-body py-2 px-3">
+              <div class="fw-semibold small mb-2 text-secondary">
+                <i class="bi bi-building me-1"></i>On-Premises
+              </div>
+              <label class="form-label mb-1" style="font-size:.75rem;">Managed Service Cost per core (USD)</label>
+              <div class="input-group input-group-sm">
+                <span class="input-group-text">$</span>
+                <input type="number" name="adj_onprem" class="form-control" min="0" step="0.01"
+                       placeholder="2175.58" value="{{ form_vals.adj_onprem or '' }}" form="form-server">
+              </div>
+              <div class="form-text mt-1">Annual cost per physical core — multiplied by core count</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- OCI -->
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="card border-0 bg-light h-100">
+            <div class="card-body py-2 px-3">
+              <div class="fw-semibold small mb-2" style="color:#1d4ed8;">
+                <i class="bi bi-cloud me-1"></i>OCI (BYOL &amp; LI)
+              </div>
+              <label class="form-label mb-1" style="font-size:.75rem;">Extra annual cost (USD)</label>
+              <div class="input-group input-group-sm mb-2">
+                <span class="input-group-text">$</span>
+                <input type="number" name="adj_oci" class="form-control" min="0" step="1"
+                       placeholder="0" value="{{ form_vals.adj_oci or '' }}" form="form-server">
+              </div>
+              <div class="form-text mt-1">e.g. storage, networking, support tiers</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ExaCC -->
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="card h-100" style="border:1px solid #c4b5e0; background:#faf8ff;">
+            <div class="card-body py-2 px-3">
+              <div class="fw-semibold small mb-2" style="color:#6d28d9;">
+                <i class="bi bi-server me-1"></i>ExaCC (BYOL &amp; LI)
+              </div>
+              <label class="form-label mb-1" style="font-size:.75rem;">Managed Service Cost per core (USD)</label>
+              <div class="input-group input-group-sm">
+                <span class="input-group-text">$</span>
+                <input type="number" name="adj_exacc" class="form-control" min="0" step="0.01"
+                       placeholder="2175.58" value="{{ form_vals.adj_exacc }}" form="form-server">
+              </div>
+              <div class="form-text mt-1">Annual cost per physical core — multiplied by core count</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Azure -->
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="card border-0 bg-light h-100">
+            <div class="card-body py-2 px-3">
+              <div class="fw-semibold small mb-2" style="color:#0369a1;">
+                <i class="bi bi-cloud me-1"></i>Azure (BYOL &amp; LI)
+              </div>
+              <label class="form-label mb-1" style="font-size:.75rem;">Extra annual cost (USD)</label>
+              <div class="input-group input-group-sm mb-2">
+                <span class="input-group-text">$</span>
+                <input type="number" name="adj_azure" class="form-control" min="0" step="1"
+                       placeholder="0" value="{{ form_vals.adj_azure or '' }}" form="form-server">
+              </div>
+              <div class="form-text mt-1">e.g. storage, networking, support tiers</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Hidden inputs to carry adjustments in manual-mode form -->
+      <div style="display:none">
+        <input type="number" name="adj_onprem" form="form-manual" value="{{ form_vals.adj_onprem or '' }}">
+        <input type="number" name="adj_oci"    form="form-manual" value="{{ form_vals.adj_oci or '' }}">
+        <input type="number" name="adj_exacc"  form="form-manual" value="{{ form_vals.adj_exacc }}">
+        <input type="number" name="adj_azure"  form="form-manual" value="{{ form_vals.adj_azure or '' }}">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================
+     RESULTS
+     ================================================================ -->
+{% if result %}
+  {% if result.get('error') %}
+    <div class="alert alert-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i> {{ result.error }}</div>
+  {% else %}
+
+    {# ── convenience aliases ────────────────────────────────────────── #}
+    {% set oci = result.oci %}
+    {% set az  = result.azure %}
+
+    <!-- Server / hardware banner — always visible above tabs -->
+    <div class="card mb-3 shadow-sm" style="border-color: #c4b5e0;">
+      <div class="card-header py-3" style="background: #ede9f7; border-bottom: 1px solid #c4b5e0;">
+        <div class="row align-items-center g-2">
+          <div class="col-auto">
+            <i class="bi bi-server fs-4" style="color:#7c5cbf;"></i>
+          </div>
+          <div class="col">
+            <div class="fw-semibold fs-6" style="color:#3b2070;">
+              {{ result.input_label }}
+              {% if result.input_env %}
+                <span class="badge fw-normal ms-1" style="background:#c4b5e0; color:#3b2070;">{{ result.input_env }}</span>
+              {% endif %}
+              {% if result.mode == 'manual' %}
+                <span class="badge fw-normal ms-1" style="background:#c4b5e0; color:#3b2070;">Manual Entry</span>
+              {% endif %}
+            </div>
+            {% if result.client %}
+              <div class="small" style="color:#7c5cbf;">{{ result.client.client_name }}</div>
+            {% endif %}
+          </div>
+          <div class="col-auto text-center px-3" style="border-left: 1px solid #c4b5e0;">
+            <div class="small" style="color:#7c5cbf;">Sockets</div>
+            <div class="fw-bold" style="color:#3b2070;">{{ result.input_sockets }}</div>
+          </div>
+          <div class="col-auto text-center px-3" style="border-left: 1px solid #c4b5e0;">
+            <div class="small" style="color:#7c5cbf;">Cores / Socket</div>
+            <div class="fw-bold" style="color:#3b2070;">{{ result.input_cps }}</div>
+          </div>
+          <div class="col-auto text-center px-3" style="border-left: 1px solid #c4b5e0;">
+            <div class="small" style="color:#7c5cbf;">Physical Cores</div>
+            <div class="fw-bold fs-5" style="color:#3b2070;">{{ "{:,.0f}".format(result.physical_cores) }}</div>
+          </div>
+          <div class="col-auto text-center px-3" style="border-left: 1px solid #c4b5e0;">
+            <div class="small" style="color:#7c5cbf;">OCI Equivalent</div>
+            <div class="fw-bold fs-5" style="color:#5b34a8;">{{ "{:,.0f}".format(result.ocpus) }} OCPUs</div>
+          </div>
+          {% if result.input_ram_gb %}
+          <div class="col-auto text-center px-3" style="border-left: 1px solid #c4b5e0;">
+            <div class="small" style="color:#7c5cbf;">RAM</div>
+            <div class="fw-bold" style="color:#3b2070;">{{ "{:,.0f}".format(result.input_ram_gb) }} GB</div>
+          </div>
+          {% endif %}
+          {% if result.adjustments.any %}
+          <div class="col-auto ms-auto">
+            <span class="badge rounded-pill" style="background:#fef3c7; color:#92400e; border:1px solid #fcd34d;">
+              <i class="bi bi-sliders me-1"></i>Vendor adjustments applied
+            </span>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% if result.lines %}
+      <div class="card-body p-0">
+        {% set has_new = result.lines | selectattr('units_new', 'gt', 0) | list | length > 0 %}
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0" style="table-layout:fixed;font-variant-numeric:tabular-nums;">
+            <colgroup>
+              <col style="min-width:200px;"><!-- Feature / Product -->
+              <col style="width:130px;"><!-- Metric -->
+              <col style="width:90px;"><!-- Required -->
+              {% if result.pool_availability %}
+              <col style="width:90px;"><!-- From Pool -->
+              <col style="width:130px;"><!-- Pool Annual Cost -->
+              {% if has_new %}
+              <col style="width:80px;"><!-- To Buy -->
+              <col style="width:140px;"><!-- New Licence Cost -->
+              <col style="width:130px;"><!-- New Support/yr -->
+              {% endif %}
+              {% endif %}
+              <col style="width:110px;"><!-- OCI OCPUs -->
+            </colgroup>
+            <thead style="background:#f3f0ff;">
+              <tr class="small" style="color:#4c1d95;">
+                <th class="ps-3 py-2">Feature / Product Required</th>
+                <th class="py-2 text-center">Metric</th>
+                <th class="py-2 text-end">Required</th>
+                {% if result.pool_availability %}
+                <th class="py-2 text-end" style="color:#16a34a;">From Pool</th>
+                <th class="py-2 text-end" style="color:#16a34a;">Pool Annual Cost</th>
+                {% if has_new %}
+                <th class="py-2 text-end" style="color:#dc2626;">To Buy</th>
+                <th class="py-2 text-end" style="color:#dc2626;">New Licence Cost</th>
+                <th class="py-2 text-end" style="color:#dc2626;">New Support/yr</th>
+                {% endif %}
+                {% endif %}
+                <th class="py-2 text-end pe-3">OCI OCPUs</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% set ns = namespace(total_pool_support=0, total_new_cost=0, total_new_support=0) %}
+              {% for l in result.lines %}
+              {% if result.pool_availability %}
+                {% set ns.total_pool_support = ns.total_pool_support + (l.pool_ann_support or 0) %}
+                {% set ns.total_new_cost     = ns.total_new_cost     + (l.licence_cost or 0) %}
+                {% set ns.total_new_support  = ns.total_new_support  + (l.yr1_support or 0) %}
+              {% endif %}
+              <tr class="align-middle {% if l.price_missing %}table-warning{% endif %}">
+                <td class="ps-3 py-2 fw-semibold">{{ l.product_label }}
+                  {% if l.price_missing %}<span class="badge bg-warning text-dark ms-1 fw-normal small">no price</span>{% endif %}
+                </td>
+                <td class="py-2 text-center">
+                  <span class="badge fw-normal" style="{% if l.metric in ('processor','processor_perpetual') %}background:#7c5cbf;color:#fff;{% else %}background:#6c757d;color:#fff;{% endif %}">
+                    {{ l.metric|replace('_',' ')|title }}
+                  </span>
+                </td>
+                <td class="py-2 text-end fw-bold">{{ "{:,.0f}".format(l.units_required) }}</td>
+                {% if result.pool_availability %}
+                <td class="py-2 text-end fw-semibold" style="color:#16a34a;">
+                  {% if l.pool_alloc %}{{ "{:,.0f}".format(l.pool_alloc) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="py-2 text-end" style="color:#16a34a;">
+                  {% if l.pool_ann_support %}<span class="fw-semibold">${{ "{:,.0f}".format(l.pool_ann_support) }}</span><span class="text-muted" style="font-size:.7rem;">/yr</span>
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                {% if has_new %}
+                <td class="py-2 text-end fw-semibold {% if l.units_new > 0 %}text-danger{% endif %}">
+                  {% if l.units_new > 0 %}{{ "{:,.0f}".format(l.units_new) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="py-2 text-end" style="color:#dc2626;">
+                  {% if l.licence_cost %}<span class="fw-semibold">${{ "{:,.0f}".format(l.licence_cost) }}</span><span class="text-muted" style="font-size:.7rem;"> one-off</span>
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td class="py-2 text-end" style="color:#dc2626;">
+                  {% if l.yr1_support %}<span class="fw-semibold">${{ "{:,.0f}".format(l.yr1_support) }}</span><span class="text-muted" style="font-size:.7rem;">/yr</span>
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                {% endif %}
+                {% endif %}
+                <td class="py-2 text-end pe-3 text-primary fw-bold">
+                  {% if l.metric in ('processor','processor_perpetual') %}{{ "{:,.0f}".format(l.units_required * 2) }} OCPUs
+                  {% else %}<span class="text-muted">N/A</span>{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+              {% if result.pool_availability %}
+              {% if has_new %}
+              <tr class="table-light fw-semibold border-top" style="font-size:.85rem;">
+                <td class="ps-3 py-2" colspan="3">Total annual licence cost for this server</td>
+                <td colspan="2" class="py-2 text-end" style="color:#16a34a;">
+                  ${{ "{:,.0f}".format(ns.total_pool_support) }}/yr <span class="fw-normal text-muted" style="font-size:.75rem;">(existing support)</span>
+                </td>
+                <td colspan="2" class="py-2 text-end" style="color:#dc2626;">
+                  ${{ "{:,.0f}".format(ns.total_new_cost) }} <span class="fw-normal text-muted" style="font-size:.75rem;">(new purchase)</span>
+                </td>
+                <td class="py-2 text-end" style="color:#dc2626;">
+                  ${{ "{:,.0f}".format(ns.total_new_support) }}/yr <span class="fw-normal text-muted" style="font-size:.75rem;">(new support)</span>
+                </td>
+                <td></td>
+              </tr>
+              <tr class="fw-bold" style="background:#f0fdf4; font-size:.88rem;">
+                <td class="ps-3 py-2" colspan="3">Grand Total Year 1</td>
+                <td colspan="5" class="py-2 text-end">
+                  ${{ "{:,.0f}".format(ns.total_pool_support + ns.total_new_cost + ns.total_new_support) }}
+                  <span class="fw-normal text-muted" style="font-size:.75rem;">(existing support + new purchase + new support)</span>
+                </td>
+                <td></td>
+              </tr>
+              <tr class="fw-bold" style="background:#f0fdf4; font-size:.88rem;">
+                <td class="ps-3 py-2" colspan="3">Grand Total Year 2+</td>
+                <td colspan="5" class="py-2 text-end">
+                  ${{ "{:,.0f}".format(ns.total_pool_support + ns.total_new_support) }}
+                  <span class="fw-normal text-muted" style="font-size:.75rem;">(existing support + new support only)</span>
+                </td>
+                <td></td>
+              </tr>
+              {% else %}
+              <tr class="fw-bold border-top" style="background:#f0fdf4; font-size:.88rem;">
+                <td class="ps-3 py-2" colspan="3">Total Annual Cost (existing support)</td>
+                <td colspan="2" class="py-2 text-end" style="color:#16a34a;">
+                  ${{ "{:,.0f}".format(ns.total_pool_support) }}/yr
+                </td>
+                <td></td>
+              </tr>
+              {% endif %}
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+      <div class="card-footer text-muted small py-2">
+        <i class="bi bi-info-circle me-1"></i>
+        OCI OCPU mapping: 1 processor licence = 2 OCPUs (x86 core factor 0.5, so
+        {{ "{:,.0f}".format(result.physical_cores) }} cores →
+        {{ "{:,.0f}".format(result.physical_cores // 2) }} proc. licences →
+        {{ "{:,.0f}".format(result.ocpus) }} OCPUs).
+        NUP licences have no direct OCPU equivalent — shown as N/A.
+      </div>
+    </div>
+
+    {% if result.any_missing_price %}
+    <div class="alert alert-warning d-flex gap-2 mb-3">
+      <i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
+      <div>Some products have no matching price — those rows are excluded from cost totals.
+        Add prices in the <a href="{{ url_for('oracle_price_list') }}" class="alert-link">Oracle Price List</a>.</div>
+    </div>
+    {% endif %}
+
+    {# ── Pool Allocation Panel (manual mode only) ─────────────── #}
+    {% if result.pool_availability is defined and result.pool_availability %}
+    <div class="card border-0 mb-4" style="background:#f0f9ff; border:1px solid #bae6fd !important;">
+      <div class="card-header py-2 d-flex align-items-center gap-2" style="background:#e0f2fe; border-bottom:1px solid #bae6fd;">
+        <i class="bi bi-archive text-info"></i>
+        <span class="fw-semibold small">Available Licences from Pool</span>
+        <span class="text-muted small ms-1">— allocate existing licences to reduce new purchase costs</span>
+      </div>
+      <div class="card-body py-2 px-3">
+        <form method="get" action="{{ url_for('licence_analysis') }}" id="form-pool-alloc">
+          <input type="hidden" name="mode"         value="{{ form_vals.mode }}">
+          <input type="hidden" name="m_client_id"  value="{{ form_vals.m_client_id }}">
+          <input type="hidden" name="m_hostname"   value="{{ form_vals.m_hostname }}">
+          <input type="hidden" name="m_cores"      value="{{ form_vals.m_cores }}">
+          <input type="hidden" name="m_sockets"    value="{{ form_vals.m_sockets }}">
+          <input type="hidden" name="m_ram_gb"     value="{{ form_vals.m_ram_gb }}">
+          <input type="hidden" name="m_edition"    value="{{ form_vals.m_edition }}">
+          <input type="hidden" name="horizon_years" value="{{ form_vals.horizon_years }}">
+          <input type="hidden" name="adj_onprem"   value="{{ form_vals.adj_onprem or '' }}">
+          <input type="hidden" name="adj_oci"      value="{{ form_vals.adj_oci or '' }}">
+          <input type="hidden" name="adj_exacc"    value="{{ form_vals.adj_exacc or '' }}">
+          <input type="hidden" name="adj_azure"    value="{{ form_vals.adj_azure or '' }}">
+          {% for param, _, _, _ in manual_db_options %}
+            {% if param in form_vals.m_options %}
+            <input type="hidden" name="{{ param }}" value="1">
+            {% endif %}
+          {% endfor %}
+
+          <table class="table table-sm mb-2" style="font-size:.83rem;">
+            <thead class="table-light">
+              <tr>
+                <th>Product</th>
+                <th>Contract</th>
+                <th class="text-center">Pool</th>
+                <th class="text-end">Available</th>
+                <th class="text-end">Allocate</th>
+                <th class="text-end">Support/unit/yr</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for pa in result.pool_availability %}
+              <tr>
+                <td>
+                  {{ pa.product_name }}
+                  {% if pa.sharing_policy == 'client_locked' %}
+                    <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">Client</span>
+                  {% else %}
+                    <span class="badge bg-info text-dark ms-1" style="font-size:.65rem;">Shared</span>
+                  {% endif %}
+                </td>
+                <td class="text-muted">
+                  {{ pa.contract_name }}
+                  {% if pa.csi_number %}<br><code style="font-size:.7rem;">{{ pa.csi_number }}</code>{% endif %}
+                </td>
+                <td class="text-center text-muted">{{ pa.quantity | int }}</td>
+                <td class="text-end fw-semibold text-success">{{ pa.available | int }}</td>
+                <td class="text-end" style="width:100px;">
+                  <input type="number" name="{{ pa.alloc_key }}" class="form-control form-control-sm text-end"
+                         min="0" max="{{ pa.available | int }}" step="1"
+                         value="{{ pa.allocated | int if pa.allocated else '' }}"
+                         style="width:80px; margin-left:auto;">
+                </td>
+                <td class="text-end text-muted">${{ "{:,.0f}".format(pa.support_per_unit) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <button type="submit" class="btn btn-sm btn-info text-white">
+            <i class="bi bi-arrow-clockwise me-1"></i>Apply Allocations &amp; Recalculate
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- ================================================================
+         HOSTING-OPTION TABS
+         ================================================================ -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-header p-0">
+        <ul class="nav nav-tabs card-header-tabs px-3" id="hostingTabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="htab-summary-tab" data-bs-toggle="tab"
+                    data-bs-target="#htab-summary" type="button" role="tab">
+              <i class="bi bi-grid-1x2 me-1"></i> Summary
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="htab-onprem-tab" data-bs-toggle="tab"
+                    data-bs-target="#htab-onprem" type="button" role="tab">
+              <i class="bi bi-building me-1"></i> On-Premises
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="htab-oci-tab" data-bs-toggle="tab"
+                    data-bs-target="#htab-oci" type="button" role="tab">
+              <i class="bi bi-cloud me-1"></i> OCI
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="htab-azure-tab" data-bs-toggle="tab"
+                    data-bs-target="#htab-azure" type="button" role="tab">
+              <i class="bi bi-microsoft me-1"></i> Azure
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <div class="tab-content">
+
+        <!-- ============================================================
+             TAB: SUMMARY
+             ============================================================ -->
+        <div class="tab-pane fade show active p-4" id="htab-summary" role="tabpanel">
+          <p class="text-muted small mb-4">
+            Year 1 includes the one-time licence purchase where applicable. Year 2+ is the recurring annual cost.
+            Click a tab above for the full breakdown of each option.
+          </p>
+
+          {# ── Row 1: On-Premises (baseline) ──────────────────────────── #}
+          <div class="row g-3 mb-1">
+            <div class="col-12">
+              <span class="text-muted small fw-semibold text-uppercase" style="letter-spacing:.05em; font-size:.7rem;">
+                <i class="bi bi-building me-1"></i>On-Premises
+              </span>
+            </div>
+            <div class="col-md-4 col-lg-3">
+              <div class="card border-secondary h-100">
+                <div class="card-header bg-secondary text-white py-2 fw-semibold small">
+                  <i class="bi bi-building me-1"></i> On-Premises
+                </div>
+                <div class="card-body">
+                  {% if result.pool_existing_support_yr1 %}
+                  <div class="text-muted small mb-2">Split cost: existing owned + new purchase</div>
+                  <div class="row g-1 text-center mb-2" style="font-size:.78rem;">
+                    <div class="col-6 border-end">
+                      <div class="text-muted" style="font-size:.7rem;">Existing support</div>
+                      <div class="fw-semibold">${{ "{:,.0f}".format(result.pool_existing_support_yr1) }}/yr</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-muted" style="font-size:.7rem;">New purchase</div>
+                      <div class="fw-semibold">${{ "{:,.0f}".format(result.new_licence_cost) }}</div>
+                    </div>
+                  </div>
+                  <div class="border-top pt-2">
+                  {% else %}
+                  <div class="text-muted small mb-1">Perpetual licence + 22% annual support</div>
+                  <div>
+                  {% endif %}
+                  <div class="row g-2 text-center mt-1">
+                    <div class="col-6 border-end">
+                      <div class="text-muted small">Year 1</div>
+                      <div class="fw-bold fs-6">${{ "{:,.0f}".format(result.onprem_yr1) }}</div>
+                      <div class="text-muted" style="font-size:.7rem;">
+                        {% if result.pool_existing_support_yr1 %}existing support + new licence + support + managed{% else %}licence + support + managed service{% endif %}
+                      </div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-muted small">Year 2+</div>
+                      <div class="fw-bold fs-6">${{ "{:,.0f}".format(result.onprem_yr2) }}</div>
+                      <div class="text-muted" style="font-size:.7rem;">
+                        {% if result.pool_existing_support_yr1 %}existing + new support + managed{% else %}support + managed service{% endif %}
+                      </div>
+                    </div>
+                  </div>
+                  </div>
+                  {% if result.adjustments.onprem %}
+                  <div class="mt-2 pt-2 border-top" style="font-size:.7rem; color:#92400e;">
+                    <i class="bi bi-sliders me-1"></i>Managed service cost included: +${{ "{:,.0f}".format(result.adjustments.onprem) }}/yr
+                  </div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {% if oci %}
+          {# ── Row 2: OCI ──────────────────────────────────────────────── #}
+          <div class="row g-3 mb-1 mt-2">
+            <div class="col-12">
+              <span class="text-muted small fw-semibold text-uppercase" style="letter-spacing:.05em; font-size:.7rem;">
+                <i class="bi bi-cloud me-1"></i>Oracle Cloud Infrastructure (OCI)
+              </span>
+            </div>
+
+            <!-- OCI BYOL -->
+            {% if oci.byol_sku %}
+            <div class="col-md-4 col-lg-3">
+              <div class="card border-primary h-100">
+                <div class="card-header bg-primary text-white py-2 fw-semibold small">
+                  <i class="bi bi-cloud me-1"></i> OCI — BYOL
+                </div>
+                <div class="card-body">
+                  <div class="text-muted small mb-1">Bring your licences · compute only</div>
+                  <div class="row g-2 text-center mt-1">
+                    <div class="col-6 border-end">
+                      <div class="text-muted small">Year 1</div>
+                      <div class="fw-bold fs-6 text-primary">
+                        ${{ "{:,.0f}".format(result.licence_yr1 + oci.byol_annual) }}
+                      </div>
+                      <div class="text-muted" style="font-size:.7rem;">licence + compute</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-muted small">Year 2+</div>
+                      <div class="fw-bold fs-6 text-primary">
+                        ${{ "{:,.0f}".format(result.licence_yr2 + oci.byol_annual) }}
+                      </div>
+                      <div class="text-muted" style="font-size:.7rem;">support + compute</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            <!-- OCI Licence Included -->
+            {% if oci.li_sku %}
+            <div class="col-md-4 col-lg-3">
+              <div class="card border-success h-100">
+                <div class="card-header bg-success text-white py-2 fw-semibold small">
+                  <i class="bi bi-cloud-check me-1"></i> OCI — Lic. Included
+                </div>
+                <div class="card-body">
+                  <div class="text-muted small mb-1">All-in subscription · no separate licence</div>
+                  <div class="row g-2 text-center mt-1">
+                    <div class="col-6 border-end">
+                      <div class="text-muted small">Year 1</div>
+                      <div class="fw-bold fs-6 text-success">${{ "{:,.0f}".format(oci.li_annual) }}</div>
+                      <div class="text-muted" style="font-size:.7rem;">compute + licence</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-muted small">Year 2+</div>
+                      <div class="fw-bold fs-6 text-success">${{ "{:,.0f}".format(oci.li_annual) }}</div>
+                      <div class="text-muted" style="font-size:.7rem;">compute + licence</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+
+          {# ── Row 3: ExaCC ────────────────────────────────────────────── #}
+          {% if oci.exacc_byol_sku or oci.exacc_li_sku %}
+          <div class="row g-3 mb-1 mt-2">
+            <div class="col-12">
+              <span class="fw-semibold text-uppercase" style="letter-spacing:.05em; font-size:.7rem; color:#6d28d9;">
+                <i class="bi bi-server me-1"></i>Exadata Cloud@Customer (ExaCC)
+              </span>
+            </div>
+
+            <!-- ExaCC BYOL -->
+            {% if oci.exacc_byol_sku %}
+            <div class="col-md-4 col-lg-3">
+              <div class="card h-100" style="border-color:#7c5cbf;">
+                <div class="card-header py-2 fw-semibold small text-white" style="background:#7c5cbf;">
+                  <i class="bi bi-server me-1"></i> ExaCC — BYOL
+                </div>
+                <div class="card-body">
+                  <div class="text-muted small mb-1">Exadata Cloud@Customer · bring licence</div>
+                  <div class="row g-2 text-center mt-1">
+                    <div class="col-6 border-end">
+                      <div class="text-muted small">Year 1</div>
+                      <div class="fw-bold fs-6" style="color:#7c5cbf;">
+                        ${{ "{:,.0f}".format(result.licence_yr1 + oci.exacc_byol_annual) }}
+                      </div>
+                      <div class="text-muted" style="font-size:.7rem;">lic. + support + managed service</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-muted small">Year 2+</div>
+                      <div class="fw-bold fs-6" style="color:#7c5cbf;">
+                        ${{ "{:,.0f}".format(result.licence_yr2 + oci.exacc_byol_annual) }}
+                      </div>
+                      <div class="text-muted" style="font-size:.7rem;">support + managed service</div>
+                    </div>
+                  </div>
+                  {% if result.adjustments.exacc %}
+                  <div class="mt-2 pt-2 border-top" style="font-size:.7rem; color:#92400e;">
+                    <i class="bi bi-sliders me-1"></i>Managed service: +${{ "{:,.0f}".format(result.adjustments.exacc) }}/yr included
+                  </div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            <!-- ExaCC Licence Included -->
+            {% if oci.exacc_li_sku %}
+            <div class="col-md-4 col-lg-3">
+              <div class="card h-100" style="border-color:#5b34a8;">
+                <div class="card-header py-2 fw-semibold small text-white" style="background:#5b34a8;">
+                  <i class="bi bi-server me-1"></i> ExaCC — Lic. Included
+                </div>
+                <div class="card-body">
+                  <div class="text-muted small mb-1">Exadata Cloud@Customer · licence bundled</div>
+                  <div class="row g-2 text-center mt-1">
+                    <div class="col-6 border-end">
+                      <div class="text-muted small">Year 1</div>
+                      <div class="fw-bold fs-6" style="color:#5b34a8;">${{ "{:,.0f}".format(oci.exacc_li_annual) }}</div>
+                      <div class="text-muted" style="font-size:.7rem;">compute + licence</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-muted small">Year 2+</div>
+                      <div class="fw-bold fs-6" style="color:#5b34a8;">${{ "{:,.0f}".format(oci.exacc_li_annual) }}</div>
+                      <div class="text-muted" style="font-size:.7rem;">compute + licence</div>
+                    </div>
+                  </div>
+                  {% if result.adjustments.exacc %}
+                  <div class="mt-2 pt-2 border-top" style="font-size:.7rem; color:#92400e;">
+                    <i class="bi bi-sliders me-1"></i>Managed service: +${{ "{:,.0f}".format(result.adjustments.exacc) }}/yr included
+                  </div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+          </div>{# end ExaCC row #}
+          {% endif %}{# end exacc_byol or exacc_li #}
+
+          {% endif %}{# end if oci #}
+
+          {% if az %}
+          {# ── Row 4: Azure ────────────────────────────────────────────── #}
+          <div class="row g-3 mb-1 mt-2">
+            <div class="col-12">
+              <span class="text-muted small fw-semibold text-uppercase" style="letter-spacing:.05em; font-size:.7rem; color:#0369a1;">
+                <i class="bi bi-microsoft me-1"></i>Oracle on Azure
+              </span>
+            </div>
+
+            <!-- Azure BYOL -->
+            {% if az.byol_sku %}
+            <div class="col-md-4 col-lg-3">
+              <div class="card border-info h-100">
+                <div class="card-header bg-info text-dark py-2 fw-semibold small">
+                  <i class="bi bi-microsoft me-1"></i> Azure — BYOL
+                </div>
+                <div class="card-body">
+                  <div class="text-muted small mb-1">Bring your licences · VM compute only</div>
+                  <div class="row g-2 text-center mt-1">
+                    <div class="col-6 border-end">
+                      <div class="text-muted small">Year 1</div>
+                      <div class="fw-bold fs-6 text-info">
+                        ${{ "{:,.0f}".format(result.licence_yr1 + az.byol_annual) }}
+                      </div>
+                      <div class="text-muted" style="font-size:.7rem;">lic. + compute + support</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-muted small">Year 2+</div>
+                      <div class="fw-bold fs-6 text-info">
+                        ${{ "{:,.0f}".format(result.licence_yr2 + az.byol_annual) }}
+                      </div>
+                      <div class="text-muted" style="font-size:.7rem;">compute + support</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            <!-- Oracle@Azure LI -->
+            {% if az.li_sku %}
+            <div class="col-md-4 col-lg-3">
+              <div class="card border-primary h-100">
+                <div class="card-header bg-primary text-white py-2 fw-semibold small">
+                  <i class="bi bi-microsoft me-1"></i> Oracle@Azure
+                </div>
+                <div class="card-body">
+                  <div class="text-muted small mb-1">Exadata X9M on Azure · licence included</div>
+                  <div class="row g-2 text-center mt-1">
+                    <div class="col-6 border-end">
+                      <div class="text-muted small">Year 1</div>
+                      <div class="fw-bold fs-6 text-primary">${{ "{:,.0f}".format(az.li_annual) }}</div>
+                      <div class="text-muted" style="font-size:.7rem;">compute + licence</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-muted small">Year 2+</div>
+                      <div class="fw-bold fs-6 text-primary">${{ "{:,.0f}".format(az.li_annual) }}</div>
+                      <div class="text-muted" style="font-size:.7rem;">compute + licence</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+          </div>{# end Azure row #}
+          {% endif %}{# end if az #}
+
+          <!-- Cumulative cost line chart -->
+          <div class="mt-4 mb-2">
+            <div class="d-flex align-items-baseline gap-2 mb-1">
+              <h6 class="fw-semibold mb-0">Annual Cost per Year — {{ result.horizon }}-Year Horizon</h6>
+              <span class="text-muted small">Year 1 includes licence purchase for on-prem &amp; BYOL &nbsp;·&nbsp; solid = OCI / on-prem &nbsp;·&nbsp; dashed = Azure</span>
+            </div>
+            <div style="position:relative; height:340px;">
+              <canvas id="summaryChart" aria-label="Cumulative cost line chart over {{ result.horizon }} years"></canvas>
+            </div>
+          </div>
+
+          <div class="alert alert-secondary py-2 small mt-3 mb-0">
+            <i class="bi bi-info-circle me-1"></i>
+            All costs are indicative list prices (24×7×365 compute where applicable).
+            Cloud costs exclude storage, networking, and negotiated discounts.
+            BYOL Year 1 includes the on-prem perpetual licence purchase plus ongoing annual support.
+          </div>
+
+          <!-- Breakeven chart -->
+          <div class="mt-4 mb-2">
+            <div class="d-flex align-items-baseline gap-2 mb-1">
+              <h6 class="fw-semibold mb-0">Cumulative Cost — Breakeven Analysis</h6>
+              <span class="text-muted small">All options vs on-prem &nbsp;·&nbsp; BYOL includes licence purchase in Year 1 &nbsp;·&nbsp; dashed = Azure</span>
+            </div>
+            <div style="position:relative; height:340px;">
+              <canvas id="breakevenChart" aria-label="Cumulative cost breakeven chart"></canvas>
+            </div>
+            <div id="breakevenAnnotations" class="mt-2 small text-muted"></div>
+          </div>
+        </div>{# end summary pane #}
+
+
+        <!-- ============================================================
+             TAB: ON-PREMISES
+             ============================================================ -->
+        <div class="tab-pane fade p-4" id="htab-onprem" role="tabpanel">
+
+          <!-- Licence requirements table -->
+          <h6 class="fw-semibold mb-3"><i class="bi bi-table me-1"></i> On-Premises Licence Requirements</h6>
+          {% set has_assignments = result.assign_by_family and result.assign_by_family | length > 0 %}
+          <div class="table-responsive mb-4">
+            <table class="table table-sm table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Product</th>
+                  <th>Metric</th>
+                  <th class="text-end">Units Required</th>
+                  <th class="text-end">List Price / Unit</th>
+                  <th class="text-end">Licence Cost</th>
+                  <th class="text-end">Yr1 Support (22%)</th>
+                  <th class="text-end">Yr1 Total</th>
+                  <th class="text-end">Yr2+ Annual</th>
+                  {% if has_assignments %}
+                  <th class="text-end" style="border-left:2px solid #dee2e6;">Assigned</th>
+                  <th class="text-end">Initial Cost Paid</th>
+                  <th class="text-end">Annual Support Paid</th>
+                  {% endif %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for l in result.lines %}
+                {% set asgn_consumed = result.assign_by_family[l.product_family]['consumed'] if l.product_family in result.assign_by_family else 0 %}
+                {% set asgn_initial  = result.assign_by_family[l.product_family]['initial']  if l.product_family in result.assign_by_family else 0 %}
+                {% set asgn_annual   = result.assign_by_family[l.product_family]['annual']   if l.product_family in result.assign_by_family else 0 %}
+                <tr {% if l.price_missing %}class="table-warning"{% endif %}>
+                  <td>{{ l.product_label }}
+                    {% if l.price_missing %}<span class="badge bg-warning text-dark ms-1">no price</span>{% endif %}
+                  </td>
+                  <td>
+                    <span class="badge {% if l.metric in ('processor','processor_perpetual') %}bg-purple{% else %}bg-secondary{% endif %}">
+                      {{ l.metric|replace('_',' ')|title }}
+                    </span>
+                  </td>
+                  <td class="text-end fw-semibold">{{ "{:,.2f}".format(l.units_required) }}</td>
+                  <td class="text-end">{% if l.unit_price is not none %}${{ "{:,.2f}".format(l.unit_price) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                  <td class="text-end">{% if l.licence_cost is not none %}${{ "{:,.0f}".format(l.licence_cost) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                  <td class="text-end">{% if l.yr1_support is not none %}${{ "{:,.0f}".format(l.yr1_support) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                  <td class="text-end fw-semibold">{% if l.yr1_total is not none %}${{ "{:,.0f}".format(l.yr1_total) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                  <td class="text-end">{% if l.yr2_annual is not none %}${{ "{:,.0f}".format(l.yr2_annual) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                  {% if has_assignments %}
+                  <td class="text-end fw-semibold" style="border-left:2px solid #dee2e6;">
+                    {% if asgn_consumed %}<span class="badge bg-success">{{ "{:,.0f}".format(asgn_consumed) }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                  </td>
+                  <td class="text-end">
+                    {% if asgn_initial %}${{ "{:,.0f}".format(asgn_initial) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                  </td>
+                  <td class="text-end">
+                    {% if asgn_annual %}${{ "{:,.0f}".format(asgn_annual) }}/yr{% else %}<span class="text-muted">—</span>{% endif %}
+                  </td>
+                  {% endif %}
+                </tr>
+                {% endfor %}
+              </tbody>
+              <tfoot class="table-secondary fw-semibold">
+                <tr>
+                  <td colspan="4" class="text-end">Totals</td>
+                  <td class="text-end">${{ "{:,.0f}".format(result.total_licence_cost) }}</td>
+                  <td class="text-end">${{ "{:,.0f}".format(result.onprem_yr1 - result.total_licence_cost) }}</td>
+                  <td class="text-end">${{ "{:,.0f}".format(result.onprem_yr1) }}</td>
+                  <td class="text-end">${{ "{:,.0f}".format(result.onprem_yr2) }}</td>
+                  {% if has_assignments %}
+                  {% set total_initial = namespace(v=0) %}
+                  {% set total_annual  = namespace(v=0) %}
+                  {% for a in result.assignments %}
+                    {% if a.assigned_cost   is not none %}{% set total_initial.v = total_initial.v + a.assigned_cost   %}{% endif %}
+                    {% if a.assigned_annual is not none %}{% set total_annual.v  = total_annual.v  + a.assigned_annual %}{% endif %}
+                  {% endfor %}
+                  <td style="border-left:2px solid #dee2e6;"></td>
+                  <td class="text-end">${{ "{:,.0f}".format(total_initial.v) }}</td>
+                  <td class="text-end">${{ "{:,.0f}".format(total_annual.v) }}/yr</td>
+                  {% endif %}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <!-- Year-by-year on-prem only -->
+          <h6 class="fw-semibold mb-2">Cumulative On-Premises Cost — {{ result.horizon }}-Year Horizon</h6>
+          <div class="table-responsive mb-4">
+            <table class="table table-sm table-bordered align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Year</th>
+                  <th class="text-end">Annual Cost</th>
+                  <th class="text-end">Cumulative Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for yr in result.yearly_onprem %}
+                <tr>
+                  <td class="fw-semibold">Year {{ yr.year }}
+                    {% if loop.first %}<span class="badge bg-secondary fw-normal ms-1">purchase + support</span>{% endif %}
+                  </td>
+                  <td class="text-end">${{ "{:,.0f}".format(yr.annual) }}</td>
+                  <td class="text-end fw-semibold">${{ "{:,.0f}".format(yr.cum) }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- CSI assignments (server mode only) -->
+          {% if result.mode == 'server' and result.assignments %}
+          <h6 class="fw-semibold mb-2"><i class="bi bi-link-45deg me-1"></i> Current CSI Assignments for This Server</h6>
+          <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Product</th>
+                  <th>CSI / Contract</th>
+                  <th class="text-end">Licences Consumed</th>
+                  <th class="text-end">Assigned Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for a in result.assignments %}
+                <tr>
+                  <td>{{ a.product_label }}</td>
+                  <td>
+                    <span class="fw-semibold">{{ a.csi_number or '—' }}</span>
+                    {% if a.contract_name %}<span class="text-muted small ms-1">{{ a.contract_name }}</span>{% endif %}
+                  </td>
+                  <td class="text-end">{{ "{:,.2f}".format(a.licences_consumed or 0) }}</td>
+                  <td class="text-end">
+                    {% if a.assigned_cost is not none %}${{ "{:,.0f}".format(a.assigned_cost) }}
+                    {% else %}<span class="text-muted small">no unit price on line</span>{% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+
+        </div>{# end on-prem pane #}
+
+
+        <!-- ============================================================
+             TAB: OCI
+             ============================================================ -->
+        <div class="tab-pane fade p-4" id="htab-oci" role="tabpanel">
+
+          {% if oci %}
+          <div class="d-flex align-items-center gap-2 mb-3">
+            <span class="text-muted small">
+              {{ "{:,.0f}".format(result.physical_cores) }} physical cores →
+              <strong class="text-primary">{{ "{:,.0f}".format(result.ocpus) }} OCPUs</strong>
+            </span>
+            {% if oci.get('prices_static') %}
+            <span class="badge bg-warning text-dark fw-normal ms-auto">published list prices · 24×7×365</span>
+            {% else %}
+            <span class="badge bg-secondary fw-normal ms-auto">indicative list price · 24×7×365</span>
+            {% endif %}
+          </div>
+
+          <!-- OCI options -->
+          <p class="text-muted small fw-semibold text-uppercase mb-1" style="letter-spacing:.05em; font-size:.7rem;">
+            <i class="bi bi-cloud me-1"></i>OCI
+          </p>
+          <div class="row g-3 mb-3">
+
+            <!-- OCI BYOL -->
+            {% if oci.byol_sku %}
+            <div class="col-md-6">
+              <div class="card border-primary h-100">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-start mb-1">
+                    <h6 class="fw-semibold text-primary mb-0">OCI BYOL</h6>
+                    <span class="badge bg-primary small">{{ oci.byol_sku.part_number }}</span>
+                  </div>
+                  <div class="text-muted small mb-1">{{ oci.byol_sku.name }}</div>
+                  <div class="text-muted small mb-3">Bring existing licences — pay compute only</div>
+                  <div class="row g-1 text-center">
+                    <div class="col-6 border-end border-bottom pb-1">
+                      <div class="text-muted small">Per OCPU/hr</div>
+                      <div class="fw-bold">${{ "{:,.4f}".format(oci.byol_sku.unit_price) }}</div>
+                    </div>
+                    <div class="col-6 border-bottom pb-1">
+                      <div class="text-muted small">Annual compute only</div>
+                      <div class="fw-bold text-muted">${{ "{:,.0f}".format(oci.byol_annual) }}</div>
+                    </div>
+                    <div class="col-6 border-end pt-1">
+                      <div class="text-muted small">Licence + compute Year 1</div>
+                      <div class="fw-bold text-primary">
+                        ${{ "{:,.0f}".format(result.licence_yr1 + oci.byol_annual) }}
+                      </div>
+                    </div>
+                    <div class="col-6 pt-1">
+                      <div class="text-muted small">Support + compute Year 2+</div>
+                      <div class="fw-bold text-primary">
+                        {% if oci.byol_annual is not none %}
+                          ${{ "{:,.0f}".format(result.licence_yr2 + oci.byol_annual) }}
+                        {% else %}<span class="text-muted">—</span>{% endif %}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="alert alert-info py-1 px-2 mt-2 small mb-0">
+                    On-prem support fees still apply on any licences moved to OCI unless retired.
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            <!-- OCI Licence Included -->
+            {% if oci.li_sku %}
+            <div class="col-md-6">
+              <div class="card border-success h-100">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-start mb-1">
+                    <h6 class="fw-semibold text-success mb-0">OCI Licence Included</h6>
+                    <span class="badge bg-success small">{{ oci.li_sku.part_number }}</span>
+                  </div>
+                  <div class="text-muted small mb-1">{{ oci.li_sku.name }}</div>
+                  <div class="text-muted small mb-3">Full subscription — no on-prem licence required</div>
+                  <div class="row g-1 text-center">
+                    <div class="col-6 border-end">
+                      <div class="text-muted small">Per OCPU/hr</div>
+                      <div class="fw-bold">${{ "{:,.4f}".format(oci.li_sku.unit_price) }}</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-muted small">Annual ({{ "{:,.0f}".format(oci.ocpus) }} OCPUs)</div>
+                      <div class="fw-bold text-success">${{ "{:,.0f}".format(oci.li_annual) }}</div>
+                    </div>
+                  </div>
+                  <div class="alert alert-success py-1 px-2 mt-2 small mb-0">
+                    Oracle support is bundled — no separate support contract required.
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+          </div>{# end OCI row #}
+
+          <!-- ExaCC options -->
+          <p class="text-muted small fw-semibold text-uppercase mb-1" style="letter-spacing:.05em; font-size:.7rem;">
+            <i class="bi bi-server me-1"></i>ExaCC — Exadata Cloud at Customer
+          </p>
+          <div class="row g-3 mb-4">
+
+            <!-- ExaCC BYOL -->
+            {% if oci.exacc_byol_sku %}
+            <div class="col-md-6">
+              <div class="card h-100" style="border-color:#7c5cbf;">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-start mb-1">
+                    <h6 class="fw-semibold mb-0" style="color:#7c5cbf;">ExaCC — BYOL</h6>
+                    <span class="badge small" style="background:#7c5cbf;">{{ oci.exacc_byol_sku.part_number }}</span>
+                  </div>
+                  <div class="text-muted small mb-1">{{ oci.exacc_byol_sku.name }}</div>
+                  <div class="text-muted small mb-3">Exadata on-premises, Oracle-managed — bring your licence</div>
+                  <div class="row g-1 text-center">
+                    <div class="col-6 border-end border-bottom pb-1">
+                      <div class="text-muted small">Per OCPU/hr</div>
+                      <div class="fw-bold">${{ "{:,.4f}".format(oci.exacc_byol_sku.unit_price) }}</div>
+                    </div>
+                    <div class="col-6 border-bottom pb-1">
+                      <div class="text-muted small">Annual compute + managed svc</div>
+                      <div class="fw-bold text-muted">${{ "{:,.0f}".format(oci.exacc_byol_annual) }}</div>
+                    </div>
+                    <div class="col-6 border-end pt-1">
+                      <div class="text-muted small">Licence + compute Year 1</div>
+                      <div class="fw-bold" style="color:#7c5cbf;">
+                        ${{ "{:,.0f}".format(result.licence_yr1 + oci.exacc_byol_annual) }}
+                      </div>
+                    </div>
+                    <div class="col-6 pt-1">
+                      <div class="text-muted small">Support + compute Year 2+</div>
+                      <div class="fw-bold" style="color:#7c5cbf;">
+                        {% if oci.exacc_byol_annual is not none %}
+                          ${{ "{:,.0f}".format(result.licence_yr2 + oci.exacc_byol_annual) }}
+                        {% else %}<span class="text-muted">—</span>{% endif %}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="alert py-1 px-2 mt-2 small mb-0" style="background:#f3f0ff;border-color:#c4b5e0;color:#4c1d95;">
+                    Infrastructure subscription fees apply separately on top of this compute rate.
+                  </div>
+                  {% if result.adjustments.exacc %}
+                  <div class="mt-2 pt-2 border-top" style="font-size:.7rem; color:#92400e;">
+                    <i class="bi bi-sliders me-1"></i>Managed service: +${{ "{:,.0f}".format(result.adjustments.exacc) }}/yr included in compute + managed svc figure
+                  </div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            <!-- ExaCC Licence Included -->
+            {% if oci.exacc_li_sku %}
+            <div class="col-md-6">
+              <div class="card h-100" style="border-color:#5b34a8;">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-start mb-1">
+                    <h6 class="fw-semibold mb-0" style="color:#5b34a8;">ExaCC — Licence Included</h6>
+                    <span class="badge small" style="background:#5b34a8;">{{ oci.exacc_li_sku.part_number }}</span>
+                  </div>
+                  <div class="text-muted small mb-1">{{ oci.exacc_li_sku.name }}</div>
+                  <div class="text-muted small mb-3">Exadata on-premises, Oracle-managed — licence bundled</div>
+                  <div class="row g-1 text-center">
+                    <div class="col-6 border-end">
+                      <div class="text-muted small">Per OCPU/hr</div>
+                      <div class="fw-bold">${{ "{:,.4f}".format(oci.exacc_li_sku.unit_price) }}</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-muted small">Annual ({{ "{:,.0f}".format(oci.ocpus) }} OCPUs)</div>
+                      <div class="fw-bold" style="color:#5b34a8;">${{ "{:,.0f}".format(oci.exacc_li_annual) }}</div>
+                    </div>
+                  </div>
+                  <div class="alert py-1 px-2 mt-2 small mb-0" style="background:#f3f0ff;border-color:#c4b5e0;color:#4c1d95;">
+                    Infrastructure subscription fees apply separately. No separate Oracle support contract needed.
+                  </div>
+                  {% if result.adjustments.exacc %}
+                  <div class="mt-2 pt-2 border-top" style="font-size:.7rem; color:#92400e;">
+                    <i class="bi bi-sliders me-1"></i>Managed service: +${{ "{:,.0f}".format(result.adjustments.exacc) }}/yr included in annual figure
+                  </div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+          </div>{# end ExaCC row #}
+
+          <!-- OCI year-by-year table -->
+          <h6 class="fw-semibold mb-2">Cumulative Cost Comparison — {{ result.horizon }}-Year Horizon</h6>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle mb-2">
+              <thead class="table-light">
+                <tr>
+                  <th>Year</th>
+                  <th class="text-end">On-Prem Annual</th>
+                  <th class="text-end">On-Prem Cumulative</th>
+                  {% if oci.byol_sku %}
+                  <th class="text-end text-primary">OCI BYOL Annual</th>
+                  <th class="text-end text-primary">OCI BYOL Cumulative</th>
+                  {% endif %}
+                  {% if oci.li_sku %}
+                  <th class="text-end text-success">OCI Lic. Incl. Annual</th>
+                  <th class="text-end text-success">OCI Lic. Incl. Cumulative</th>
+                  {% endif %}
+                  {% if oci.exacc_byol_sku %}
+                  <th class="text-end" style="color:#7c5cbf;">ExaCC BYOL Annual</th>
+                  <th class="text-end" style="color:#7c5cbf;">ExaCC BYOL Cumulative</th>
+                  {% endif %}
+                  {% if oci.exacc_li_sku %}
+                  <th class="text-end" style="color:#5b34a8;">ExaCC LI Annual</th>
+                  <th class="text-end" style="color:#5b34a8;">ExaCC LI Cumulative</th>
+                  {% endif %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for yr in result.yearly_onprem %}
+                {% set oci_yr = oci.yearly[loop.index0] %}
+                {% set byol_cum     = ((result.licence_yr1 + oci.byol_annual) + (yr.year - 1) * (result.licence_yr2 + oci.byol_annual))       if oci.byol_sku      else none %}
+                {% set li_cum       = (oci.li_annual * yr.year)                    if oci.li_sku        else none %}
+                {% set exacc_b_cum  = ((result.licence_yr1 + oci.exacc_byol_annual) + (yr.year - 1) * (result.licence_yr2 + oci.exacc_byol_annual)) if oci.exacc_byol_sku else none %}
+                {% set exacc_li_cum = (oci.exacc_li_annual * yr.year)              if oci.exacc_li_sku  else none %}
+                {% set cloud_cheaper = (byol_cum is not none and byol_cum < yr.cum)
+                                    or (li_cum is not none and li_cum < yr.cum)
+                                    or (exacc_b_cum is not none and exacc_b_cum < yr.cum)
+                                    or (exacc_li_cum is not none and exacc_li_cum < yr.cum) %}
+                <tr {% if cloud_cheaper %}class="table-success"{% endif %}>
+                  <td class="fw-semibold">Year {{ yr.year }}
+                    {% if loop.first %}<span class="badge bg-secondary fw-normal ms-1">purchase + support</span>{% endif %}
+                  </td>
+                  <td class="text-end">${{ "{:,.0f}".format(yr.annual) }}</td>
+                  <td class="text-end fw-semibold">${{ "{:,.0f}".format(yr.cum) }}</td>
+                  {% if oci.byol_sku %}
+                  {% set byol_ann = (result.licence_yr1 + oci.byol_annual) if yr.year == 1 else (result.licence_yr2 + oci.byol_annual) %}
+                  {% set byol_cum_total = (result.licence_yr1 + oci.byol_annual) + (yr.year - 1) * (result.licence_yr2 + oci.byol_annual) %}
+                  <td class="text-end text-primary">${{ "{:,.0f}".format(byol_ann) }}</td>
+                  <td class="text-end text-primary fw-semibold">${{ "{:,.0f}".format(byol_cum_total) }}</td>
+                  {% endif %}
+                  {% if oci.li_sku %}
+                  <td class="text-end text-success">${{ "{:,.0f}".format(oci.li_annual) }}</td>
+                  <td class="text-end text-success fw-semibold">${{ "{:,.0f}".format(oci.li_annual * yr.year) }}</td>
+                  {% endif %}
+                  {% if oci.exacc_byol_sku %}
+                  {% set exacc_byol_ann = (result.licence_yr1 + oci.exacc_byol_annual) if yr.year == 1 else (result.licence_yr2 + oci.exacc_byol_annual) %}
+                  {% set exacc_byol_cum_total = (result.licence_yr1 + oci.exacc_byol_annual) + (yr.year - 1) * (result.licence_yr2 + oci.exacc_byol_annual) %}
+                  <td class="text-end" style="color:#7c5cbf;">${{ "{:,.0f}".format(exacc_byol_ann) }}</td>
+                  <td class="text-end fw-semibold" style="color:#7c5cbf;">${{ "{:,.0f}".format(exacc_byol_cum_total) }}</td>
+                  {% endif %}
+                  {% if oci.exacc_li_sku %}
+                  <td class="text-end" style="color:#5b34a8;">${{ "{:,.0f}".format(oci.exacc_li_annual) }}</td>
+                  <td class="text-end fw-semibold" style="color:#5b34a8;">${{ "{:,.0f}".format(oci.exacc_li_annual * yr.year) }}</td>
+                  {% endif %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="alert alert-warning py-2 small mb-0">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            {{ oci.note }}
+          </div>
+
+          {% elif result.physical_cores == 0 %}
+          <div class="alert alert-secondary mb-0">
+            <i class="bi bi-info-circle me-1"></i>
+            No physical cores specified — OCI OCPU sizing requires at least 1 core.
+          </div>
+          {% else %}
+          <div class="alert alert-warning mb-0">
+            <i class="bi bi-cloud-slash me-1"></i>
+            OCI pricing could not be fetched from Oracle's public API right now.
+          </div>
+          {% endif %}
+
+        </div>{# end OCI pane #}
+
+
+        <!-- ============================================================
+             TAB: AZURE
+             ============================================================ -->
+        <div class="tab-pane fade p-4" id="htab-azure" role="tabpanel">
+
+          {% if az %}
+          <div class="d-flex align-items-center gap-2 mb-3">
+            <span class="text-muted small">
+              {{ "{:,.0f}".format(result.physical_cores) }} physical cores →
+              <strong class="text-info">{{ "{:,.0f}".format(result.physical_cores * 2) }} vCPUs</strong>
+              <span class="text-muted">(Oracle@Azure: {{ "{:,.0f}".format(result.ocpus) }} OCPUs)</span>
+            </span>
+            {% if az.get('prices_static') %}
+            <span class="badge bg-warning text-dark fw-normal ms-auto">published list prices · 24×7×365</span>
+            {% else %}
+            <span class="badge bg-secondary fw-normal ms-auto">indicative list price · 24×7×365</span>
+            {% endif %}
+          </div>
+
+          <div class="row g-3 mb-4">
+
+            <!-- Azure BYOL -->
+            {% if az.byol_sku %}
+            <div class="col-md-6">
+              <div class="card border-info h-100">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-start mb-1">
+                    <h6 class="fw-semibold text-info mb-0">Azure VM — BYOL</h6>
+                    <span class="badge bg-info text-dark small">{{ az.byol_sku.sku_name }}</span>
+                  </div>
+                  <div class="text-muted small mb-1">{{ az.byol_sku.name }}</div>
+                  <div class="text-muted small mb-3">Bring existing licences — pay compute only</div>
+                  <div class="row g-1 text-center">
+                    <div class="col-6 border-end border-bottom pb-1">
+                      <div class="text-muted small">Per vCPU/hr</div>
+                      <div class="fw-bold">${{ "{:,.4f}".format(az.byol_sku.unit_price) }}</div>
+                    </div>
+                    <div class="col-6 border-bottom pb-1">
+                      <div class="text-muted small">Annual compute</div>
+                      <div class="fw-bold text-info">${{ "{:,.0f}".format(az.byol_annual) }}</div>
+                    </div>
+                    <div class="col-6 border-end pt-1">
+                      <div class="text-muted small">Licence Year 1</div>
+                      <div class="fw-bold text-dark">
+                        ${{ "{:,.0f}".format(result.licence_yr1) }}
+                      </div>
+                    </div>
+                    <div class="col-6 pt-1">
+                      <div class="text-muted small">Year 2+ ongoing</div>
+                      <div class="fw-bold text-info">
+                        {% if az.byol_annual is not none %}
+                          ${{ "{:,.0f}".format(result.licence_yr2 + az.byol_annual) }}
+                        {% else %}<span class="text-muted">—</span>{% endif %}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="alert alert-info py-1 px-2 mt-2 small mb-0">{{ az.byol_sku.note }}</div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            <!-- Oracle@Azure LI -->
+            {% if az.li_sku %}
+            <div class="col-md-6">
+              <div class="card border-primary h-100">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-start mb-1">
+                    <h6 class="fw-semibold text-primary mb-0">Oracle@Azure</h6>
+                    <span class="badge bg-primary small">Exadata X9M</span>
+                  </div>
+                  <div class="text-muted small mb-1">{{ az.li_sku.name }}</div>
+                  <div class="text-muted small mb-3">Licence included — Oracle Exadata on Azure infra</div>
+                  <div class="row g-1 text-center">
+                    <div class="col-6 border-end">
+                      <div class="text-muted small">Per OCPU/hr</div>
+                      <div class="fw-bold">${{ "{:,.4f}".format(az.li_sku.unit_price) }}</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-muted small">Annual ({{ "{:,.0f}".format(az.ocpus) }} OCPUs)</div>
+                      <div class="fw-bold text-primary">${{ "{:,.0f}".format(az.li_annual) }}</div>
+                    </div>
+                  </div>
+                  <div class="alert alert-primary py-1 px-2 mt-2 small mb-0">{{ az.li_sku.note }}</div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+          </div>{# end Azure SKU cards #}
+
+          <!-- Azure year-by-year table -->
+          <h6 class="fw-semibold mb-2">Cumulative Cost Comparison — {{ result.horizon }}-Year Horizon</h6>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle mb-2">
+              <thead class="table-light">
+                <tr>
+                  <th>Year</th>
+                  <th class="text-end">On-Prem Annual</th>
+                  <th class="text-end">On-Prem Cumulative</th>
+                  {% if az.byol_sku %}
+                  <th class="text-end text-info">Azure BYOL Annual</th>
+                  <th class="text-end text-info">Azure BYOL Cumulative</th>
+                  {% endif %}
+                  {% if az.li_sku %}
+                  <th class="text-end text-primary">Oracle@Azure Annual</th>
+                  <th class="text-end text-primary">Oracle@Azure Cumulative</th>
+                  {% endif %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for yr in result.yearly_onprem %}
+                {% set az_yr = az.yearly[loop.index0] %}
+                {% set byol_cum = az_yr.byol_cum if az.byol_sku else none %}
+                {% set li_cum   = az_yr.li_cum   if az.li_sku   else none %}
+                {% set cloud_cheaper = (byol_cum is not none and byol_cum < yr.cum) or (li_cum is not none and li_cum < yr.cum) %}
+                <tr {% if cloud_cheaper %}class="table-success"{% endif %}>
+                  <td class="fw-semibold">Year {{ yr.year }}
+                    {% if loop.first %}<span class="badge bg-secondary fw-normal ms-1">purchase + support</span>{% endif %}
+                  </td>
+                  <td class="text-end">${{ "{:,.0f}".format(yr.annual) }}</td>
+                  <td class="text-end fw-semibold">${{ "{:,.0f}".format(yr.cum) }}</td>
+                  {% if az.byol_sku %}
+                  <td class="text-end text-info">${{ "{:,.0f}".format(az.byol_annual) }}</td>
+                  <td class="text-end text-info fw-semibold">${{ "{:,.0f}".format(az_yr.byol_cum) }}</td>
+                  {% endif %}
+                  {% if az.li_sku %}
+                  <td class="text-end text-primary">${{ "{:,.0f}".format(az.li_annual) }}</td>
+                  <td class="text-end text-primary fw-semibold">${{ "{:,.0f}".format(az_yr.li_cum) }}</td>
+                  {% endif %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="alert alert-warning py-2 small mb-0">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            Azure costs are indicative (PAYG list price, East US, compute only, Linux).
+            Azure BYOL uses E-series v5 VMs (Intel, memory-optimised). Actual costs depend on region, reserved pricing, storage, and networking.
+            Oracle@Azure (Exadata X9M) is a managed Exadata service — minimum shape costs apply regardless of utilisation.
+          </div>
+
+          {% else %}
+          <div class="alert alert-secondary mb-0">
+            <i class="bi bi-info-circle me-1"></i>
+            Azure pricing comparison is unavailable — no physical cores specified or pricing could not be loaded.
+          </div>
+          {% endif %}
+
+        </div>{# end Azure pane #}
+
+      </div>{# end tab-content #}
+    </div>{# end hosting tabs card #}
+
+  {% endif %}
+{% endif %}
+
+<script>
+// ---- Mode tab switching ----
+document.querySelectorAll('[data-mode]').forEach(tab => {
+  tab.addEventListener('click', e => {
+    e.preventDefault();
+    const mode = tab.dataset.mode;
+    document.querySelectorAll('[data-mode]').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('form-server').style.display = (mode === 'server') ? '' : 'none';
+    document.getElementById('form-manual').style.display = (mode === 'manual') ? '' : 'none';
+  });
+});
+
+// ---- Server dropdown population ----
+const svClient = document.getElementById('sv-client');
+const svServer = document.getElementById('sv-server');
+
+svClient.addEventListener('change', function() {
+  const cid = this.value;
+  svServer.innerHTML = '<option value="">— loading… —</option>';
+  if (!cid) { svServer.innerHTML = '<option value="">— select client first —</option>'; return; }
+  fetch('/api/licence-analysis/servers?client_id=' + cid)
+    .then(r => r.json())
+    .then(servers => {
+      if (!servers.length) {
+        svServer.innerHTML = '<option value="">— no servers found —</option>';
+        return;
+      }
+      svServer.innerHTML = '<option value="">— select server —</option>' +
+        servers.map(s =>
+          `<option value="${s.server_id}"
+                   data-cores="${s.total_physical_cores}"
+                   data-sockets="${s.cpu_sockets}"
+                   data-cps="${s.cores_per_socket}">
+             ${s.hostname} (${s.environment || 'prod'} · ${s.total_physical_cores} cores)
+           </option>`
+        ).join('');
+    });
+});
+
+</script>
+
+{% if result and not result.get('error') %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  const canvas = document.getElementById('summaryChart');
+  if (!canvas) return;
+
+  /* ── validated categorical palette (7 slots, light mode) ─────────── */
+  const COLORS = {
+    onprem:      '#9d174d',
+    oci_byol:    '#2563eb',
+    oci_li:      '#16a34a',
+    exacc_byol:  '#7c3aed',
+    exacc_li:    '#c2410c',
+    az_byol:     '#0891b2',
+    az_li:       '#be185d',
+  };
+
+  /* ── raw data from server ─────────────────────────────────────────── */
+  {% set lyr1 = result.licence_yr1 | float %}
+  {% set lyr2 = result.licence_yr2 | float %}
+  {% set yr2  = result.onprem_yr2 | float %}
+
+  const labels = [
+    {% for yr in result.yearly_onprem %}"Year {{ yr.year }}"{% if not loop.last %},{% endif %}{% endfor %}
+  ];
+
+  /* ── annual cost per year (Year 1 = licence + compute/support; Year 2+ = ongoing only) ── */
+  {% set onprem_y1 = result.onprem_yr1 | float %}
+
+  const datasets = [
+    {
+      label: 'On-Premises',
+      /* Year 1: licence + support; Year 2+: support only */
+      data: [{{ onprem_y1 | round | int }}{% for yr in result.yearly_onprem %}{% if yr.year > 1 %},{{ yr2 | round | int }}{% endif %}{% endfor %}],
+      borderColor: COLORS.onprem,
+      backgroundColor: COLORS.onprem + '18',
+      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0,
+    },
+  ];
+
+  {% if oci %}
+    {% set ba  = oci.byol_annual | float if oci.byol_annual is not none else 0 %}
+    {% set la  = oci.li_annual   | float if oci.li_annual   is not none else 0 %}
+    {% set eba = oci.exacc_byol_annual | float if oci.exacc_byol_annual is not none else 0 %}
+    {% set ela = oci.exacc_li_annual   | float if oci.exacc_li_annual   is not none else 0 %}
+
+    {% if oci.byol_sku %}
+    datasets.push({
+      label: 'OCI — BYOL',
+      /* Year 1: licence + compute + support; Year 2+: compute + support */
+      data: [{{ (lyr1 + ba) | round | int }}{% for yr in result.yearly_onprem %}{% if yr.year > 1 %},{{ (lyr2 + ba) | round | int }}{% endif %}{% endfor %}],
+      borderColor: COLORS.oci_byol,
+      backgroundColor: COLORS.oci_byol + '18',
+      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0,
+    });
+    {% endif %}
+
+    {% if oci.li_sku %}
+    datasets.push({
+      label: 'OCI — Lic. Included',
+      /* Same every year — no separate licence purchase */
+      data: [{% for yr in result.yearly_onprem %}{{ la | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
+      borderColor: COLORS.oci_li,
+      backgroundColor: COLORS.oci_li + '18',
+      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0,
+    });
+    {% endif %}
+
+    {% if oci.exacc_byol_sku %}
+    datasets.push({
+      label: 'ExaCC — BYOL',
+      data: [{{ (lyr1 + eba) | round | int }}{% for yr in result.yearly_onprem %}{% if yr.year > 1 %},{{ (lyr2 + eba) | round | int }}{% endif %}{% endfor %}],
+      borderColor: COLORS.exacc_byol,
+      backgroundColor: COLORS.exacc_byol + '18',
+      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0,
+    });
+    {% endif %}
+
+    {% if oci.exacc_li_sku %}
+    datasets.push({
+      label: 'ExaCC — Lic. Included',
+      data: [{% for yr in result.yearly_onprem %}{{ ela | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
+      borderColor: COLORS.exacc_li,
+      backgroundColor: COLORS.exacc_li + '18',
+      borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0,
+    });
+    {% endif %}
+  {% endif %}
+
+  {% if az %}
+    {% set aba  = az.byol_annual | float if az.byol_annual is not none else 0 %}
+    {% set alia = az.li_annual   | float if az.li_annual   is not none else 0 %}
+
+    {% if az.byol_sku %}
+    datasets.push({
+      label: 'Azure — BYOL',
+      data: [{{ (lyr1 + aba) | round | int }}{% for yr in result.yearly_onprem %}{% if yr.year > 1 %},{{ (lyr2 + aba) | round | int }}{% endif %}{% endfor %}],
+      borderColor: COLORS.az_byol,
+      backgroundColor: COLORS.az_byol + '18',
+      borderWidth: 2, borderDash: [7, 4],
+      pointRadius: 5, pointHoverRadius: 7, tension: 0,
+    });
+    {% endif %}
+
+    {% if az.li_sku %}
+    datasets.push({
+      label: 'Oracle@Azure',
+      data: [{% for yr in result.yearly_onprem %}{{ alia | round | int }}{% if not loop.last %},{% endif %}{% endfor %}],
+      borderColor: COLORS.az_li,
+      backgroundColor: COLORS.az_li + '18',
+      borderWidth: 2, borderDash: [7, 4],
+      pointRadius: 5, pointHoverRadius: 7, tension: 0,
+    });
+    {% endif %}
+  {% endif %}
+
+  /* ── chart ────────────────────────────────────────────────────────── */
+  new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { usePointStyle: true, pointStyleWidth: 12, padding: 16, font: { size: 12 } },
+        },
+        tooltip: {
+          callbacks: {
+            title: items => items[0].label + ' annual cost',
+            label: ctx => ' ' + ctx.dataset.label + ': $' + ctx.parsed.y.toLocaleString('en-US', { maximumFractionDigits: 0 }),
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: '#e5e7eb' },
+          ticks: { font: { size: 11 }, color: '#6b7280' },
+        },
+        y: {
+          title: { display: true, text: 'Annual cost (USD)', font: { size: 11 }, color: '#6b7280' },
+          grid: { color: '#e5e7eb' },
+          ticks: {
+            font: { size: 11 }, color: '#6b7280',
+            callback: v => '$' + (v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v),
+          },
+          beginAtZero: true,
+        },
+      },
+    },
+  });
+})();
+</script>
+
+<script>
+(function () {
+  const canvas = document.getElementById('breakevenChart');
+  if (!canvas) return;
+
+  /* ── server-side values ──────────────────────────────────────────── */
+  {% set lyr1b = result.licence_yr1 | float %}
+  {% set lyr2b = result.licence_yr2 | float %}
+  {% set y1    = result.onprem_yr1  | float %}
+
+  const licenceYr1  = {{ lyr1b | round | int }};
+  const licenceYr2  = {{ lyr2b | round | int }};
+  const onpremYr1   = {{ y1    | round | int }};
+
+  /* cumulative on-prem at year y */
+  function opCum(y) { return onpremYr1 + (y - 1) * onpremYr2; }
+
+  /* LI options: { label, annual, color, dash, isByol } */
+  const allOptions = [];
+
+  {% if oci %}
+    {% set ba  = oci.byol_annual       | float if oci.byol_annual       is not none else 0 %}
+    {% set la  = oci.li_annual         | float if oci.li_annual         is not none else 0 %}
+    {% set eba = oci.exacc_byol_annual | float if oci.exacc_byol_annual is not none else 0 %}
+    {% set ela = oci.exacc_li_annual   | float if oci.exacc_li_annual   is not none else 0 %}
+    {% if oci.byol_sku and ba > 0 %}
+  allOptions.push({ label: 'OCI — BYOL',           annual: {{ ba  | round | int }}, color: '#2563eb', dash: [],     isByol: true });
+    {% endif %}
+    {% if oci.li_sku and la > 0 %}
+  allOptions.push({ label: 'OCI — Lic. Included',  annual: {{ la  | round | int }}, color: '#16a34a', dash: [],     isByol: false });
+    {% endif %}
+    {% if oci.exacc_byol_sku and eba > 0 %}
+  allOptions.push({ label: 'ExaCC — BYOL',          annual: {{ eba | round | int }}, color: '#7c3aed', dash: [],     isByol: true });
+    {% endif %}
+    {% if oci.exacc_li_sku and ela > 0 %}
+  allOptions.push({ label: 'ExaCC — Lic. Included', annual: {{ ela | round | int }}, color: '#c2410c', dash: [],     isByol: false });
+    {% endif %}
+  {% endif %}
+  {% if az %}
+    {% set aba  = az.byol_annual | float if az.byol_annual is not none else 0 %}
+    {% set alia = az.li_annual   | float if az.li_annual   is not none else 0 %}
+    {% if az.byol_sku and aba > 0 %}
+  allOptions.push({ label: 'Azure — BYOL',   annual: {{ aba  | round | int }}, color: '#0891b2', dash: [7, 4], isByol: true });
+    {% endif %}
+    {% if az.li_sku and alia > 0 %}
+  allOptions.push({ label: 'Oracle@Azure',   annual: {{ alia | round | int }}, color: '#b45309', dash: [7, 4], isByol: false });
+    {% endif %}
+  {% endif %}
+
+  if (allOptions.length === 0) { canvas.closest('.mt-4').style.display = 'none'; return; }
+
+  /* ── BYOL cumulative: Year 1 = licenceYr1 + annual; Year 2+ = licenceYr2 + annual each year */
+  function byolCum(annual, y) {
+    const yr1 = licenceYr1 + annual;
+    return y === 1 ? yr1 : yr1 + (y - 1) * (licenceYr2 + annual);
+  }
+
+  /* ── compute horizon long enough to show all LI crossovers ──────── */
+  const liOptions = allOptions.filter(o => !o.isByol);
+  const breakYears = liOptions
+    .filter(o => o.annual > licenceYr2)
+    .map(o => (licenceYr1 - licenceYr2) / (o.annual - licenceYr2));
+
+  const minHorizon = {{ result.horizon }};
+  const neededHorizon = breakYears.length
+    ? Math.min(Math.max(minHorizon, Math.ceil(Math.max(...breakYears)) + 3), 25)
+    : minHorizon;
+
+  const labels = Array.from({ length: neededHorizon }, (_, i) => 'Year ' + (i + 1));
+
+  /* ── datasets ────────────────────────────────────────────────────── */
+  const datasets = [
+    {
+      label: 'On-Premises (cumulative)',
+      data: labels.map((_, i) => opCum(i + 1)),
+      borderColor: '#9d174d',
+      backgroundColor: '#9d174d18',
+      borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 6, tension: 0,
+    },
+  ];
+
+  allOptions.forEach(o => {
+    datasets.push({
+      label: o.label + ' (cumulative)',
+      data: labels.map((_, i) => o.isByol ? byolCum(o.annual, i + 1) : o.annual * (i + 1)),
+      borderColor: o.color,
+      backgroundColor: o.color + '18',
+      borderWidth: 2,
+      borderDash: o.dash,
+      pointRadius: 4, pointHoverRadius: 6, tension: 0,
+    });
+  });
+
+  /* ── annotation text (LI crossovers only) ───────────────────────── */
+  const annEl = document.getElementById('breakevenAnnotations');
+  if (annEl) {
+    const lines = liOptions.map(o => {
+      if (o.annual <= onpremYr2) {
+        return `<span class="me-4"><span style="color:${o.color}">&#9644;</span> <strong>${o.label}</strong>: on-prem is always cheaper (cloud annual cost is lower than on-prem support).</span>`;
+      }
+      const yr = licenceCost / (o.annual - onpremYr2);
+      return `<span class="me-4"><span style="color:${o.color}">&#9644;</span> On-prem becomes cheaper than <strong>${o.label}</strong> after <strong>year ${yr.toFixed(1)}</strong>.</span>`;
+    });
+    annEl.innerHTML = '<i class="bi bi-info-circle me-1"></i>' + lines.join('');
+  }
+
+  /* ── chart ───────────────────────────────────────────────────────── */
+  new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { usePointStyle: true, pointStyleWidth: 12, padding: 16, font: { size: 12 } },
+        },
+        tooltip: {
+          callbacks: {
+            title: items => items[0].label + ' cumulative total',
+            label: ctx => ' ' + ctx.dataset.label.replace(' (cumulative)', '') + ': $' +
+                          ctx.parsed.y.toLocaleString('en-US', { maximumFractionDigits: 0 }),
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: '#e5e7eb' },
+          ticks: { font: { size: 11 }, color: '#6b7280' },
+        },
+        y: {
+          title: { display: true, text: 'Cumulative cost (USD)', font: { size: 11 }, color: '#6b7280' },
+          grid: { color: '#e5e7eb' },
+          ticks: {
+            font: { size: 11 }, color: '#6b7280',
+            callback: v => '$' + (v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v),
+          },
+          beginAtZero: true,
+        },
+      },
+    },
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

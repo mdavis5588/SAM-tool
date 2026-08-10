@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}WebLogic Servers — Helios{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-server"></i> Servers</h4>
+</div>
+
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('servers') }}">
+      <i class="bi bi-database me-1"></i>Database Servers
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="{{ url_for('weblogic_servers') }}">
+      <i class="bi bi-boxes me-1"></i>WebLogic Servers
+      <span class="badge bg-secondary ms-1">{{ servers | length }}</span>
+    </a>
+  </li>
+</ul>
+
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover table-striped align-middle mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>Owner</th>
+            <th>Hostname</th>
+            <th>Domain</th>
+            <th>Edition</th>
+            <th>Version</th>
+            <th class="text-center">Managed Servers</th>
+            <th>Clusters</th>
+            <th class="text-center">Required</th>
+            <th class="text-center">Assigned</th>
+            <th>Compliance</th>
+            <th>Last Seen</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in servers %}
+          <tr>
+            <td><span class="badge bg-primary">{{ s._client_code }}</span></td>
+            <td>
+              <strong>{{ s.hostname }}</strong>
+              {% if s.datacenter %}<br><small class="text-muted">{{ s.datacenter }}</small>{% endif %}
+            </td>
+            <td>
+              <span class="fw-semibold">{{ s.domain_name }}</span>
+              {% if s.admin_server_host %}
+              <br><small class="text-muted"><code>{{ s.admin_server_host }}{% if s.admin_server_port %}:{{ s.admin_server_port }}{% endif %}</code></small>
+              {% endif %}
+            </td>
+            <td>
+              {% if s.wls_edition %}
+              <span class="badge" style="background:rgba(124,58,237,.12);color:#5b21b6;font-size:.73rem">
+                {{ s.wls_edition }}
+              </span>
+              {% else %}
+              <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if s.wls_version %}
+              <small><code>{{ s.wls_version }}</code></small>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td class="text-center">
+              {% if s.managed_server_count > 0 %}
+              <span class="badge bg-info text-dark">{{ s.managed_server_count }}</span>
+              {% else %}
+              <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if s.clusters %}
+              <small class="text-muted">{{ s.clusters }}</small>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td class="text-center">
+              {% if s.licences_required is not none %}
+              <span class="fw-semibold">{{ s.licences_required }}</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td class="text-center">
+              {% if s.has_ula %}
+                <span style="color:#7c3aed;font-weight:600"><i class="bi bi-infinity me-1"></i>ULA</span>
+              {% elif s.total_licensed is not none %}
+                {% set assigned = s.total_licensed | int %}
+                {% set required = s.licences_required | int %}
+                {% if assigned >= required %}
+                  <span class="badge bg-success">{{ assigned }}</span>
+                {% elif assigned > 0 %}
+                  <span class="badge bg-warning text-dark">{{ assigned }}</span>
+                {% else %}
+                  <span class="badge bg-danger">0</span>
+                {% endif %}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if s.has_ula %}
+                <span class="badge bg-success"><i class="bi bi-check-circle"></i> Compliant</span>
+              {% elif s.compliance_status == 'compliant' %}
+                <span class="badge bg-success"><i class="bi bi-check-circle"></i> Compliant</span>
+              {% elif s.compliance_status == 'under_licensed' %}
+                <span class="badge bg-danger"><i class="bi bi-x-circle"></i> Under-licensed</span>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td><small>{{ s.last_seen or '—' }}</small></td>
+            <td>
+              <a href="{{ url_for('edit_server', server_id=s.server_id) }}"
+                 class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-pencil"></i> Edit
+              </a>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="12" class="text-center text-muted py-4">
+              No WebLogic servers discovered. Run the <code>discover_weblogic.yml</code> playbook to populate data.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

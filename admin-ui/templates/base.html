@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="{{ current_lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Helios{% endblock %}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    :root {
+      --sidebar-w: 236px;
+      --sidebar-bg: #2b2438;
+      --sidebar-bg-alt: #221c2c;
+      --sidebar-fg: #b3acc0;
+      --sidebar-fg-active: #ffffff;
+      --accent: #8b5cf6;
+
+      /* Retint Bootstrap's primary color purple app-wide (buttons, links, badges) */
+      --bs-primary: #7c3aed;
+      --bs-primary-rgb: 124, 58, 237;
+      --bs-link-color: #7c3aed;
+      --bs-link-color-rgb: 124, 58, 237;
+      --bs-link-hover-color: #6d28d9;
+      --bs-link-hover-color-rgb: 109, 40, 217;
+    }
+    body { background: #f4f6f8; }
+
+    /* Bootstrap's compiled CSS hardcodes hex per-component for these, so the
+       --bs-primary variable above doesn't reach them — override directly. */
+    .btn-primary {
+      --bs-btn-bg: #7c3aed; --bs-btn-border-color: #7c3aed;
+      --bs-btn-hover-bg: #6d28d9; --bs-btn-hover-border-color: #6d28d9;
+      --bs-btn-active-bg: #6d28d9; --bs-btn-active-border-color: #5b21b6;
+      --bs-btn-disabled-bg: #7c3aed; --bs-btn-disabled-border-color: #7c3aed;
+      --bs-btn-focus-shadow-rgb: 124,58,237;
+    }
+    .btn-outline-primary {
+      --bs-btn-color: #7c3aed; --bs-btn-border-color: #7c3aed;
+      --bs-btn-hover-bg: #7c3aed; --bs-btn-hover-border-color: #7c3aed;
+      --bs-btn-active-bg: #7c3aed; --bs-btn-active-border-color: #7c3aed;
+      --bs-btn-disabled-color: #7c3aed; --bs-btn-disabled-border-color: #7c3aed;
+      --bs-btn-focus-shadow-rgb: 124,58,237;
+    }
+    .form-check-input:checked { background-color: #7c3aed; border-color: #7c3aed; }
+    .form-check-input:focus,
+    .form-control:focus,
+    .form-select:focus {
+      border-color: #a78bfa; box-shadow: 0 0 0 .25rem rgba(124,58,237,.25);
+    }
+    .badge-metric-processor { background: var(--accent); }
+    .badge-metric-nup       { background: #6c757d; }
+    .table th { white-space: nowrap; }
+    .status-active   { color: #198754; }
+    .status-expired  { color: #dc3545; }
+    .status-expiring { color: #fd7e14; }
+    .client-switcher .dropdown-item.active { background: var(--accent); color: #fff; }
+
+    /* ---- App shell: left sidebar + main content ---- */
+    .app-shell { display: flex; min-height: 100vh; }
+
+    .sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      background: var(--sidebar-bg);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      z-index: 1040;
+      transition: transform .2s ease;
+    }
+    .sidebar-brand {
+      display: flex; align-items: center; gap: .5rem;
+      color: #fff; font-weight: 700; letter-spacing: .3px;
+      padding: 1rem 1.1rem;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .sidebar-brand i { color: var(--accent); font-size: 1.2rem; }
+
+    .sidebar-client-switcher {
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      padding: .5rem 0;
+    }
+    .sidebar-client-switcher .client-switcher-toggle {
+      font-size: .88rem;
+    }
+    .sidebar-client-switcher .client-switcher-label {
+      background: rgba(255,255,255,.12);
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .sidebar-nav { flex: 1 1 auto; overflow-y: auto; padding: .75rem 0; }
+    .sidebar-link {
+      display: flex; align-items: center; gap: .65rem;
+      padding: .6rem 1.1rem;
+      color: var(--sidebar-fg);
+      text-decoration: none;
+      font-size: .92rem;
+      border-left: 3px solid transparent;
+      white-space: nowrap;
+    }
+    .sidebar-link i { width: 1.1rem; text-align: center; font-size: 1rem; }
+    .sidebar-link:hover { color: var(--sidebar-fg-active); background: rgba(255,255,255,.05); }
+    .sidebar-link.active {
+      color: var(--sidebar-fg-active);
+      background: rgba(255,255,255,.07);
+      border-left-color: var(--accent);
+      font-weight: 600;
+    }
+    .sidebar-section-label {
+      color: rgba(255,255,255,.35);
+      font-size: .68rem; text-transform: uppercase; letter-spacing: .08em;
+      padding: .9rem 1.1rem .3rem;
+    }
+
+    .sidebar-bottom {
+      border-top: 1px solid rgba(255,255,255,.08);
+      background: var(--sidebar-bg-alt);
+      padding: .6rem 0;
+    }
+    .sidebar-bottom .sidebar-link.text-warning-link { color: var(--sidebar-fg); font-weight: 600; }
+    .sidebar-bottom .sidebar-link.text-warning-link:hover { color: var(--sidebar-fg-active); }
+
+    /* client switcher lives at the top of the sidebar, under the brand */
+    .client-switcher-toggle {
+      display: flex; align-items: center; gap: .55rem;
+      width: 100%; padding: .6rem 1.1rem;
+      background: none; border: 0; text-align: left;
+      color: var(--sidebar-fg);
+    }
+    .client-switcher-toggle:hover { color: var(--sidebar-fg-active); }
+
+    .main-area { flex: 1 1 auto; margin-left: var(--sidebar-w); min-width: 0; }
+    .main-area.no-sidebar { margin-left: 0; }
+
+    .topbar {
+      display: flex; align-items: center; gap: .75rem;
+      background: #fff; border-bottom: 1px solid #e3e6ea;
+      padding: .6rem 1.25rem;
+      position: sticky; top: 0; z-index: 1020;
+    }
+    .sidebar-toggle {
+      display: none;
+      border: 0; background: none; font-size: 1.3rem; color: #444;
+    }
+
+    .sidebar-backdrop {
+      display: none;
+      position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 1030;
+    }
+
+    /* ---- Sidebar flyout submenu ---- */
+    .sidebar-flyout-arrow {
+      margin-left: auto;
+      font-size: .7rem;
+      color: var(--sidebar-fg);
+      opacity: .5;
+      transition: transform .18s;
+    }
+    .sidebar-flyout-trigger:hover .sidebar-flyout-arrow,
+    .sidebar-flyout-trigger.flyout-open .sidebar-flyout-arrow { transform: rotate(90deg); opacity: 1; }
+    /* The menu is rendered as a fixed panel via JS */
+    #serversFlyoutPanel,
+    #contractsFlyoutPanel,
+    #sidebarFlyoutPanel,
+    #billingReportsFlyoutPanel,
+    #complianceFlyoutPanel,
+    #visibilityFlyoutPanel,
+    #operationsFlyoutPanel {
+      display: none;
+      position: fixed;
+      width: auto;
+      min-width: 180px;
+      background: #1a1024;
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 0 6px 6px 0;
+      padding: .35rem 0;
+      z-index: 2000;
+      box-shadow: 4px 4px 16px rgba(0,0,0,.35);
+    }
+    #serversFlyoutPanel.visible,
+    #contractsFlyoutPanel.visible,
+    #sidebarFlyoutPanel.visible,
+    #billingReportsFlyoutPanel.visible,
+    #complianceFlyoutPanel.visible,
+    #visibilityFlyoutPanel.visible,
+    #operationsFlyoutPanel.visible { display: block; }
+    .sidebar-flyout-item {
+      display: flex;
+      align-items: center;
+      gap: .55rem;
+      padding: .55rem 1rem;
+      color: var(--sidebar-fg);
+      text-decoration: none;
+      font-size: .88rem;
+      white-space: nowrap;
+    }
+    .sidebar-flyout-item i { font-size: .9rem; width: 1rem; text-align: center; }
+    .sidebar-flyout-item:hover { color: var(--sidebar-fg-active); background: rgba(255,255,255,.06); }
+    .sidebar-flyout-item.active {
+      color: var(--sidebar-fg-active);
+      font-weight: 600;
+      background: rgba(255,255,255,.08);
+      border-left: 3px solid var(--accent);
+      padding-left: calc(1rem - 3px);
+    }
+
+    @media (max-width: 991.98px) {
+      .sidebar { transform: translateX(-100%); }
+      .sidebar.show { transform: translateX(0); }
+      .main-area { margin-left: 0; }
+      .sidebar-toggle { display: inline-block; }
+      .sidebar-backdrop.show { display: block; }
+    }
+  </style>
+</head>
+<body>
+
+{% if session.logged_in %}
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <a class="sidebar-brand" href="{{ url_for('servers') }}">
+      <i class="bi bi-shield-check"></i> <span>Helios</span>
+    </a>
+
+    <!-- Client switcher -->
+    {% if all_clients %}
+    <div class="sidebar-client-switcher dropdown client-switcher">
+      <button class="client-switcher-toggle dropdown-toggle" type="button" data-bs-toggle="dropdown">
+        <i class="bi bi-building"></i>
+        <span class="badge client-switcher-label">
+          {%- if active_schema == '__all__' -%}All Clients
+          {%- else -%}{{ active_schema | replace('client_','') }}{%- endif -%}
+        </span>
+      </button>
+      <ul class="dropdown-menu" style="min-width:220px">
+        <li><h6 class="dropdown-header">{{ t('nav.switch_client') }}</h6></li>
+        <li>
+          <form method="post" action="{{ url_for('switch_client') }}">
+            <input type="hidden" name="schema" value="__all__">
+            <button type="submit"
+                    class="dropdown-item {% if active_schema == '__all__' %}active{% endif %}">
+              <i class="bi bi-globe me-1"></i> {{ t('nav.all_clients') }}
+            </button>
+          </form>
+        </li>
+        <li><hr class="dropdown-divider"></li>
+        {% for c in all_clients %}
+        <li>
+          <form method="post" action="{{ url_for('switch_client') }}">
+            <input type="hidden" name="schema" value="{{ c.schema_name }}">
+            <button type="submit"
+                    class="dropdown-item {% if c.schema_name == active_schema %}active{% endif %}">
+              <i class="bi bi-person-badge me-1"></i>
+              {{ c.client_name }}
+              <small class="text-muted ms-1">({{ c.client_code }})</small>
+            </button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <!-- Language toggle -->
+    <div style="border-bottom: 1px solid rgba(255,255,255,.08); padding: .35rem 0;">
+      <a class="sidebar-link" href="{{ url_for('set_lang', lang=('fr' if current_lang == 'en' else 'en')) }}"
+         title="{{ t('lang_name') }}" style="padding-top:.45rem;padding-bottom:.45rem">
+        <i class="bi bi-translate"></i>
+        <span>{{ t('lang_toggle') }}</span>
+      </a>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a class="sidebar-link {% if request.endpoint == 'executive_summary' %}active{% endif %}"
+         href="{{ url_for('executive_summary') }}"><i class="bi bi-bar-chart-line"></i><span>{{ t('nav.executive_summary') }}</span></a>
+
+      <div class="sidebar-section-label">{{ t('nav.inventory') }}</div>
+      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['servers','register_server','weblogic_servers','discovery_history','upload_discovery'] %}active{% endif %}"
+         href="{{ url_for('servers') }}" id="serversFlyoutTrigger"
+         data-flyout="serversFlyoutPanel">
+        <i class="bi bi-server"></i><span>{{ t('nav.servers') }}</span>
+        <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
+      </a>
+      <div class="sidebar-section-label">{{ t('nav.licensing') }}</div>
+      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['contracts','contract_detail','renewal_calendar'] %}active{% endif %}"
+         href="{{ url_for('contracts') }}" id="contractsFlyoutTrigger"
+         data-flyout="contractsFlyoutPanel">
+        <i class="bi bi-file-earmark-text"></i><span>{{ t('nav.contracts') }}</span>
+        <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
+      </a>
+      <a class="sidebar-link {% if request.endpoint in ['licence_summary','licence_summary_client','licence_summary_shared'] %}active{% endif %}"
+         href="{{ url_for('licence_summary') }}"><i class="bi bi-bar-chart-line"></i><span>{{ t('nav.licence_summary') }}</span></a>
+      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['licence_summary_server_costs','cost_optimisation','licence_analysis','oracle_price_list','shared_pool_monthly','finops_ulas'] %}active{% endif %}"
+         href="{{ url_for('finops') }}" id="finopsFlyoutTrigger" data-flyout="sidebarFlyoutPanel">
+        <i class="bi bi-currency-dollar"></i><span>{{ t('nav.finops') }}</span>
+        <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
+      </a>
+      {% if current_role in ('superadmin', 'contracting') %}
+      <div class="sidebar-section-label">Billing</div>
+      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['finops','finops_client','finops_monthly_overview','finops_pool_snapshot_take'] %}active{% endif %}"
+         href="{{ url_for('finops') }}" id="billingFlyoutTrigger" data-flyout="billingReportsFlyoutPanel">
+        <i class="bi bi-receipt"></i><span>Billing Reports</span>
+        <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
+      </a>
+      {% endif %}
+      <div class="sidebar-section-label">{{ t('nav.compliance') }}</div>
+      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['compliance','compliance_client','audit_readiness','vmware','alerts'] %}active{% endif %}"
+         href="{{ url_for('compliance') }}" id="complianceFlyoutTrigger"
+         data-flyout="complianceFlyoutPanel">
+        <i class="bi bi-shield-check"></i>
+        <span>{{ t('nav.compliance') }}
+          {% if active_alerts_count > 0 %}
+          <span class="badge bg-danger ms-1" style="font-size:.6rem">{{ active_alerts_count }}</span>
+          {% endif %}
+        </span>
+        <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
+      </a>
+
+      <div class="sidebar-section-label">{{ t('nav.visibility') }}</div>
+      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['visibility_versions','visibility_versions_client','visibility_wls_versions','visibility_licence_history','visibility_licence_history_client'] %}active{% endif %}"
+         href="{{ url_for('visibility_versions') }}" id="visibilityFlyoutTrigger"
+         data-flyout="visibilityFlyoutPanel">
+        <i class="bi bi-binoculars"></i><span>{{ t('nav.visibility') }}</span>
+        <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
+      </a>
+      <a class="sidebar-link {% if request.endpoint == 'stale_servers' %}active{% endif %}"
+         href="{{ url_for('stale_servers') }}">
+        <i class="bi bi-exclamation-triangle{% if stale_servers_count > 0 %}-fill text-warning{% endif %}"></i>
+        <span>Stale Servers
+          {% if stale_servers_count > 0 %}
+          <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem">{{ stale_servers_count }}</span>
+          {% endif %}
+        </span>
+      </a>
+      {%- set pending_count = pending_assignments_count | default(0) -%}
+      <a class="sidebar-link sidebar-flyout-trigger {% if request.endpoint in ['assignment_queue','discovery_conflicts','discovery_history','admin_audit','admin_snapshot_view'] %}active{% endif %}"
+         href="{{ url_for('assignment_queue') }}" id="operationsFlyoutTrigger"
+         data-flyout="operationsFlyoutPanel">
+        <i class="bi bi-gear-wide-connected"></i><span>Operations
+        {% if pending_count > 0 %}<span class="badge bg-warning text-dark ms-1" style="font-size:.6rem">{{ pending_count }}</span>{% endif %}
+        </span>
+        <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
+      </a>
+
+      <div class="sidebar-section-label">{{ t('nav.administration') }}</div>
+      <a class="sidebar-link {% if request.endpoint == 'clients' %}active{% endif %}"
+         href="{{ url_for('clients') }}"><i class="bi bi-people"></i><span>{{ t('nav.clients') }}</span></a>
+      <a class="sidebar-link {% if request.endpoint == 'settings' %}active{% endif %}"
+         href="{{ url_for('settings') }}"><i class="bi bi-gear"></i><span>{{ t('nav.alert_settings') }}</span></a>
+      {% if is_superadmin %}
+      <a class="sidebar-link {% if request.endpoint == 'admin_users' %}active{% endif %}"
+         href="{{ url_for('admin_users') }}"><i class="bi bi-person-lock"></i><span>{{ t('nav.users_access') }}</span></a>
+{% endif %}
+    </nav>
+
+    <div class="sidebar-bottom">
+      {% if current_user %}
+      <div class="sidebar-link" style="cursor:default;opacity:.8;pointer-events:none">
+        <i class="bi bi-person-circle"></i>
+        <span style="font-size:.8rem">
+          {{ current_user.display_name or current_user.username }}
+          <span style="font-size:.65rem;opacity:.65;display:block;margin-top:-.1rem">{{ current_user.role }}</span>
+        </span>
+      </div>
+      {% endif %}
+      <a class="sidebar-link text-warning-link" href="{{ url_for('export_lms') }}">
+        <i class="bi bi-file-earmark-excel"></i><span>{{ t('nav.lms_export') }}</span>
+      </a>
+      <a class="sidebar-link" href="{{ url_for('logout') }}">
+        <i class="bi bi-box-arrow-right"></i><span>{{ t('nav.logout') }}</span>
+      </a>
+    </div>
+  </aside>
+
+  <!-- Flyout panels — live outside sidebar-nav so overflow:auto can't clip them -->
+  <div id="serversFlyoutPanel">
+    <a class="sidebar-flyout-item {% if request.endpoint == 'servers' %}active{% endif %}"
+       href="{{ url_for('servers') }}">
+      <i class="bi bi-server"></i>{{ t('nav.servers') }}
+    </a>
+    <a class="sidebar-flyout-item {% if request.endpoint == 'register_server' %}active{% endif %}"
+       href="{{ url_for('register_server') }}">
+      <i class="bi bi-hdd-network"></i>{{ t('nav.register_server') }}
+    </a>
+    <a class="sidebar-flyout-item {% if request.endpoint == 'upload_discovery' %}active{% endif %}"
+       href="{{ url_for('upload_discovery') }}">
+      <i class="bi bi-cloud-upload"></i>Upload Discovery
+    </a>
+  </div>
+
+  <div id="contractsFlyoutPanel">
+    <a class="sidebar-flyout-item" href="{{ url_for('contracts') }}">
+      <i class="bi bi-file-earmark-text"></i>{{ t('nav.contracts') }}
+    </a>
+    <a class="sidebar-flyout-item" href="{{ url_for('renewal_calendar') }}">
+      <i class="bi bi-calendar-event"></i>{{ t('nav.renewal_calendar') }}
+    </a>
+  </div>
+
+  <div id="sidebarFlyoutPanel">
+    <a class="sidebar-flyout-item" href="{{ url_for('finops_current') }}">
+      <i class="bi bi-bar-chart-steps"></i>{{ t('finops.tab_cost_summary') }}
+    </a>
+    <a class="sidebar-flyout-item" href="{{ url_for('licence_summary_server_costs') }}">
+      <i class="bi bi-server"></i>{{ t('nav.server_costs') }}
+    </a>
+    <a class="sidebar-flyout-item" href="{{ url_for('cost_optimisation') }}">
+      <i class="bi bi-lightbulb"></i>{{ t('nav.cost_optimisation') }}
+    </a>
+    <a class="sidebar-flyout-item {% if request.endpoint == 'licence_analysis' %}active{% endif %}"
+       href="{{ url_for('licence_analysis') }}">
+      <i class="bi bi-calculator"></i>Options Analysis
+    </a>
+    <a class="sidebar-flyout-item {% if request.endpoint == 'oracle_price_list' %}active{% endif %}"
+       href="{{ url_for('oracle_price_list') }}">
+      <i class="bi bi-tag"></i>Oracle Price List
+    </a>
+  </div>
+
+  <div id="billingReportsFlyoutPanel">
+    <a class="sidebar-flyout-item {% if request.endpoint in ['finops','finops_client'] %}active{% endif %}"
+       href="{{ url_for('finops') }}">
+      <i class="bi bi-bar-chart-steps"></i>Annual Client Totals
+    </a>
+    <a class="sidebar-flyout-item {% if request.endpoint in ['finops_monthly_overview','finops_pool_snapshot_take'] %}active{% endif %}"
+       href="{{ url_for('finops_monthly_overview') }}">
+      <i class="bi bi-calendar-month"></i>Monthly Shared Pool Overview
+    </a>
+  </div>
+
+  <div id="complianceFlyoutPanel">
+    <a class="sidebar-flyout-item" href="{{ url_for('compliance') }}">
+      <i class="bi bi-shield-check"></i>{{ t('nav.compliance') }}
+    </a>
+    <a class="sidebar-flyout-item" href="{{ url_for('audit_readiness') }}">
+      <i class="bi bi-clipboard2-pulse"></i>{{ t('nav.audit_readiness') }}
+    </a>
+    <a class="sidebar-flyout-item" href="{{ url_for('vmware') }}">
+      <i class="bi bi-diagram-3"></i>{{ t('nav.vmware') }}
+    </a>
+    <a class="sidebar-flyout-item {% if request.endpoint == 'alerts' %}active{% endif %}" href="{{ url_for('alerts') }}">
+      <i class="bi bi-bell{% if active_alerts_count > 0 %}-fill text-danger{% endif %}"></i>
+      {{ t('nav.alerts') }}
+      {% if active_alerts_count > 0 %}
+      <span class="badge bg-danger ms-auto" style="font-size:.6rem">{{ active_alerts_count }}</span>
+      {% endif %}
+    </a>
+  </div>
+
+  <div id="operationsFlyoutPanel">
+    <a class="sidebar-flyout-item {% if request.endpoint == 'assignment_queue' %}active{% endif %}"
+       href="{{ url_for('assignment_queue') }}">
+      <i class="bi bi-hourglass-split"></i>{{ t('nav.assignment_queue') }}
+      {%- set pending_count = pending_assignments_count | default(0) -%}
+      {% if pending_count > 0 %}<span class="badge bg-warning text-dark ms-1" style="font-size:.6rem">{{ pending_count }}</span>{% endif %}
+    </a>
+    <a class="sidebar-flyout-item {% if request.endpoint == 'discovery_history' %}active{% endif %}"
+       href="{{ url_for('discovery_history') }}">
+      <i class="bi bi-clock-history"></i>{{ t('nav.discovery_history') }}
+    </a>
+    <a class="sidebar-flyout-item {% if request.endpoint == 'discovery_conflicts' %}active{% endif %}"
+       href="{{ url_for('discovery_conflicts') }}">
+      <i class="bi bi-exclamation-triangle"></i>{{ t('nav.discovery_conflicts') }}
+    </a>
+    <a class="sidebar-flyout-item {% if request.endpoint in ['admin_audit','admin_snapshot_view'] %}active{% endif %}"
+       href="{{ url_for('admin_audit') }}">
+      <i class="bi bi-journal-text"></i>{{ t('nav.audit_snapshots') }}
+    </a>
+  </div>
+
+  <div id="visibilityFlyoutPanel">
+    <a class="sidebar-flyout-item" href="{{ url_for('visibility_versions') }}">
+      <i class="bi bi-calendar-check"></i>{{ t('nav.versions') }}
+    </a>
+    <a class="sidebar-flyout-item" href="{{ url_for('visibility_licence_history') }}">
+      <i class="bi bi-graph-up"></i>{{ t('nav.licence_history') }}
+    </a>
+  </div>
+
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+  <div class="main-area">
+    <header class="topbar">
+      <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle navigation">
+        <i class="bi bi-list"></i>
+      </button>
+      <span class="fw-semibold text-secondary">{% block page_title %}{% endblock %}</span>
+    </header>
+{% else %}
+  <div class="main-area no-sidebar">
+{% endif %}
+
+    <div class="container-fluid py-4">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in messages %}
+          <div class="alert alert-{{ cat }} alert-dismissible fade show" role="alert">
+            {{ msg }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+{% if session.logged_in %}
+</div>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  const sidebarToggle = document.getElementById('sidebarToggle');
+  const sidebar = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sidebarBackdrop');
+  if (sidebarToggle) {
+    sidebarToggle.addEventListener('click', () => {
+      sidebar.classList.toggle('show');
+      backdrop.classList.toggle('show');
+    });
+  }
+  if (backdrop) {
+    backdrop.addEventListener('click', () => {
+      sidebar.classList.remove('show');
+      backdrop.classList.remove('show');
+    });
+  }
+
+  // Generic sidebar flyout — handles any trigger with data-flyout="<panel-id>"
+  document.querySelectorAll('.sidebar-flyout-trigger[data-flyout]').forEach(trigger => {
+    const panel = document.getElementById(trigger.dataset.flyout);
+    if (!panel) return;
+    let hideTimer = null;
+
+    function showFlyout() {
+      // Hide any other open panels first
+      document.querySelectorAll('#serversFlyoutPanel,#contractsFlyoutPanel,#sidebarFlyoutPanel,#billingReportsFlyoutPanel,#complianceFlyoutPanel,#visibilityFlyoutPanel,#operationsFlyoutPanel').forEach(p => {
+        if (p !== panel) p.classList.remove('visible');
+      });
+      document.querySelectorAll('.sidebar-flyout-trigger').forEach(t => {
+        if (t !== trigger) t.classList.remove('flyout-open');
+      });
+      clearTimeout(hideTimer);
+      const rect = trigger.getBoundingClientRect();
+      panel.style.top  = rect.top + 'px';
+      panel.style.left = rect.right + 'px';
+      panel.classList.add('visible');
+      trigger.classList.add('flyout-open');
+    }
+
+    function hideFlyout() {
+      hideTimer = setTimeout(() => {
+        panel.classList.remove('visible');
+        trigger.classList.remove('flyout-open');
+      }, 80);
+    }
+
+    trigger.addEventListener('mouseenter', showFlyout);
+    trigger.addEventListener('mouseleave', hideFlyout);
+    panel.addEventListener('mouseenter', () => clearTimeout(hideTimer));
+    panel.addEventListener('mouseleave', hideFlyout);
+  });
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

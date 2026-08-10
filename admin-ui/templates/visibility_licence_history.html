@@ -1,0 +1,556 @@
+{% extends "base.html" %}
+{% block title %}Licence History{% if selected %} — {{ selected.client_name }}{% endif %} — Helios{% endblock %}
+{% block content %}
+
+<style>
+/* ── Palette tokens ──────────────────────────────────────────────── */
+.viz-root {
+  --surface-1:      #fcfcfb;
+  --text-primary:   #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted:     #898781;
+  --gridline:       #e1e0d9;
+  --axis:           #c3c2b7;
+  --border:         rgba(11,11,11,0.10);
+  /* categorical */
+  --c1: #2a78d6;   /* required / oracle_database */
+  --c2: #008300;   /* assigned  / oracle_weblogic */
+  /* status */
+  --st-under:     #d03b3b;
+  --st-compliant: #0ca30c;
+  --st-over:      #ec835a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .viz-root {
+    --surface-1:    #1a1a19;
+    --text-primary: #ffffff;
+    --text-secondary:#c3c2b7;
+    --text-muted:   #898781;
+    --gridline:     #2c2c2a;
+    --axis:         #383835;
+    --border:       rgba(255,255,255,0.10);
+    --c1: #3987e5;
+    --c2: #008300;
+  }
+}
+:root[data-theme="dark"] .viz-root {
+  --surface-1:    #1a1a19;
+  --text-primary: #ffffff;
+  --text-secondary:#c3c2b7;
+  --text-muted:   #898781;
+  --gridline:     #2c2c2a;
+  --axis:         #383835;
+  --border:       rgba(255,255,255,0.10);
+  --c1: #3987e5;
+  --c2: #008300;
+}
+
+/* ── KPI tiles ───────────────────────────────────────────────────── */
+.kpi-row { display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem; }
+.kpi-tile {
+  flex:1 1 140px; min-width:120px;
+  background:var(--surface-1);
+  border:1px solid var(--border);
+  border-radius:8px; padding:.75rem 1rem;
+}
+.kpi-label { font-size:.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; }
+.kpi-value { font-size:1.75rem; font-weight:700; line-height:1.15; color:var(--text-primary); font-variant-numeric:tabular-nums; }
+.kpi-sub   { font-size:.72rem; color:var(--text-secondary); margin-top:.1rem; }
+
+/* ── Chart cards ─────────────────────────────────────────────────── */
+.chart-card {
+  background:var(--surface-1);
+  border:1px solid var(--border);
+  border-radius:8px; padding:1.25rem 1.5rem;
+  margin-bottom:1.25rem;
+}
+.chart-title { font-size:.85rem; font-weight:600; color:var(--text-secondary); margin-bottom:.75rem; }
+
+/* ── Legend ──────────────────────────────────────────────────────── */
+.legend { display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:.5rem; }
+.legend-item { display:flex; align-items:center; gap:.35rem; font-size:.78rem; color:var(--text-secondary); }
+.legend-swatch { width:24px; height:3px; border-radius:2px; flex-shrink:0; }
+.legend-swatch.rect { width:12px; height:12px; border-radius:3px; }
+
+/* ── SVG shared ──────────────────────────────────────────────────── */
+svg.chart { display:block; width:100%; overflow:visible; }
+
+/* ── Tooltip ─────────────────────────────────────────────────────── */
+#chart-tooltip {
+  position:fixed; pointer-events:none; z-index:9999;
+  background:var(--surface-1); border:1px solid var(--axis);
+  border-radius:6px; padding:.45rem .65rem;
+  font-size:.78rem; color:var(--text-primary);
+  box-shadow:0 2px 8px rgba(0,0,0,.15);
+  display:none; max-width:220px;
+}
+#chart-tooltip .tt-title { font-weight:600; margin-bottom:.2rem; }
+#chart-tooltip .tt-row   { display:flex; justify-content:space-between; gap:.75rem; }
+#chart-tooltip .tt-key   { color:var(--text-secondary); }
+#chart-tooltip .tt-val   { font-variant-numeric:tabular-nums; font-weight:600; }
+
+/* ── Client picker ───────────────────────────────────────────────── */
+.client-pill {
+  display:inline-flex; align-items:center; gap:.4rem;
+  padding:.3rem .75rem; border-radius:20px;
+  border:1px solid var(--axis); font-size:.8rem;
+  text-decoration:none; color:var(--text-secondary);
+  margin:.2rem;
+  transition:background .15s;
+}
+.client-pill:hover { background:var(--gridline); color:var(--text-primary); }
+.client-pill.active { background:var(--c1); border-color:var(--c1); color:#fff; }
+
+/* ── Table ───────────────────────────────────────────────────────── */
+.hist-table { font-size:.82rem; }
+.status-dot {
+  display:inline-block; width:8px; height:8px;
+  border-radius:50%; margin-right:.3rem; flex-shrink:0;
+}
+</style>
+
+<div class="viz-root">
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h4 class="mb-0">
+    <i class="bi bi-graph-up me-2"></i>{{ t('licence_history.title') }}
+    {% if selected %}<span class="text-muted fw-normal"> — {{ selected.client_name }}</span>{% endif %}
+  </h4>
+</div>
+
+<!-- Client selector -->
+{% if clients %}
+<div class="mb-4">
+  <span class="text-muted small me-2">Client:</span>
+  {% for c in clients %}
+  <a href="{{ url_for('visibility_licence_history_client', client_code=c.client_code) }}"
+     class="client-pill {% if selected and selected.client_code == c.client_code %}active{% endif %}">
+    {{ c.client_name }}
+    <span style="opacity:.65;font-size:.7rem">({{ c.snapshot_count }})</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if not selected %}
+  <div class="text-muted py-5 text-center">
+    <i class="bi bi-graph-up" style="font-size:2.5rem;opacity:.3;display:block;margin-bottom:.75rem"></i>
+    {% if clients %}
+      {{ t('licence_history.select_hint') }}
+    {% else %}
+      {{ t('licence_history.no_clients') }} <a href="{{ url_for('admin_audit') }}">{{ t('licence_history.go_audit') }}</a>
+    {% endif %}
+  </div>
+
+{% elif not chart_data or not chart_data.monthly %}
+  <div class="text-muted py-5 text-center">
+    <i class="bi bi-camera" style="font-size:2.5rem;opacity:.3;display:block;margin-bottom:.75rem"></i>
+    {{ t('licence_history.no_snapshots_yet') }}<br>
+    <a href="{{ url_for('admin_audit') }}" class="mt-2 d-inline-block">{{ t('licence_history.take_first') }}</a>
+  </div>
+
+{% else %}
+
+{# ── Pull latest month for KPI tiles ────────────────────────────── #}
+{%- set last = chart_data.monthly[-1] -%}
+{%- set pct = ((last.total_assigned / last.total_required * 100) | round(1)) if last.total_required > 0 else 0 -%}
+
+<!-- KPI row -->
+<div class="kpi-row">
+  <div class="kpi-tile">
+    <div class="kpi-label">{{ t('licence_history.kpi_snapshots') }}</div>
+    <div class="kpi-value">{{ chart_data.monthly | length }}</div>
+    <div class="kpi-sub">up to {{ chart_data.monthly[0].snapshot_month[:7] }} – {{ last.snapshot_month[:7] }}</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="kpi-label">{{ t('licence_history.kpi_required') }}</div>
+    <div class="kpi-value" style="color:var(--c1)">{{ last.total_required | int }}</div>
+    <div class="kpi-sub">{{ t('licence_history.kpi_latest') }}</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="kpi-label">{{ t('licence_history.kpi_assigned') }}</div>
+    <div class="kpi-value" style="color:var(--c2)">{{ last.total_assigned | int }}</div>
+    <div class="kpi-sub">{{ pct }}% {{ t('licence_history.kpi_coverage') }}</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="kpi-label">{{ t('licence_history.kpi_under') }}</div>
+    <div class="kpi-value" style="color:{% if last.under_count > 0 %}var(--st-under){% else %}var(--st-compliant){% endif %}">{{ last.under_count }}</div>
+    <div class="kpi-sub">{{ t('licence_history.kpi_lines') }}</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="kpi-label">{{ t('licence_history.kpi_compliant') }}</div>
+    <div class="kpi-value" style="color:var(--st-compliant)">{{ last.compliant_count }}</div>
+    <div class="kpi-sub">{{ t('licence_history.kpi_lines') }}</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="kpi-label">{{ t('licence_history.kpi_servers') }}</div>
+    <div class="kpi-value">{{ last.server_count }}</div>
+    <div class="kpi-sub">{{ t('licence_history.kpi_latest') }}</div>
+  </div>
+</div>
+
+<!-- Chart 1: Required vs Assigned over time -->
+<div class="chart-card">
+  <div class="chart-title">{{ t('licence_history.chart_coverage') }}</div>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--c1)"></div>{{ t('licence_history.legend_required') }}</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--c2)"></div>{{ t('licence_history.legend_assigned') }}</div>
+  </div>
+  <svg class="chart" id="chart-coverage" style="height:220px" role="img" aria-label="{{ t('licence_history.chart_coverage') }}"></svg>
+</div>
+
+<!-- Chart 2: Compliance breakdown per month (stacked bar) -->
+<div class="chart-card">
+  <div class="chart-title">{{ t('licence_history.chart_compliance') }} <span class="text-muted fw-normal">({{ t('licence_history.chart_compliance_sub') }})</span></div>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-swatch rect" style="background:var(--st-under)"></div>{{ t('licence_history.legend_under') }}</div>
+    <div class="legend-item"><div class="legend-swatch rect" style="background:var(--st-compliant)"></div>{{ t('licence_history.legend_compliant') }}</div>
+    <div class="legend-item"><div class="legend-swatch rect" style="background:var(--st-over)"></div>{{ t('licence_history.legend_over') }}</div>
+  </div>
+  <svg class="chart" id="chart-compliance" style="height:180px" role="img" aria-label="{{ t('licence_history.chart_compliance') }}"></svg>
+</div>
+
+{% if chart_data.family_monthly %}
+<!-- Chart 3: Requirements by product family -->
+<div class="chart-card">
+  <div class="chart-title">{{ t('licence_history.chart_family') }}</div>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--c1)"></div>{{ t('licence_history.legend_db') }}</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--c2)"></div>{{ t('licence_history.legend_wls') }}</div>
+  </div>
+  <svg class="chart" id="chart-family" style="height:200px" role="img" aria-label="{{ t('licence_history.chart_family') }}"></svg>
+</div>
+{% endif %}
+
+<!-- Latest snapshot detail table -->
+{% if latest_lines %}
+<div class="chart-card">
+  <div class="chart-title">
+    {{ t('licence_history.latest_detail') }}
+    <span class="text-muted fw-normal ms-1">{{ chart_data.latest_snap.snapshot_month[:7] }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm hist-table mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>{{ t('licence_history.col_hostname') }}</th>
+          <th>{{ t('licence_history.col_env') }}</th>
+          <th>{{ t('licence_history.col_product') }}</th>
+          <th>{{ t('licence_history.col_edition') }}</th>
+          <th class="text-end">{{ t('licence_history.col_required') }}</th>
+          <th class="text-end">{{ t('licence_history.col_assigned') }}</th>
+          <th class="text-end">{{ t('licence_history.col_delta') }}</th>
+          <th>{{ t('licence_history.col_status') }}</th>
+          <th>{{ t('licence_history.col_csi') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in latest_lines %}
+        {% set dot_color = {'under_licensed':'#d03b3b','compliant':'#0ca30c','over_licensed':'#ec835a'}.get(l.compliance_status,'#898781') %}
+        <tr>
+          <td class="fw-semibold">{{ l.hostname }}</td>
+          <td><span class="badge bg-secondary">{{ l.environment or '—' }}</span></td>
+          <td>{{ l.product_family or '' }}</td>
+          <td class="text-muted">{{ l.product_detail or '' }}</td>
+          <td class="text-end font-monospace">{{ l.licences_required | int if l.licences_required is not none else '—' }}</td>
+          <td class="text-end font-monospace">{{ l.licences_assigned | int if l.licences_assigned is not none else '—' }}</td>
+          <td class="text-end font-monospace {% if l.surplus_deficit is not none and l.surplus_deficit < 0 %}text-danger{% elif l.surplus_deficit is not none and l.surplus_deficit > 0 %}text-success{% endif %}">
+            {% if l.surplus_deficit is not none %}{{ '%+d' % l.surplus_deficit | int }}{% else %}—{% endif %}
+          </td>
+          <td>
+            <span class="status-dot" style="background:{{ dot_color }}"></span>
+            {{ l.compliance_status | replace('_', ' ') | title if l.compliance_status else '—' }}
+          </td>
+          <td class="text-muted small">{{ l.csi_number or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% endif %}{# end has data #}
+
+</div>{# .viz-root #}
+
+<!-- Shared tooltip -->
+<div id="chart-tooltip"></div>
+
+<script>
+const LH_LABELS = {
+  required:     {{ t('licence_history.legend_required') | tojson }},
+  assigned:     {{ t('licence_history.legend_assigned') | tojson }},
+  coverage:     {{ t('licence_history.kpi_coverage') | tojson }},
+  under:        {{ t('licence_history.legend_under') | tojson }},
+  compliant:    {{ t('licence_history.legend_compliant') | tojson }},
+  over:         {{ t('licence_history.legend_over') | tojson }},
+  total:        {{ t('label.total') | tojson }},
+  db:           {{ t('licence_history.legend_db') | tojson }},
+  wls:          {{ t('licence_history.legend_wls') | tojson }}
+};
+</script>
+<script>
+(function () {
+  const DATA = {{ chart_data | tojson if chart_data else 'null' }};
+  if (!DATA || !DATA.monthly || DATA.monthly.length === 0) return;
+
+  const monthly = DATA.monthly;
+  const familyMonthly = DATA.family_monthly || [];
+
+  // ── helpers ────────────────────────────────────────────────────────
+  const tt = document.getElementById('chart-tooltip');
+  function showTT(x, y, html) {
+    tt.innerHTML = html;
+    tt.style.display = 'block';
+    // nudge to stay in viewport
+    const pad = 12;
+    const W = tt.offsetWidth, H = tt.offsetHeight;
+    tt.style.left = Math.min(x + pad, window.innerWidth  - W - pad) + 'px';
+    tt.style.top  = Math.max(y - H - pad, pad) + 'px';
+  }
+  function hideTT() { tt.style.display = 'none'; }
+
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() ||
+           getComputedStyle(document.querySelector('.viz-root')).getPropertyValue(name).trim();
+  }
+  function fmtMonth(iso) {
+    // "2026-01-01" → "Jan 2026"
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString('en-GB', {month:'short', year:'numeric'});
+  }
+  function fmtNum(n) { return Number(n).toLocaleString(); }
+
+  // ── SVG builder ────────────────────────────────────────────────────
+  const NS = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs, parent) {
+    const e = document.createElementNS(NS, tag);
+    Object.entries(attrs || {}).forEach(([k,v]) => e.setAttribute(k, v));
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
+  function buildAxes(svg, W, H, PAD, yMax, months, gridCount=5) {
+    const gW = W - PAD.l - PAD.r;
+    const gH = H - PAD.t - PAD.b;
+    const gridColor = cssVar('--gridline') || '#e1e0d9';
+    const axisColor = cssVar('--axis') || '#c3c2b7';
+    const mutedColor = cssVar('--text-muted') || '#898781';
+
+    // horizontal gridlines
+    for (let i = 0; i <= gridCount; i++) {
+      const y = PAD.t + gH - (i / gridCount) * gH;
+      el('line', {x1: PAD.l, x2: PAD.l + gW, y1: y, y2: y,
+                  stroke: gridColor, 'stroke-width': 1}, svg);
+      if (i > 0) {
+        const label = Math.round((i / gridCount) * yMax);
+        const t = el('text', {x: PAD.l - 6, y: y + 4,
+                               fill: mutedColor, 'text-anchor':'end',
+                               'font-size':'10', 'font-family':'system-ui,sans-serif'}, svg);
+        t.textContent = fmtNum(label);
+      }
+    }
+    // baseline
+    el('line', {x1: PAD.l, x2: PAD.l + gW, y1: PAD.t + gH, y2: PAD.t + gH,
+                stroke: axisColor, 'stroke-width': 1.5}, svg);
+
+    // x axis labels — show every label when ≤12, else every 3rd
+    const step = months.length > 12 ? 3 : 1;
+    months.forEach((m, i) => {
+      if (i % step !== 0 && i !== months.length - 1) return;
+      const x = PAD.l + (i / Math.max(months.length - 1, 1)) * gW;
+      const t = el('text', {x, y: PAD.t + gH + 14,
+                             fill: mutedColor, 'text-anchor':'middle',
+                             'font-size':'10', 'font-family':'system-ui,sans-serif'}, svg);
+      t.textContent = fmtMonth(m);
+    });
+
+    return {gW, gH};
+  }
+
+  // ── CHART 1: Coverage line chart ──────────────────────────────────
+  (function () {
+    const svg = document.getElementById('chart-coverage');
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const W = rect.width || 700, H = 220;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    const PAD = {t:12, b:30, l:48, r:16};
+    const gW = W - PAD.l - PAD.r, gH = H - PAD.t - PAD.b;
+
+    const months = monthly.map(r => r.snapshot_month);
+    const yMax = Math.max(...monthly.map(r => Math.max(r.total_required, r.total_assigned)), 1) * 1.1;
+
+    buildAxes(svg, W, H, PAD, yMax, months);
+
+    function xPos(i) { return PAD.l + (i / Math.max(months.length - 1, 1)) * gW; }
+    function yPos(v) { return PAD.t + gH - (v / yMax) * gH; }
+
+    function polyline(data, key, color) {
+      const pts = data.map((r, i) => `${xPos(i)},${yPos(r[key])}`).join(' ');
+      el('polyline', {points: pts, fill:'none', stroke: color,
+                      'stroke-width':'2', 'stroke-linejoin':'round',
+                      'stroke-linecap':'round'}, svg);
+      // dots
+      data.forEach((r, i) => {
+        const cx = xPos(i), cy = yPos(r[key]);
+        const dot = el('circle', {cx, cy, r:4, fill: color,
+                                   stroke: cssVar('--surface-1') || '#fcfcfb',
+                                   'stroke-width':2}, svg);
+        // hit target
+        const hitArea = el('circle', {cx, cy, r:12, fill:'transparent',
+                                       style:'cursor:crosshair'}, svg);
+        hitArea.addEventListener('mouseenter', e => {
+          showTT(e.clientX, e.clientY,
+            `<div class="tt-title">${fmtMonth(r.snapshot_month)}</div>
+             <div class="tt-row"><span class="tt-key">${LH_LABELS.required}</span><span class="tt-val" style="color:#2a78d6">${fmtNum(r.total_required)}</span></div>
+             <div class="tt-row"><span class="tt-key">${LH_LABELS.assigned}</span><span class="tt-val" style="color:#008300">${fmtNum(r.total_assigned)}</span></div>
+             <div class="tt-row"><span class="tt-key">${LH_LABELS.coverage}</span><span class="tt-val">${r.total_required > 0 ? Math.round(r.total_assigned/r.total_required*100) : 0}%</span></div>`
+          );
+        });
+        hitArea.addEventListener('mousemove', e => showTT(e.clientX, e.clientY, tt.innerHTML));
+        hitArea.addEventListener('mouseleave', hideTT);
+      });
+    }
+
+    // area fill under required
+    const reqPts = monthly.map((r, i) => `${xPos(i)},${yPos(r.total_required)}`).join(' ');
+    const areaD  = `M${PAD.l},${PAD.t+gH} ` +
+                   monthly.map((r, i) => `L${xPos(i)},${yPos(r.total_required)}`).join(' ') +
+                   ` L${xPos(monthly.length-1)},${PAD.t+gH} Z`;
+    el('path', {d: areaD, fill: '#2a78d6', opacity:'0.08'}, svg);
+
+    polyline(monthly, 'total_required', '#2a78d6');
+    polyline(monthly, 'total_assigned', '#008300');
+
+    // crosshair line (vertical, appears on hover)
+    const vLine = el('line', {x1:0, x2:0, y1:PAD.t, y2:PAD.t+gH,
+                               stroke: cssVar('--axis')||'#c3c2b7',
+                               'stroke-width':1, 'stroke-dasharray':'4 3',
+                               opacity:0}, svg);
+    svg.addEventListener('mousemove', e => {
+      const svgRect = svg.getBoundingClientRect();
+      const x = e.clientX - svgRect.left;
+      vLine.setAttribute('x1', x); vLine.setAttribute('x2', x);
+      vLine.setAttribute('opacity', (x > PAD.l && x < PAD.l + gW) ? 1 : 0);
+    });
+    svg.addEventListener('mouseleave', () => { vLine.setAttribute('opacity', 0); hideTT(); });
+  })();
+
+  // ── CHART 2: Stacked bar compliance ───────────────────────────────
+  (function () {
+    const svg = document.getElementById('chart-compliance');
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const W = rect.width || 700, H = 180;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    const PAD = {t:12, b:30, l:48, r:16};
+    const gW = W - PAD.l - PAD.r, gH = H - PAD.t - PAD.b;
+
+    const months = monthly.map(r => r.snapshot_month);
+    const yMax = Math.max(...monthly.map(r => r.under_count + r.compliant_count + r.over_count), 1) * 1.1;
+
+    buildAxes(svg, W, H, PAD, yMax, months, 4);
+
+    const barW = Math.max(4, Math.min(40, gW / months.length * 0.6));
+    const surfaces = [
+      {key:'over_count',       color:'#ec835a', label:'Over-licensed'},
+      {key:'compliant_count',  color:'#0ca30c', label:'Compliant'},
+      {key:'under_count',      color:'#d03b3b', label:'Under-licensed'},
+    ];
+
+    monthly.forEach((r, i) => {
+      const cx = PAD.l + (i / Math.max(months.length - 1, 1)) * gW;
+      let base = 0;
+      const total = r.under_count + r.compliant_count + r.over_count;
+      // Draw bottom → top: under, compliant, over
+      surfaces.forEach(({key, color, label}) => {
+        const v = r[key];
+        if (v <= 0) return;
+        const h = (v / yMax) * gH;
+        const y = PAD.t + gH - ((base + v) / yMax) * gH;
+        const bar = el('rect', {
+          x: cx - barW/2, y, width: barW, height: h,
+          fill: color, rx: 2, style:'cursor:default'
+        }, svg);
+        // 2px gap between stacked segments (visual separation)
+        if (base > 0) bar.setAttribute('y', y - 2);
+
+        bar.addEventListener('mouseenter', e => {
+          showTT(e.clientX, e.clientY,
+            `<div class="tt-title">${fmtMonth(r.snapshot_month)}</div>
+             <div class="tt-row"><span class="tt-key">${LH_LABELS.under}</span><span class="tt-val" style="color:#d03b3b">${r.under_count}</span></div>
+             <div class="tt-row"><span class="tt-key">${LH_LABELS.compliant}</span><span class="tt-val" style="color:#0ca30c">${r.compliant_count}</span></div>
+             <div class="tt-row"><span class="tt-key">${LH_LABELS.over}</span><span class="tt-val" style="color:#ec835a">${r.over_count}</span></div>
+             <div class="tt-row"><span class="tt-key">${LH_LABELS.total}</span><span class="tt-val">${total}</span></div>`
+          );
+        });
+        bar.addEventListener('mousemove', e => showTT(e.clientX, e.clientY, tt.innerHTML));
+        bar.addEventListener('mouseleave', hideTT);
+        base += v;
+      });
+    });
+  })();
+
+  // ── CHART 3: Family line chart ────────────────────────────────────
+  (function () {
+    const svg = document.getElementById('chart-family');
+    if (!svg || !familyMonthly.length) return;
+    const rect = svg.getBoundingClientRect();
+    const W = rect.width || 700, H = 200;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    const PAD = {t:12, b:30, l:48, r:16};
+    const gW = W - PAD.l - PAD.r, gH = H - PAD.t - PAD.b;
+
+    // Group by family
+    const families = [...new Set(familyMonthly.map(r => r.product_family))];
+    const months   = [...new Set(familyMonthly.map(r => r.snapshot_month))].sort();
+    const byFamily = {};
+    families.forEach(f => byFamily[f] = {});
+    familyMonthly.forEach(r => { byFamily[r.product_family][r.snapshot_month] = r.required; });
+
+    const yMax = Math.max(...familyMonthly.map(r => r.required), 1) * 1.1;
+    buildAxes(svg, W, H, PAD, yMax, months);
+
+    const COLORS = {'oracle_database':'#2a78d6','oracle_weblogic':'#008300'};
+    const LABELS = {'oracle_database': LH_LABELS.db || 'Oracle Database', 'oracle_weblogic': LH_LABELS.wls || 'Oracle WebLogic'};
+
+    function xPos(i) { return PAD.l + (i / Math.max(months.length - 1, 1)) * gW; }
+    function yPos(v) { return PAD.t + gH - (v / yMax) * gH; }
+
+    families.forEach(fam => {
+      const color = COLORS[fam] || '#2a78d6';
+      const data  = months.map(m => ({m, v: byFamily[fam][m] || 0}));
+      const pts   = data.map((d, i) => `${xPos(i)},${yPos(d.v)}`).join(' ');
+      el('polyline', {points: pts, fill:'none', stroke: color,
+                      'stroke-width':'2', 'stroke-linejoin':'round',
+                      'stroke-linecap':'round'}, svg);
+      data.forEach((d, i) => {
+        const cx = xPos(i), cy = yPos(d.v);
+        el('circle', {cx, cy, r:4, fill: color,
+                      stroke: cssVar('--surface-1')||'#fcfcfb', 'stroke-width':2}, svg);
+        const hitArea = el('circle', {cx, cy, r:12, fill:'transparent', style:'cursor:crosshair'}, svg);
+        hitArea.addEventListener('mouseenter', e => {
+          showTT(e.clientX, e.clientY,
+            `<div class="tt-title">${fmtMonth(d.m)}</div>
+             <div class="tt-row"><span class="tt-key">${LABELS[fam]||fam}</span>
+             <span class="tt-val" style="color:${color}">${fmtNum(d.v)}</span></div>`
+          );
+        });
+        hitArea.addEventListener('mousemove', e => showTT(e.clientX, e.clientY, tt.innerHTML));
+        hitArea.addEventListener('mouseleave', hideTT);
+      });
+    });
+  })();
+
+  // Re-render on resize
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => location.reload(), 300);
+  });
+})();
+</script>
+
+{% endblock %}

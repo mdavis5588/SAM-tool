@@ -1,0 +1,375 @@
+{% extends "base.html" %}
+{% block title %}{{ (client.client_name if client else client_name) }} — FinOps — Helios{% endblock %}
+
+{% block content %}
+{% if not client %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('finops') }}">FinOps</a></li>
+    <li class="breadcrumb-item active">{{ client_name }}</li>
+  </ol>
+</nav>
+<div class="d-flex align-items-center gap-2 mb-4">
+  <h4 class="mb-0"><i class="bi bi-building me-1"></i>{{ client_name }}</h4>
+  <span class="text-muted small">— Licence Cost Detail</span>
+</div>
+<div class="alert alert-info">
+  <i class="bi bi-info-circle me-2"></i>No cost data found for <strong>{{ client_name }}</strong> yet.
+  Once licences and contracts are configured, the cost summary will appear here.
+</div>
+{% else %}
+<style>
+  :root {
+    --card-bg:     #ffffff;
+    --card-border: #e3e6ea;
+    --muted:       #6c757d;
+    --text:        #212529;
+    --blue:        #2a78d6;
+    --green:       #1baf7a;
+    --amber:       #eda100;
+    --red:         #e34948;
+    --track:       #e9ecef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --card-bg:     #1e1e1d;
+      --card-border: #2c2c2a;
+      --muted:       #898781;
+      --text:        #f0eeeb;
+      --track:       #2c2c2a;
+    }
+  }
+
+  /* ── KPI strip ── */
+  .kpi-strip { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.75rem; }
+  .kpi-card {
+    flex: 1 1 140px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: .85rem 1.1rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+  }
+  .kpi-card.blue::before  { background: var(--blue); }
+  .kpi-card.green::before { background: var(--green); }
+  .kpi-card.amber::before { background: var(--amber); }
+  .kpi-card.red::before   { background: var(--red); }
+  .kpi-label {
+    font-size: .68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--muted);
+    margin-bottom: .25rem;
+  }
+  .kpi-value {
+    font-size: 1.55rem;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.1;
+  }
+  .kpi-card.blue  .kpi-value { color: var(--blue); }
+  .kpi-card.green .kpi-value { color: var(--green); }
+  .kpi-card.red   .kpi-value { color: var(--red); }
+  .kpi-sub { font-size: .75rem; color: var(--muted); margin-top: .2rem; }
+
+  /* ── Section heading ── */
+  .section-head {
+    font-size: .72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: var(--muted);
+    margin-bottom: .75rem;
+  }
+
+  /* ── Pie legend ── */
+  .pie-legend { font-size: .78rem; color: var(--muted); }
+  .pie-legend-row {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .25rem 0;
+    border-bottom: 1px solid var(--card-border);
+  }
+  .pie-legend-row:last-child { border-bottom: none; }
+  .dot {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── Source badges ── */
+  .src-locked { font-size:.67rem; font-weight:600; padding:.1rem .4rem; border-radius:20px; background:#ede9fe; color:#5b21b6; white-space:nowrap; }
+  .src-shared { font-size:.67rem; font-weight:600; padding:.1rem .4rem; border-radius:20px; background:#e0f2fe; color:#075985; white-space:nowrap; }
+
+  /* ── Group header rows inside the table ── */
+  .tbl-group-row td {
+    background: #f8f7ff;
+    font-size: .68rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .07em;
+    color: #5b21b6;
+    padding: .35rem .6rem;
+    border-top: 2px solid #ede9fe;
+    border-bottom: 1px solid #ede9fe;
+  }
+  .tbl-group-row.shared td { background:#f0f9ff; color:#075985; border-top-color:#bae6fd; border-bottom-color:#bae6fd; }
+  @media (prefers-color-scheme: dark) {
+    .tbl-group-row td         { background:#1e1a2e; color:#c4b5fd; border-color:#3b2f6e; }
+    .tbl-group-row.shared td  { background:#0c1e2e; color:#7dd3fc; border-color:#1e4060; }
+    .src-locked { background:#2d1f5e; color:#c4b5fd; }
+    .src-shared { background:#0c2a40; color:#7dd3fc; }
+  }
+
+  .pie-legend-name { flex: 1; }
+  .pie-legend-cost { font-weight: 600; color: var(--text); white-space: nowrap; }
+  .pie-legend-pct  { color: var(--muted); font-size: .72rem; white-space: nowrap; min-width: 2.8rem; text-align: right; }
+
+  /* ── Combined table ── */
+  .data-tbl {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .82rem;
+  }
+  .data-tbl th {
+    font-size: .67rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--muted);
+    padding: .4rem .55rem;
+    border-bottom: 2px solid var(--card-border);
+    text-align: right;
+    white-space: nowrap;
+  }
+  .data-tbl th:first-child { text-align: left; }
+  .data-tbl td {
+    padding: .5rem .55rem;
+    border-bottom: 1px solid var(--card-border);
+    text-align: right;
+    vertical-align: middle;
+    color: var(--muted);
+  }
+  .data-tbl td:first-child { text-align: left; color: var(--text); }
+  .data-tbl tbody tr:last-child td { border-bottom: none; }
+  .data-tbl tfoot td {
+    font-weight: 700;
+    color: var(--text);
+    border-top: 2px solid var(--card-border);
+    padding-top: .55rem;
+    border-bottom: none;
+  }
+  .data-tbl tbody tr:hover td { background: rgba(0,0,0,.018); }
+
+  /* ── Util bar ── */
+  .util-wrap { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+  .util-bar  { width: 56px; height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; flex-shrink: 0; }
+  .util-fill { height: 100%; border-radius: 3px; background: var(--green); }
+
+  .waste-badge {
+    font-size: .7rem; font-weight: 600;
+    padding: .1rem .38rem; border-radius: 20px; white-space: nowrap;
+  }
+  .w-high { background: #fde8e8; color: var(--red); }
+  .w-mid  { background: #fef3cd; color: #856404; }
+  .w-low  { background: #d1f2e8; color: #0a6847; }
+</style>
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('finops') }}">FinOps</a></li>
+    <li class="breadcrumb-item active">{{ client.client_name }}</li>
+  </ol>
+</nav>
+
+<div class="d-flex align-items-center gap-2 mb-4">
+  <h4 class="mb-0"><i class="bi bi-building me-1"></i>{{ client.client_name }}</h4>
+  <span class="text-muted small">— Licence Cost Detail</span>
+</div>
+
+<!-- ── KPI Strip ── -->
+{% set util_pct   = ((client.total_assigned / (client.total_assigned + client.total_unassigned) * 100) | round(1)) if (client.total_assigned + client.total_unassigned) > 0 else 0 %}
+{% set waste_pct  = (100 - util_pct) | round(1) %}
+
+<div class="kpi-strip">
+  <div class="kpi-card blue">
+    <div class="kpi-label">{{ t('finops.total_client_cost') }} ({{ client.fy_label }})</div>
+    <div class="kpi-value">${{ "{:,.0f}".format(client.total_client_cost) }}</div>
+    <div class="kpi-sub">Locked support + shared pool ({{ client.shared_pool_months }} month{{ 's' if client.shared_pool_months != 1 }})</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">{{ t('finops.annual_support') }}</div>
+    <div class="kpi-value">${{ "{:,.0f}".format(client.total_support) }}</div>
+    <div class="kpi-sub">{{ t('finops_detail.client_locked_section') }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Shared Pool ({{ client.fy_label }})</div>
+    <div class="kpi-value">${{ "{:,.0f}".format(client.shared_pool_fy_cost) }}</div>
+    <div class="kpi-sub">
+      {% if client.shared_pool_estimated %}
+        Current month estimate — <a href="{{ url_for('admin_audit') }}">take a snapshot</a> to track monthly
+      {% elif client.shared_pool_months == 0 %}
+        No usage — <a href="{{ url_for('shared_pool_monthly') }}">view detail</a>
+      {% else %}
+        {{ client.shared_pool_months }} month{{ 's' if client.shared_pool_months != 1 }} from snapshots
+      {% endif %}
+    </div>
+  </div>
+  <div class="kpi-card green">
+    <div class="kpi-label">{{ t('finops_detail.all_licences_in_use') }}</div>
+    <div class="kpi-value">${{ "{:,.0f}".format(client.total_assigned) }}</div>
+    <div class="kpi-sub">{{ util_pct }}% utilised</div>
+  </div>
+  <div class="kpi-card {% if waste_pct > 40 %}red{% elif waste_pct > 20 %}amber{% else %}blue{% endif %}">
+    <div class="kpi-label">{{ t('finops_detail.unused_client_locked') }}</div>
+    <div class="kpi-value">${{ "{:,.0f}".format(client.total_unassigned) }}</div>
+    <div class="kpi-sub">{{ waste_pct }}% idle</div>
+  </div>
+</div>
+
+<!-- ── Main body: pie left, table right ── -->
+<div class="row g-4 align-items-start">
+
+  <!-- LEFT: In-use cost pie chart -->
+  <div class="col-lg-3">
+    <div class="section-head"><i class="bi bi-pie-chart-fill me-1"></i>Total Client Cost by Product</div>
+
+    {% if client.pie_slices %}
+    <svg viewBox="-10 -10 220 220" width="100%" style="max-width:200px;display:block;margin:0 auto .9rem"
+         aria-label="In-use licence cost by product" role="img">
+      {% for sl in client.pie_slices %}
+      <path d="{{ sl.path }}" fill="{{ sl.colour }}"
+            stroke="var(--card-bg)" stroke-width="2.5"
+            style="transition:opacity .15s"
+            onmouseover="this.style.opacity='.7'"
+            onmouseout="this.style.opacity='1'">
+        <title>{{ sl.label }}: ${{ "{:,.0f}".format(sl.value) }} ({{ sl.pct }}%)</title>
+      </path>
+      {% endfor %}
+    </svg>
+
+    <div class="pie-legend">
+      {% for sl in client.pie_slices %}
+      <div class="pie-legend-row">
+        <span class="dot" style="background:{{ sl.colour }}"></span>
+        <span class="pie-legend-name">{{ sl.label }}</span>
+        <span class="pie-legend-cost">${{ "{:,.0f}".format(sl.value) }}</span>
+        <span class="pie-legend-pct">{{ sl.pct }}%</span>
+      </div>
+      {% endfor %}
+      <div class="pie-legend-row" style="margin-top:.4rem;border-top:2px solid var(--card-border);padding-top:.4rem">
+        <span class="dot" style="background:transparent"></span>
+        <span class="pie-legend-name fw-semibold" style="color:var(--text)">Total client cost</span>
+        <span class="pie-legend-cost" style="color:var(--blue)">${{ "{:,.0f}".format(client.total_client_cost) }}</span>
+        <span class="pie-legend-pct"></span>
+      </div>
+    </div>
+
+    {% else %}
+    <p class="text-muted small">No in-use cost data.</p>
+    {% endif %}
+  </div>
+
+  <!-- RIGHT: Combined table -->
+  <div class="col-lg-9">
+    <div class="section-head"><i class="bi bi-table me-1"></i>Licence Cost &amp; Utilisation</div>
+    <div class="table-responsive">
+      <table class="data-tbl">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Qty</th>
+            <th>Annual Support</th>
+            <th>Cost in Use</th>
+            <th>Unused Cost</th>
+            <th>Utilisation</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set ns = namespace(last_source=none) %}
+          {% for line in client.lines %}
+          {% set total_q = line.qty | int %}
+          {% set used_pct_line = ((line.assigned_qty / total_q * 100) | round(0) | int) if total_q > 0 else 0 %}
+          {% set idle_pct = 100 - used_pct_line %}
+          {% if line.source != ns.last_source %}
+          {% set ns.last_source = line.source %}
+          <tr class="tbl-group-row {% if line.source == 'shareable' %}shared{% endif %}">
+            <td colspan="6">
+              {% if line.source == 'client_locked' %}
+              <i class="bi bi-lock-fill me-1"></i>{{ t('finops_detail.client_locked_section') }}
+              {% else %}
+              <i class="bi bi-share me-1"></i>{{ t('finops_detail.shared_pool_section') }}
+              {% endif %}
+            </td>
+          </tr>
+          {% endif %}
+          <tr>
+            <td>
+              <span class="dot" style="background:{{ line.colour }}"></span>
+              {{ line.product_name }}
+            </td>
+            <td>{{ line.assigned_qty if line.source == 'shareable' else total_q }}</td>
+            {% if line.source == 'shareable' %}
+            <td><span class="text-muted">—</span></td>
+            <td>
+              {% if line.assigned_cost > 0 %}
+              <span style="color:var(--green);font-weight:600">${{ "{:,.0f}".format(line.assigned_cost) }}</span>
+              <span class="text-muted small">({{ line.assigned_qty }})</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td><span class="text-muted">—</span></td>
+            <td><span class="text-muted small fst-italic">{{ t('finops_detail.from_shared_pool') }}</span></td>
+            {% else %}
+            <td>{% if line.support_cost | float > 0 %}${{ "{:,.0f}".format(line.support_cost | float) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            <td>
+              {% if line.assigned_cost > 0 %}
+              <span style="color:var(--green);font-weight:600">${{ "{:,.0f}".format(line.assigned_cost) }}</span>
+              <span class="text-muted small">({{ line.assigned_qty }})</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td>
+              {% if line.unassigned_cost > 0 %}
+              ${{ "{:,.0f}".format(line.unassigned_cost) }}
+              <span class="text-muted small">({{ line.unassigned_qty }})</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td>
+              <div class="util-wrap">
+                <div class="util-bar"><div class="util-fill" style="width:{{ used_pct_line }}%"></div></div>
+                {% if idle_pct >= 50 %}
+                <span class="waste-badge w-high">{{ idle_pct }}% idle</span>
+                {% elif idle_pct >= 20 %}
+                <span class="waste-badge w-mid">{{ idle_pct }}% idle</span>
+                {% else %}
+                <span class="waste-badge w-low">{{ used_pct_line }}% used</span>
+                {% endif %}
+              </div>
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2">{{ t('label.total') }}</td>
+            <td>${{ "{:,.0f}".format(client.total_support) }}</td>
+            <td style="color:var(--green)">${{ "{:,.0f}".format(client.total_assigned) }}</td>
+            <td>${{ "{:,.0f}".format(client.total_unassigned) }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endif %}
+{% endblock %}

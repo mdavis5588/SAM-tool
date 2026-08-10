@@ -1,0 +1,483 @@
+{% extends "base.html" %}
+{% block title %}{{ t('audit_readiness.title') }} — Helios{% endblock %}
+{% block content %}
+
+<style>
+  .rag-green  { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
+  .rag-amber  { background:#fef9c3; color:#854d0e; border:1px solid #fde68a; }
+  .rag-red    { background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
+  @media (prefers-color-scheme: dark) {
+    .rag-green { background:rgba(22,101,52,.25);  color:#86efac; border-color:rgba(22,101,52,.4); }
+    .rag-amber { background:rgba(133,77,14,.25);  color:#fcd34d; border-color:rgba(133,77,14,.4); }
+    .rag-red   { background:rgba(153,27,27,.25);  color:#fca5a5; border-color:rgba(153,27,27,.4); }
+  }
+  :root[data-theme="dark"] .rag-green { background:rgba(22,101,52,.25);  color:#86efac; border-color:rgba(22,101,52,.4); }
+  :root[data-theme="dark"] .rag-amber { background:rgba(133,77,14,.25);  color:#fcd34d; border-color:rgba(133,77,14,.4); }
+  :root[data-theme="dark"] .rag-red   { background:rgba(153,27,27,.25);  color:#fca5a5; border-color:rgba(153,27,27,.4); }
+
+  .section-card {
+    border-radius: 10px;
+    border: 1px solid #e3e6ea;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+  }
+  @media (prefers-color-scheme: dark) { .section-card { border-color: #2c2c2a; } }
+  :root[data-theme="dark"] .section-card { border-color: #2c2c2a; }
+
+  .section-header {
+    display: flex; align-items: center; gap: .6rem;
+    padding: .75rem 1rem;
+    font-weight: 600; font-size: .9rem;
+  }
+  .section-header .issue-count {
+    margin-left: auto;
+    font-size: .75rem; font-weight: 700;
+    padding: .15rem .55rem; border-radius: 20px;
+  }
+  .section-header.ok    { background:#f0fdf4; }
+  .section-header.warn  { background:#fff7ed; }
+  .section-header.crit  { background:#fef2f2; }
+  @media (prefers-color-scheme: dark) {
+    .section-header.ok   { background:rgba(22,101,52,.15); }
+    .section-header.warn { background:rgba(133,77,14,.15); }
+    .section-header.crit { background:rgba(153,27,27,.15); }
+  }
+  :root[data-theme="dark"] .section-header.ok   { background:rgba(22,101,52,.15); }
+  :root[data-theme="dark"] .section-header.warn { background:rgba(133,77,14,.15); }
+  :root[data-theme="dark"] .section-header.crit { background:rgba(153,27,27,.15); }
+
+  .rag-dot {
+    display: inline-block; width: 10px; height: 10px;
+    border-radius: 50%; flex-shrink: 0;
+  }
+  .rag-dot.green { background: #16a34a; }
+  .rag-dot.amber { background: #d97706; }
+  .rag-dot.red   { background: #dc2626; }
+
+  .summary-stat {
+    text-align: center; padding: 1rem .5rem;
+  }
+  .summary-stat .num {
+    font-size: 2rem; font-weight: 700; line-height: 1;
+  }
+  .summary-stat .lbl {
+    font-size: .72rem; text-transform: uppercase;
+    letter-spacing: .05em; color: #6c757d; margin-top: .25rem;
+  }
+
+  /* ── Family filter pills ── */
+  .family-filters {
+    display: flex; gap: .4rem; padding: .6rem 1rem;
+    border-bottom: 1px solid #e3e6ea; background: #fafafa;
+    flex-wrap: wrap; align-items: center;
+  }
+  @media (prefers-color-scheme: dark) {
+    .family-filters { background: #1a1a19; border-color: #2c2c2a; }
+  }
+  :root[data-theme="dark"] .family-filters { background: #1a1a19; border-color: #2c2c2a; }
+
+  .fam-pill {
+    font-size: .72rem; font-weight: 600; padding: .2rem .65rem;
+    border-radius: 20px; border: 1px solid transparent;
+    cursor: pointer; transition: all .15s; background: none;
+    color: #6c757d;
+  }
+  .fam-pill:hover { color: #0f0e0d; border-color: #ccc; }
+  .fam-pill.active-all  { background: #e2e8f0; color: #1e293b; border-color: #cbd5e1; }
+  .fam-pill.active-db   { background: rgba(37,99,235,.1); color: #1d4ed8; border-color: rgba(37,99,235,.3); }
+  .fam-pill.active-mw   { background: rgba(124,58,237,.1); color: #6d28d9; border-color: rgba(124,58,237,.3); }
+  @media (prefers-color-scheme: dark) {
+    .fam-pill:hover { color: #f0eeeb; }
+    .fam-pill.active-all { background:#2e2e2b; color:#e2e8f0; border-color:#4a4a47; }
+  }
+  :root[data-theme="dark"] .fam-pill:hover { color: #f0eeeb; }
+  :root[data-theme="dark"] .fam-pill.active-all { background:#2e2e2b; color:#e2e8f0; border-color:#4a4a47; }
+
+  .fam-count {
+    font-size: .65rem; font-weight: 700;
+    padding: .05rem .3rem; border-radius: 10px;
+    background: currentColor; opacity: .15;
+    margin-left: .2rem; vertical-align: middle;
+  }
+</style>
+
+<!-- Page header -->
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h4 class="mb-0"><i class="bi bi-clipboard2-pulse me-2"></i>{{ t('audit_readiness.title') }}</h4>
+    <div class="text-muted" style="font-size:.82rem">{{ t('audit_readiness.generated_prefix') }} {{ today.strftime('%d %B %Y') }} — {{ t('audit_readiness.snapshot') }}</div>
+  </div>
+  <div class="d-flex gap-2 align-items-center">
+    {% if total_issues == 0 %}
+    <span class="badge rag-green" style="font-size:.85rem;padding:.4rem .9rem">
+      <i class="bi bi-shield-fill-check me-1"></i>{{ t('audit_readiness.audit_ready') }}
+    </span>
+    {% elif total_issues <= 5 %}
+    <span class="badge rag-amber" style="font-size:.85rem;padding:.4rem .9rem">
+      <i class="bi bi-exclamation-triangle me-1"></i>{{ total_issues }} {{ t('audit_readiness.issue_one') if total_issues == 1 else t('audit_readiness.issue_many') }}
+    </span>
+    {% else %}
+    <span class="badge rag-red" style="font-size:.85rem;padding:.4rem .9rem">
+      <i class="bi bi-x-octagon me-1"></i>{{ total_issues }} {{ t('audit_readiness.issue_many') }} — {{ t('audit_readiness.not_ready') }}
+    </span>
+    {% endif %}
+    <button onclick="window.print()" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-printer me-1"></i>{{ t('action.print') }}
+    </button>
+  </div>
+</div>
+
+<!-- ── Client scorecard ─────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  {% for cl in client_scores %}
+  <div class="col-md-4 col-lg-3">
+    <div class="card shadow-sm h-100" style="border-radius:10px;overflow:hidden">
+      <div class="card-header d-flex align-items-center gap-2 py-2
+                  {% if cl.rag == 'green' %}rag-green{% elif cl.rag == 'amber' %}rag-amber{% else %}rag-red{% endif %}">
+        <span class="rag-dot {{ cl.rag }}"></span>
+        <span class="fw-semibold" style="font-size:.88rem">{{ cl.client_name }}</span>
+      </div>
+      <div class="card-body p-0">
+        <div class="row g-0 text-center" style="border-top:1px solid #e3e6ea">
+          <div class="col border-end summary-stat">
+            <div class="num {% if cl.gaps > 0 %}text-danger{% endif %}">{{ cl.gaps }}</div>
+            <div class="lbl">{{ t('audit_readiness.gaps') }}</div>
+          </div>
+          <div class="col border-end summary-stat">
+            <div class="num {% if cl.unassigned > 0 %}text-warning{% endif %}">{{ cl.unassigned }}</div>
+            <div class="lbl">{{ t('label.unassigned') }}</div>
+          </div>
+          <div class="col summary-stat">
+            <div class="num">{{ cl.total_positions }}</div>
+            <div class="lbl">{{ t('audit_readiness.positions') }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="col"><p class="text-muted">{{ t('audit_readiness.no_clients') }}</p></div>
+  {% endfor %}
+</div>
+
+<!-- ── Finding 1: Licence gaps ─────────────────────────────────────────── -->
+{% set db_gaps = licence_gaps | selectattr('product_family', 'equalto', 'oracle_database') | list %}
+{% set mw_gaps = licence_gaps | rejectattr('product_family', 'equalto', 'oracle_database') | list %}
+<div class="section-card shadow-sm">
+  <div class="section-header {% if licence_gaps %}crit{% else %}ok{% endif %}">
+    <i class="bi bi-exclamation-octagon{% if not licence_gaps %}-fill text-success{% endif %}"></i>
+    {{ t('audit_readiness.licence_gaps_title') }}
+    <span class="issue-count {% if licence_gaps %}rag-red{% else %}rag-green{% endif %}">
+      {{ licence_gaps | length }} {{ t('audit_readiness.issue_one') if licence_gaps | length == 1 else t('audit_readiness.issue_many') }}
+    </span>
+  </div>
+  {% if licence_gaps %}
+  <div class="family-filters" id="gapFilters">
+    <button class="fam-pill active-all" data-target="gapTable" data-filter="">
+      All <span style="font-size:.7rem;color:#6c757d;margin-left:.25rem">{{ licence_gaps | length }}</span>
+    </button>
+    {% if db_gaps %}
+    <button class="fam-pill" data-target="gapTable" data-filter="oracle_database">
+      <i class="bi bi-database-fill me-1" style="color:#2563eb"></i>Database
+      <span style="font-size:.7rem;color:#6c757d;margin-left:.25rem">{{ db_gaps | length }}</span>
+    </button>
+    {% endif %}
+    {% if mw_gaps %}
+    <button class="fam-pill" data-target="gapTable" data-filter="middleware">
+      <i class="bi bi-boxes me-1" style="color:#7c3aed"></i>Middleware / WebLogic
+      <span style="font-size:.7rem;color:#6c757d;margin-left:.25rem">{{ mw_gaps | length }}</span>
+    </button>
+    {% endif %}
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-striped mb-0" id="gapTable">
+      <thead class="table-light">
+        <tr>
+          <th>{{ t('label.client') }}</th>
+          <th>{{ t('label.hostname') }}</th>
+          <th>{{ t('label.environment') }}</th>
+          <th>{{ t('label.product') }}</th>
+          <th class="text-end">{{ t('compliance.required') }}</th>
+          <th class="text-end">{{ t('audit_readiness.licensed') }}</th>
+          <th class="text-end">{{ t('audit_readiness.shortfall') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in licence_gaps %}
+        <tr data-family="{{ r.product_family }}">
+          <td>{{ r.client_name }}</td>
+          <td><code>{{ r.hostname }}</code></td>
+          <td><span class="badge bg-secondary">{{ r.environment | title }}</span></td>
+          <td>
+            {% if r.product_family == 'oracle_database' %}
+              <i class="bi bi-database-fill me-1" style="color:#2563eb;font-size:.8rem"></i>
+            {% else %}
+              <i class="bi bi-boxes me-1" style="color:#7c3aed;font-size:.8rem"></i>
+            {% endif %}
+            {{ r.product_detail }}
+          </td>
+          <td class="text-end">
+            {% if (r.licences_required | int) == 0 %}
+              <span class="text-danger fw-bold" title="Check CPU topology data">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>0
+              </span>
+            {% else %}
+              {{ r.licences_required | int }}
+            {% endif %}
+          </td>
+          <td class="text-end">{{ r.total_licensed | int }}</td>
+          <td class="text-end"><span class="badge bg-danger">{{ r.shortfall | int }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="p-3 text-success" style="font-size:.875rem">
+    <i class="bi bi-check-circle-fill me-1"></i>{{ t('audit_readiness.no_gaps') }}
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Finding 2: Unassigned servers ───────────────────────────────────── -->
+{% set ua_db = unassigned_servers | selectattr('server_type', 'equalto', 'database') | list %}
+{% set ua_mw = unassigned_servers | selectattr('server_type', 'equalto', 'middleware') | list %}
+<div class="section-card shadow-sm">
+  <div class="section-header {% if unassigned_servers %}crit{% else %}ok{% endif %}">
+    <i class="bi bi-server{% if not unassigned_servers %} text-success{% endif %}"></i>
+    {{ t('audit_readiness.unassigned_servers_title') }}
+    <span class="issue-count {% if unassigned_servers %}rag-red{% else %}rag-green{% endif %}">
+      {{ unassigned_servers | length }} {{ t('audit_readiness.server_one') if unassigned_servers | length == 1 else t('audit_readiness.server_many') }}
+    </span>
+  </div>
+  {% if unassigned_servers %}
+  <div class="family-filters">
+    <button class="fam-pill active-all" data-target="uaTable" data-filter="">
+      All <span style="font-size:.7rem;color:#6c757d;margin-left:.25rem">{{ unassigned_servers | length }}</span>
+    </button>
+    {% if ua_db %}
+    <button class="fam-pill" data-target="uaTable" data-filter="database">
+      <i class="bi bi-database-fill me-1" style="color:#2563eb"></i>Database
+      <span style="font-size:.7rem;color:#6c757d;margin-left:.25rem">{{ ua_db | length }}</span>
+    </button>
+    {% endif %}
+    {% if ua_mw %}
+    <button class="fam-pill" data-target="uaTable" data-filter="middleware">
+      <i class="bi bi-boxes me-1" style="color:#7c3aed"></i>Middleware / WebLogic
+      <span style="font-size:.7rem;color:#6c757d;margin-left:.25rem">{{ ua_mw | length }}</span>
+    </button>
+    {% endif %}
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-striped mb-0" id="uaTable">
+      <thead class="table-light">
+        <tr>
+          <th>{{ t('label.client') }}</th>
+          <th>{{ t('label.hostname') }}</th>
+          <th>{{ t('label.environment') }}</th>
+          <th>{{ t('label.datacenter') }}</th>
+          <th>Type</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in unassigned_servers %}
+        <tr data-family="{{ r.server_type }}">
+          <td>{{ r.client_name }}</td>
+          <td><code>{{ r.hostname }}</code></td>
+          <td><span class="badge bg-secondary">{{ r.environment | title }}</span></td>
+          <td>{{ r.datacenter or '—' }}</td>
+          <td>
+            {% if r.server_type == 'middleware' %}
+              <span style="font-size:.75rem;font-weight:600;color:#7c3aed">
+                <i class="bi bi-boxes me-1"></i>Middleware
+              </span>
+            {% else %}
+              <span style="font-size:.75rem;font-weight:600;color:#2563eb">
+                <i class="bi bi-database-fill me-1"></i>Database
+              </span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="p-3 text-success" style="font-size:.875rem">
+    <i class="bi bi-check-circle-fill me-1"></i>{{ t('audit_readiness.all_assigned') }}
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Finding 3: Contract risks ───────────────────────────────────────── -->
+<div class="section-card shadow-sm">
+  <div class="section-header {% if contract_risks %}warn{% else %}ok{% endif %}">
+    <i class="bi bi-calendar-x{% if not contract_risks %} text-success{% endif %}"></i>
+    {{ t('audit_readiness.contract_risks_title') }}
+    <span class="issue-count {% if contract_risks %}rag-amber{% else %}rag-green{% endif %}">
+      {{ contract_risks | length }} {{ t('audit_readiness.contract_one') if contract_risks | length == 1 else t('audit_readiness.contract_many') }}
+    </span>
+  </div>
+  {% if contract_risks %}
+  <div class="table-responsive">
+    <table class="table table-sm table-striped mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>{{ t('label.client') }}</th>
+          <th>CSI</th>
+          <th>{{ t('label.contract') }}</th>
+          <th>{{ t('label.type') }}</th>
+          <th>{{ t('audit_readiness.expiry') }}</th>
+          <th>{{ t('audit_readiness.risk') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in contract_risks %}
+        <tr>
+          <td>{{ r.owning_client or '—' }}</td>
+          <td><code>{{ r.csi_number or '—' }}</code></td>
+          <td><a href="{{ url_for('contract_detail', csi_id=r.csi_id) }}">{{ r.contract_name }}</a></td>
+          <td>
+            {% if r.is_ula %}
+            <span class="badge" style="background:rgba(124,58,237,.15);color:#7c3aed">ULA</span>
+            {% else %}
+            <span class="badge bg-secondary">{{ t('exec_summary.standard') }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% set exp = r.ula_expiry if r.is_ula else r.support_expiry %}
+            {% if exp %}
+              <span class="{% if exp < today %}text-danger fw-bold{% else %}text-warning fw-semibold{% endif %}">
+                {{ exp }}
+              </span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if r.risk_type in ('expired','ula_expired') %}
+            <span class="badge rag-red">{{ t('audit_readiness.expired_badge') }}</span>
+            {% else %}
+            <span class="badge rag-amber">{{ t('audit_readiness.expiring_soon') }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="p-3 text-success" style="font-size:.875rem">
+    <i class="bi bi-check-circle-fill me-1"></i>{{ t('audit_readiness.no_contract_risks') }}
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Finding 4: Empty contracts ──────────────────────────────────────── -->
+<div class="section-card shadow-sm">
+  <div class="section-header {% if empty_contracts %}warn{% else %}ok{% endif %}">
+    <i class="bi bi-file-earmark-x{% if not empty_contracts %} text-success{% endif %}"></i>
+    {{ t('audit_readiness.empty_contracts_title') }}
+    <span class="issue-count {% if empty_contracts %}rag-amber{% else %}rag-green{% endif %}">
+      {{ empty_contracts | length }} {{ t('audit_readiness.contract_one') if empty_contracts | length == 1 else t('audit_readiness.contract_many') }}
+    </span>
+  </div>
+  {% if empty_contracts %}
+  <div class="table-responsive">
+    <table class="table table-sm table-striped mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>{{ t('label.client') }}</th>
+          <th>CSI</th>
+          <th>{{ t('label.contract') }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in empty_contracts %}
+        <tr>
+          <td>{{ r.owning_client or '—' }}</td>
+          <td><code>{{ r.csi_number or '—' }}</code></td>
+          <td>{{ r.contract_name }}</td>
+          <td><a href="{{ url_for('contract_detail', csi_id=r.csi_id) }}" class="btn btn-sm btn-outline-primary py-0">{{ t('audit_readiness.add_lines') }}</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="p-3 text-success" style="font-size:.875rem">
+    <i class="bi bi-check-circle-fill me-1"></i>{{ t('audit_readiness.all_have_lines') }}
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Finding 5: ULA scope violations ─────────────────────────────────── -->
+<div class="section-card shadow-sm">
+  <div class="section-header {% if ula_scope_violations %}crit{% else %}ok{% endif %}">
+    <i class="bi bi-infinity{% if not ula_scope_violations %} text-success{% endif %}"></i>
+    {{ t('audit_readiness.ula_violations_title') }}
+    <span class="issue-count {% if ula_scope_violations %}rag-red{% else %}rag-green{% endif %}">
+      {{ ula_scope_violations | length }} {{ t('audit_readiness.violation_one') if ula_scope_violations | length == 1 else t('audit_readiness.violation_many') }}
+    </span>
+  </div>
+  {% if ula_scope_violations %}
+  <div class="table-responsive">
+    <table class="table table-sm table-striped mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>{{ t('label.client') }}</th>
+          <th>{{ t('audit_readiness.ula_contract_col') }}</th>
+          <th>{{ t('label.hostname') }}</th>
+          <th>{{ t('audit_readiness.out_of_scope') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in ula_scope_violations %}
+        <tr>
+          <td>{{ r.client_name }}</td>
+          <td>{{ r.contract_name }}</td>
+          <td><code>{{ r.hostname }}</code></td>
+          <td><span class="badge bg-danger">{{ r.product_detail }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="p-3 text-success" style="font-size:.875rem">
+    <i class="bi bi-check-circle-fill me-1"></i>{{ t('audit_readiness.no_violations') }}
+  </div>
+  {% endif %}
+</div>
+
+<script>
+  document.querySelectorAll('.fam-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tableId = btn.dataset.target;
+      const filter  = btn.dataset.filter;
+      const table   = document.getElementById(tableId);
+      if (!table) return;
+
+      btn.closest('.family-filters').querySelectorAll('.fam-pill').forEach(p => {
+        p.classList.remove('active-all','active-db','active-mw');
+      });
+      if (!filter)                                              btn.classList.add('active-all');
+      else if (filter === 'oracle_database' || filter === 'database') btn.classList.add('active-db');
+      else                                                      btn.classList.add('active-mw');
+
+      table.querySelectorAll('tbody tr').forEach(row => {
+        const fam = row.dataset.family || '';
+        let show;
+        if (!filter) {
+          show = true;
+        } else if (filter === 'oracle_database' || filter === 'database') {
+          show = fam === 'oracle_database' || fam === 'database';
+        } else {
+          show = fam !== 'oracle_database' && fam !== 'database' && fam !== '';
+        }
+        row.style.display = show ? '' : 'none';
+      });
+    });
+  });
+</script>
+
+{% endblock %}

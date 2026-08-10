@@ -1,0 +1,164 @@
+---
+# =============================================================================
+# Oracle SAM - MySQL Enterprise Discovery Playbook
+# Discovers MySQL / MariaDB installations on target hosts, classifies each
+# as Enterprise (requires licence), Community (GPL — free), or MariaDB (free).
+#
+# Oracle MySQL Enterprise requires an annual per-server subscription.
+# MySQL Community Server is GPL-licensed — free for open-source use, but
+# redistribution in proprietary products requires a commercial licence.
+# MariaDB is a separate open-source fork with no Oracle licence requirement.
+# =============================================================================
+
+- name: MySQL SAM discovery
+  hosts: all
+  gather_facts: true
+  become: true
+  serial: 10
+
+  vars:
+    sam_run_id: "{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}-{{ inventory_hostname | hash('md5') | truncate(6, true, '') }}"
+    sam_client_schema: "{{ sam_client_schema | mandatory('sam_client_schema must be set, e.g. client_acme') }}"
+
+  tasks:
+
+    # ------------------------------------------------------------------
+    # 1. FIND MYSQL / MARIADB BINARIES
+    # ------------------------------------------------------------------
+    - name: Find all mysql binary paths
+      ansible.builtin.shell: |
+        which -a mysql mysqld 2>/dev/null
+        find /usr /opt /var/lib -name mysqld -type f 2>/dev/null
+        find /usr /opt -name mysql -type f 2>/dev/null
+      register: mysql_binaries_raw
+      changed_when: false
+      ignore_errors: true
+
+    - name: Find running MySQL/MariaDB processes
+      ansible.builtin.shell: |
+        ps -eo pid,comm,args | grep -E 'mysqld|mariadbd' | grep -v grep
+      register: mysql_procs
+      changed_when: false
+      ignore_errors: true
+
+    - name: Collect unique mysqld paths from processes
+      ansible.builtin.shell: |
+        ps -eo args | grep -E '^[^ ]*mysqld' | grep -v grep \
+          | awk '{print $1}' | sort -u
+      register: mysqld_paths
+      changed_when: false
+      ignore_errors: true
+
+    - name: Combine all discovered mysql paths
+      ansible.builtin.set_fact:
+        sam_mysql_binaries: >-
+          {{
+            (mysql_binaries_raw.stdout_lines | default([]))
+            + (mysqld_paths.stdout_lines | default([]))
+            | reject('equalto','')
+            | unique
+            | list
+          }}
+
+    # ------------------------------------------------------------------
+    # 2. QUERY VERSION AND CLASSIFY EACH INSTALLATION
+    # ------------------------------------------------------------------
+    - name: Query MySQL version and classify edition
+      ansible.builtin.shell: |
+        MYSQLD="{{ item }}"
+        INSTALL_PATH=$(dirname "$MYSQLD")
+        VERSION=$("$MYSQLD" --version 2>&1)
+        EDITION="Unknown"
+        IS_ENTERPRISE=false
+
+        if echo "$VERSION" | grep -qi 'MariaDB'; then
+          EDITION="MariaDB"
+          IS_ENTERPRISE=false
+        elif echo "$VERSION" | grep -qi 'MySQL Enterprise'; then
+          EDITION="MySQL Enterprise"
+          IS_ENTERPRISE=true
+        elif echo "$VERSION" | grep -qiE 'Percona|percona'; then
+          EDITION="Percona Server"
+          IS_ENTERPRISE=false
+        else
+          EDITION="MySQL Community Server"
+          IS_ENTERPRISE=false
+        fi
+
+        VER_NUM=$(echo "$VERSION" | grep -oP '\d+\.\d+\.\d+' | head -1)
+
+        # Determine data directory from running process or defaults
+        DATA_DIR=""
+        if echo "$MYSQLD" | grep -q 'mysqld'; then
+          DATA_DIR=$("$MYSQLD" --verbose --help 2>/dev/null | grep '^datadir' | awk '{print $2}' | head -1) || true
+        fi
+        [ -z "$DATA_DIR" ] && DATA_DIR="/var/lib/mysql"
+
+        # Determine port from my.cnf or default
+        PORT=3306
+        for conf in /etc/mysql/my.cnf /etc/my.cnf /etc/mysql/mysql.conf.d/mysqld.cnf; do
+          if [ -f "$conf" ]; then
+            P=$(grep -E '^port\s*=' "$conf" 2>/dev/null | head -1 | cut -d= -f2 | tr -d ' ')
+            [ -n "$P" ] && PORT="$P"
+          fi
+        done
+
+        echo "{\"install_path\":\"$INSTALL_PATH\",\"mysql_version\":\"$VER_NUM\",\"mysql_edition\":\"$EDITION\",\"is_enterprise\":$IS_ENTERPRISE,\"data_dir\":\"$DATA_DIR\",\"port\":$PORT}"
+      loop: "{{ sam_mysql_binaries | default([]) }}"
+      loop_control:
+        label: "{{ item }}"
+      register: mysql_version_results
+      changed_when: false
+      ignore_errors: true
+
+    - name: Parse MySQL discovery results
+      ansible.builtin.set_fact:
+        sam_mysql_installations: >-
+          {{
+            mysql_version_results.results
+            | selectattr('rc', 'equalto', 0)
+            | map(attribute='stdout')
+            | map('trim')
+            | select
+            | map('from_json')
+            | list
+            | unique(attribute='install_path')
+          }}
+
+    # ------------------------------------------------------------------
+    # 3. ASSEMBLE AND WRITE PAYLOAD
+    # ------------------------------------------------------------------
+    - name: Assemble MySQL discovery payload
+      ansible.builtin.set_fact:
+        sam_mysql_payload:
+          run_id:               "{{ sam_run_id }}"
+          hostname:             "{{ inventory_hostname }}"
+          fqdn:                 "{{ ansible_fqdn }}"
+          ip_address:           "{{ ansible_default_ipv4.address | default('') }}"
+          os_family:            "{{ ansible_os_family }}"
+          os_distribution:      "{{ ansible_distribution }}"
+          os_version:           "{{ ansible_distribution_version }}"
+          environment:          "{{ sam_environment | default('unknown') }}"
+          total_ram_mb:         "{{ ansible_memtotal_mb | default(0) }}"
+          mysql_installations:  "{{ sam_mysql_installations | default([]) }}"
+
+    - name: Load MySQL payload into PostgreSQL
+      community.postgresql.postgresql_query:
+        db:             "{{ sam_db_name }}"
+        login_host:     "{{ sam_db_host }}"
+        login_port:     "{{ sam_db_port }}"
+        login_user:     "{{ sam_db_user }}"
+        login_password: "{{ sam_db_password }}"
+        query: "SELECT {{ sam_client_schema }}.upsert_mysql_discovery(%(payload)s::jsonb)"
+        named_args:
+          payload: "{{ sam_mysql_payload | to_json }}"
+      delegate_to: localhost
+      ignore_errors: true
+
+    - name: Print MySQL discovery summary
+      ansible.builtin.debug:
+        msg: >
+          {{ inventory_hostname }} —
+          MySQL installations found: {{ sam_mysql_installations | default([]) | length }},
+          Enterprise: {{ sam_mysql_installations | default([]) | selectattr('is_enterprise') | list | length }},
+          Community/MariaDB: {{ sam_mysql_installations | default([]) | rejectattr('is_enterprise') | list | length }}

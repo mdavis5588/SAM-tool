@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Change History — {{ server.hostname }} — Helios{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('servers') }}">Servers</a></li>
+    <li class="breadcrumb-item">
+      <a href="{{ url_for('edit_server', server_id=server.server_id) }}">{{ server.hostname }}</a>
+    </li>
+    <li class="breadcrumb-item active">Change History</li>
+  </ol>
+</nav>
+
+<div class="d-flex align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-clock-history"></i> {{ t('history.title') }} — {{ server.hostname }}</h4>
+  <span class="badge bg-secondary ms-2">{{ history | length }}</span>
+</div>
+
+{% if history %}
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover table-striped align-middle mb-0 small">
+        <thead class="table-dark">
+          <tr>
+            <th style="width:140px">Detected</th>
+            <th>Category</th>
+            <th>Object</th>
+            <th>Severity</th>
+            <th>Change</th>
+            <th>Acknowledged</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in history %}
+          <tr class="{% if h.severity == 'HIGH' and not h.acknowledged %}table-danger{% elif h.severity == 'MEDIUM' and not h.acknowledged %}table-warning{% endif %}">
+            <td>
+              <small>{{ h.detected_at.strftime('%Y-%m-%d %H:%M') if h.detected_at else '—' }}</small>
+            </td>
+            <td>
+              <span class="badge bg-secondary">{{ h.change_category | replace('_',' ') | title }}</span>
+              {% if h.object_type %}<br><small class="text-muted">{{ h.object_type }}</small>{% endif %}
+            </td>
+            <td><code>{{ h.object_name }}</code></td>
+            <td>
+              {% if h.severity == 'HIGH' %}
+                <span class="badge bg-danger">HIGH</span>
+              {% elif h.severity == 'MEDIUM' %}
+                <span class="badge bg-warning text-dark">MEDIUM</span>
+              {% else %}
+                <span class="badge bg-secondary">{{ h.severity or 'LOW' }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if h.change_description %}
+                {{ h.change_description }}
+              {% else %}
+                {% if h.old_value %}
+                  <small class="text-danger">— {{ h.old_value }}</small>
+                {% endif %}
+                {% if h.new_value %}
+                  <small class="text-success">+ {{ h.new_value }}</small>
+                {% endif %}
+              {% endif %}
+            </td>
+            <td>
+              {% if h.acknowledged %}
+                <i class="bi bi-check-circle text-success"></i>
+                <small class="text-muted d-block">{{ h.acknowledged_by or '' }}{% if h.acknowledged_at %} on {{ h.acknowledged_at }}{% endif %}</small>
+              {% else %}
+                <span class="text-muted">Pending</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if not h.acknowledged %}
+              <form method="post"
+                    action="{{ url_for('acknowledge_change', server_id=server.server_id, change_id=h.change_id) }}">
+                <button type="submit" class="btn btn-sm btn-outline-success"
+                        title="Acknowledge this change">
+                  <i class="bi bi-check-lg"></i>
+                </button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-info">{{ t('history.none') }}</div>
+{% endif %}
+
+{% endblock %}

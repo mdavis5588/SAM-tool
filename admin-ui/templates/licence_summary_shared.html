@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block title %}Shared Pool — Licences — Helios{% endblock %}
+{% block content %}
+
+<style>
+  .viz-root {
+    --s1:          #6d28d9;
+    --s2:          #6da7ec;
+    --text-pri:    #0b0b0b;
+    --text-sec:    #52514e;
+    --text-muted:  #898781;
+    --surface:     #fcfcfb;
+    --border:      rgba(11,11,11,0.10);
+    --track:       #e1e0d9;
+    --gridline:    #e1e0d9;
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      --s1:         #7c3aed;
+      --s2:         #86b6ef;
+      --text-pri:   #ffffff;
+      --text-sec:   #c3c2b7;
+      --text-muted: #898781;
+      --surface:    #1a1a19;
+      --border:     rgba(255,255,255,0.10);
+      --track:      #2c2c2a;
+      --gridline:   #2c2c2a;
+    }
+  }
+
+  /* ── Section divider ── */
+  .section-heading {
+    display: flex; align-items: center; gap: .6rem;
+    font-size: .7rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .09em;
+    color: var(--text-muted);
+    padding: .6rem .9rem;
+    background: var(--surface);
+    border: 1px solid var(--gridline);
+    border-radius: 6px;
+    margin: 2rem 0 1rem;
+  }
+
+  /* ── Pool usage cards ── */
+  .pool-card {
+    border: 1px solid var(--gridline);
+    border-left: 4px solid var(--s1);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: .6rem;
+  }
+  .pool-header {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    align-items: center;
+    gap: 1rem;
+    padding: .9rem 1.1rem;
+    cursor: pointer;
+    background: var(--surface);
+    border: none; width: 100%; text-align: left;
+    transition: background .12s;
+  }
+  .pool-header:hover { background: rgba(109,40,217,.04); }
+  .pool-header[aria-expanded="true"] { border-bottom: 1px solid var(--gridline); }
+
+  .pool-product-name {
+    font-weight: 700; font-size: .95rem; color: var(--text-pri);
+  }
+  .pool-contract {
+    font-size: .75rem; color: var(--text-muted); margin-top: .15rem;
+  }
+  .csi-chip {
+    font-size: .7rem; font-weight: 600; padding: .1rem .45rem;
+    border-radius: 4px;
+    background: rgba(109,40,217,.1); color: var(--s1);
+    white-space: nowrap;
+  }
+
+  .util-col { text-align: right; }
+  .util-value {
+    font-size: 1rem; font-weight: 700; color: var(--s1);
+    font-variant-numeric: tabular-nums;
+  }
+  .util-label { font-size: .68rem; color: var(--text-muted); margin-top: .1rem; }
+
+  .util-bar-track {
+    height: 7px; border-radius: 4px;
+    background: var(--track); overflow: hidden;
+    min-width: 90px;
+  }
+  .util-bar-fill {
+    height: 100%; border-radius: 4px;
+    background: var(--s1);
+    transition: width .3s;
+  }
+  .util-bar-fill.over { background: #dc2626; }
+
+  .chevron { color: var(--text-muted); transition: transform .2s; font-size: .85rem; }
+  .pool-header[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+
+  .pool-detail { padding: .75rem 1.1rem 1rem; background: rgba(109,40,217,.02); }
+
+  .client-table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+  .client-table th {
+    font-size: .67rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--text-muted);
+    padding: .4rem .6rem; border-bottom: 2px solid var(--gridline);
+    text-align: left; white-space: nowrap;
+    background: rgba(109,40,217,.04);
+  }
+  .client-table th.num { text-align: right; }
+  .client-table td {
+    padding: .5rem .6rem; border-bottom: 1px solid var(--gridline);
+    vertical-align: middle; color: var(--text-sec);
+  }
+  .client-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .client-table tbody tr:hover td { background: rgba(109,40,217,.03); }
+  .client-table tbody tr:last-child td { border-bottom: none; }
+  .client-table tfoot td {
+    font-weight: 700; color: var(--text-pri);
+    border-top: 2px solid var(--gridline); padding-top: .5rem;
+    border-bottom: none;
+    background: rgba(109,40,217,.04);
+  }
+  .client-share-bar {
+    height: 4px; border-radius: 2px;
+    background: var(--s1); opacity: .35;
+    margin-top: .3rem;
+  }
+  .no-usage {
+    padding: .75rem 1.1rem;
+    font-size: .82rem; color: var(--text-muted);
+    font-style: italic;
+  }
+</style>
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('licence_summary') }}">Licence Summary</a></li>
+    <li class="breadcrumb-item active">Shared Pool</li>
+  </ol>
+</nav>
+
+<div class="viz-root">
+
+<div class="d-flex align-items-baseline gap-2 mb-1">
+  <h4 class="mb-0"><i class="bi bi-share me-1" style="color:var(--s2)"></i>Shared Pool — Licences</h4>
+</div>
+<div class="section-heading">
+  <i class="bi bi-people" style="color:var(--s1)"></i>
+  Who is using the shared pool
+  {% set total_in_use = pool_products | sum(attribute='used_qty') %}
+  <span style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">{{ total_in_use }} licence{{ 's' if total_in_use != 1 }} in use</span>
+</div>
+
+{% if pool_products %}
+{% for p in pool_products %}
+{% set card_id = "pool-" ~ loop.index %}
+<div class="pool-card">
+  <button class="pool-header" type="button"
+          data-bs-toggle="collapse" data-bs-target="#{{ card_id }}"
+          aria-expanded="{{ 'true' if p.used_qty > 0 else 'false' }}"
+          aria-controls="{{ card_id }}">
+
+    <div>
+      <div class="pool-product-name">
+        {% set n = p.product_name | lower %}
+        {% if 'weblogic' in n %}<i class="bi bi-boxes me-1" style="color:#7c3aed;font-size:.85rem"></i>
+        {% elif 'database' in n %}<i class="bi bi-database me-1" style="color:#2563eb;font-size:.85rem"></i>
+        {% elif 'coherence' in n %}<i class="bi bi-cpu me-1" style="color:#059669;font-size:.85rem"></i>
+        {% else %}<i class="bi bi-share me-1" style="color:var(--s1);font-size:.85rem"></i>
+        {% endif %}
+        {{ p.product_name }}
+      </div>
+      <div class="pool-contract mt-1">
+        <span class="csi-chip me-1">{{ p.csi_number or '#' ~ p.csi_id }}</span>
+        {{ p.contract_name }}
+      </div>
+    </div>
+
+    <div class="util-col">
+      <div class="util-bar-track" style="width:120px">
+        <div class="util-bar-fill {% if p.utilisation_pct > 100 %}over{% endif %}"
+             style="width:{{ [p.utilisation_pct, 100] | min }}%"></div>
+      </div>
+      <div style="font-size:.7rem;color:var(--text-muted);text-align:right;margin-top:.2rem">
+        {{ p.utilisation_pct }}%
+      </div>
+    </div>
+
+    <div class="util-col">
+      <div class="util-value">
+        {{ p.used_qty }}
+        <span style="font-weight:400;font-size:.8rem;color:var(--text-muted)">/ {{ p.total_qty }}</span>
+      </div>
+      <div class="util-label">{{ p.available_qty }} available</div>
+    </div>
+
+    <i class="bi bi-chevron-down chevron"></i>
+  </button>
+
+  <div class="collapse {% if p.used_qty > 0 %}show{% endif %}" id="{{ card_id }}">
+    {% if p.clients %}
+    <div class="pool-detail">
+      <table class="client-table">
+        <thead>
+          <tr>
+            <th>Client</th>
+            <th class="num">Licences Used</th>
+            <th class="num">% of Pool</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for cl in p.clients %}
+          {% set pct_of_pool = ((cl.licences / p.total_qty * 100) | round(1)) if p.total_qty > 0 else 0 %}
+          <tr>
+            <td>
+              <i class="bi bi-building me-1 text-muted" style="font-size:.8rem"></i>
+              <strong>{{ cl.client_name }}</strong>
+              <div class="client-share-bar" style="width:{{ pct_of_pool }}%"></div>
+            </td>
+            <td class="num" style="font-weight:700;color:var(--s1)">{{ cl.licences | int }}</td>
+            <td class="num">{{ pct_of_pool }}%</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        {% if p.clients | length > 1 %}
+        <tfoot>
+          <tr>
+            <td>Total in use</td>
+            <td class="num">{{ p.used_qty }}</td>
+            <td class="num">{{ p.utilisation_pct }}%</td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
+    {% else %}
+    <div class="no-usage">No clients are currently using this product from the shared pool.</div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+{% else %}
+<p class="text-muted">No shared pool products configured.</p>
+{% endif %}
+
+</div>
+
+<script>
+  document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(btn => {
+    const target = document.querySelector(btn.dataset.bsTarget);
+    if (target) {
+      target.addEventListener('show.bs.collapse',  () => btn.setAttribute('aria-expanded','true'));
+      target.addEventListener('hide.bs.collapse',  () => btn.setAttribute('aria-expanded','false'));
+    }
+  });
+</script>
+
+{% endblock %}
