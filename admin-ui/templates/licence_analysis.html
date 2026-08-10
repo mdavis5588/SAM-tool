@@ -910,7 +910,9 @@
               </thead>
               <tbody>
                 {% for l in result.lines %}
-                {% set asgn = result.assign_by_family.get(l.product_family, {}) %}
+                {% set asgn_consumed = result.assign_by_family[l.product_family]['consumed'] if l.product_family in result.assign_by_family else 0 %}
+                {% set asgn_initial  = result.assign_by_family[l.product_family]['initial']  if l.product_family in result.assign_by_family else 0 %}
+                {% set asgn_annual   = result.assign_by_family[l.product_family]['annual']   if l.product_family in result.assign_by_family else 0 %}
                 <tr {% if l.price_missing %}class="table-warning"{% endif %}>
                   <td>{{ l.product_label }}
                     {% if l.price_missing %}<span class="badge bg-warning text-dark ms-1">no price</span>{% endif %}
@@ -928,13 +930,13 @@
                   <td class="text-end">{% if l.yr2_annual is not none %}${{ "{:,.0f}".format(l.yr2_annual) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                   {% if has_assignments %}
                   <td class="text-end fw-semibold" style="border-left:2px solid #dee2e6;">
-                    {% if asgn.consumed %}<span class="badge bg-success">{{ "{:,.0f}".format(asgn.consumed) }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                    {% if asgn_consumed %}<span class="badge bg-success">{{ "{:,.0f}".format(asgn_consumed) }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
                   </td>
                   <td class="text-end">
-                    {% if asgn.initial %}${{ "{:,.0f}".format(asgn.initial) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                    {% if asgn_initial %}${{ "{:,.0f}".format(asgn_initial) }}{% else %}<span class="text-muted">—</span>{% endif %}
                   </td>
                   <td class="text-end">
-                    {% if asgn.annual %}${{ "{:,.0f}".format(asgn.annual) }}/yr{% else %}<span class="text-muted">—</span>{% endif %}
+                    {% if asgn_annual %}${{ "{:,.0f}".format(asgn_annual) }}/yr{% else %}<span class="text-muted">—</span>{% endif %}
                   </td>
                   {% endif %}
                 </tr>
