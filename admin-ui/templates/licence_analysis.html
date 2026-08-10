@@ -84,10 +84,10 @@
     <form method="get" action="{{ url_for('licence_analysis') }}" id="form-manual"
           {% if form_vals.mode != 'manual' %}style="display:none"{% endif %}>
       <input type="hidden" name="mode" value="manual">
-      <div class="row g-3 align-items-end">
+      <div class="row g-3 align-items-start">
         <div class="col-md-3">
           <label class="form-label fw-semibold">Client <span class="text-muted fw-normal">(optional)</span></label>
-          <select name="m_client_id" class="form-select">
+          <select name="m_client_id" class="form-select" title="Selects client-locked licences in the pool">
             <option value="">— all / no client —</option>
             {% for c in clients %}
               <option value="{{ c.client_id }}"
@@ -96,7 +96,6 @@
               </option>
             {% endfor %}
           </select>
-          <div class="form-text">Selects client-locked licences in the pool</div>
         </div>
         <div class="col-md-3">
           <label class="form-label fw-semibold">Hostname / Label <span class="text-muted fw-normal">(optional)</span></label>
@@ -106,8 +105,8 @@
         <div class="col-md-2">
           <label class="form-label fw-semibold">Physical Cores <span class="text-danger">*</span></label>
           <input type="number" name="m_cores" class="form-control" min="1" step="1" required
-                 value="{{ form_vals.m_cores }}" placeholder="e.g. 16">
-          <div class="form-text">Total physical cores (sockets × cores/socket)</div>
+                 value="{{ form_vals.m_cores }}" placeholder="sockets × cores/socket"
+                 title="Total physical cores: sockets × cores per socket">
         </div>
         <div class="col-md-2">
           <label class="form-label fw-semibold">CPU Sockets</label>
