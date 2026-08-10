@@ -3827,7 +3827,15 @@ def edit_server(server_id):
     # CPU validation
     try:
         cpu_validation = query(
-            f"SELECT * FROM {schema}.cpu_validation_report WHERE server_id = %s",
+            f"""SELECT v.*, p.cpu_architecture, p.virt_type::TEXT, p.is_vmware
+                FROM {schema}.cpu_validation_report v
+                LEFT JOIN LATERAL (
+                    SELECT cpu_architecture, virt_type, is_vmware
+                    FROM {schema}.oracle_processors
+                    WHERE server_id = v.server_id
+                    ORDER BY recorded_at DESC LIMIT 1
+                ) p ON TRUE
+                WHERE v.server_id = %s""",
             (server_id,), fetchall=False
         )
     except Exception:

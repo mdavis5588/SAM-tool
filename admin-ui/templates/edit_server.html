@@ -91,6 +91,12 @@
           <tr><th>IP Address</th><td><code>{{ server.ip_address or '—' }}</code></td></tr>
           <tr><th>Last Seen</th><td>{{ server.last_seen or '—' }}</td></tr>
           {% if cpu_validation %}
+          <tr><th>Processor</th><td>
+            <span class="text-break">{{ cpu_validation.cpu_model or '—' }}</span>
+            {% if cpu_validation.cpu_architecture %}
+              <span class="badge bg-secondary ms-1">{{ cpu_validation.cpu_architecture }}</span>
+            {% endif %}
+          </td></tr>
           <tr><th>Physical Cores</th><td>
             {{ cpu_validation.cpu_sockets }} socket{{ 's' if cpu_validation.cpu_sockets != 1 }} ×
             {{ cpu_validation.cores_per_socket }} core{{ 's' if cpu_validation.cores_per_socket != 1 }}
