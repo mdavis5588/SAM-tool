@@ -1999,6 +1999,18 @@ def _process_json_upload(schema: str, file_obj) -> dict:
         if field in base and base[field] is not None:
             base[field] = int(round(float(base[field])))
 
+    # Derive is_exadata from feature_usage when the script didn't detect it
+    # directly (older script versions, or currently_used=TRUE/detected_usages=0).
+    if not base.get("is_exadata"):
+        feature_usage = doc.get("feature_usage", [])
+        base["is_exadata"] = any(
+            ("exadata" in (f.get("feature_name") or "").lower() or
+             "smart scan" in (f.get("feature_name") or "").lower())
+            and (f.get("currently_used") in (True, "true", "TRUE") or
+                 int(f.get("detected_usages") or 0) > 0)
+            for f in feature_usage
+        )
+
     _call_upsert(schema, "upsert_oracle_discovery", base)
     messages.append(f"Server '{hostname}' upserted.")
 

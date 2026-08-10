@@ -295,14 +295,16 @@ BEGIN
     END;
   END IF;
   IF v_is_exadata = 'false' THEN
-    -- Smart Scan / Exadata feature usage is a strong secondary signal
+    -- Smart Scan / Exadata feature usage is a strong secondary signal.
+    -- Check currently_used OR detected_usages>0 — Oracle can report
+    -- currently_used=TRUE with detected_usages=0 on some configurations.
     BEGIN
       DECLARE v_ex_feat NUMBER := 0;
       BEGIN
         SELECT COUNT(*) INTO v_ex_feat
         FROM   dba_feature_usage_statistics
         WHERE  (UPPER(name) LIKE '%EXADATA%' OR UPPER(name) LIKE '%SMART SCAN%')
-          AND  detected_usages > 0;
+          AND  (currently_used = 'TRUE' OR detected_usages > 0);
         IF v_ex_feat > 0 THEN v_is_exadata := 'true'; END IF;
       EXCEPTION WHEN OTHERS THEN NULL;
       END;
