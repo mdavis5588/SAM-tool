@@ -131,11 +131,6 @@
           <input type="number" name="horizon_years" class="form-control" min="1" max="20"
                  value="{{ form_vals.horizon_years or '5' }}">
         </div>
-        <div class="col-md-2 d-flex flex-column justify-content-end">
-          <button type="submit" class="btn btn-primary w-100">
-            <i class="bi bi-play-fill me-1"></i> Run Analysis
-          </button>
-        </div>
       </div>
 
       <!-- Oracle Database options (EE only) -->
@@ -156,6 +151,12 @@
           </div>
           {% endfor %}
         </div>
+      </div>
+
+      <div class="mt-3">
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-play-fill me-1"></i> Run Analysis
+        </button>
       </div>
     </form>
 
