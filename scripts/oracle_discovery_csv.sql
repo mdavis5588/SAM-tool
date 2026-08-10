@@ -40,9 +40,10 @@ SET TRIMSPOOL ON
 SET LINESIZE 4000
 SET COLSEP ','
 
--- CPU model/arch injected by run_discovery_csv.sh; fallback to v$parameter
-DEFINE sam_cpu_model = 'unknown'
-DEFINE sam_cpu_arch  = 'x86_64'
+-- sam_cpu_model / sam_cpu_arch must be DEFINE'd before running this file,
+-- either by run_discovery_csv.sh (recommended) or manually:
+--   DEFINE sam_cpu_model = 'Intel Xeon Silver 4214'
+--   DEFINE sam_cpu_arch  = 'x86_64'
 
 COLUMN sam_prefix NEW_VALUE sam_prefix NOPRINT
 SELECT LOWER(REPLACE(i.host_name, '.', '_'))

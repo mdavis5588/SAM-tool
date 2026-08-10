@@ -29,11 +29,11 @@ SET ECHO OFF
 SET VERIFY OFF
 SET TERMOUT OFF
 
--- CPU model and architecture can be pre-set by the calling shell wrapper
--- (run_discovery.sh) via SQL*Plus DEFINE.  If not defined, the script falls
--- back to querying v$parameter (which often returns nothing useful).
-DEFINE sam_cpu_model = 'unknown'
-DEFINE sam_cpu_arch  = 'x86_64'
+-- sam_cpu_model / sam_cpu_arch must be DEFINE'd before running this file,
+-- either by run_discovery.sh (recommended) or manually:
+--   DEFINE sam_cpu_model = 'Intel Xeon Silver 4214'
+--   DEFINE sam_cpu_arch  = 'x86_64'
+-- The PL/SQL body falls back to v$parameter when the value is 'unknown'.
 
 -- Derive output filename: oracle_discovery_<host>_<db_unique_name>_<timestamp>.json
 COLUMN sam_outfile NEW_VALUE sam_outfile NOPRINT
