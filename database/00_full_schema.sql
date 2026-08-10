@@ -736,6 +736,7 @@ BEGIN
       total_physical_cores  INTEGER GENERATED ALWAYS AS (cpu_sockets * cores_per_socket) STORED,
       virt_type             %I.virt_type NOT NULL DEFAULT 'unknown',
       is_vmware             BOOLEAN NOT NULL DEFAULT FALSE,
+      is_exadata            BOOLEAN NOT NULL DEFAULT FALSE,
       vcpu_count            INTEGER,
       recorded_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       discovery_run_id      TEXT

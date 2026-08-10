@@ -96,6 +96,9 @@
             {% if cpu_validation.cpu_architecture %}
               <span class="badge bg-secondary ms-1">{{ cpu_validation.cpu_architecture }}</span>
             {% endif %}
+            {% if cpu_validation.is_exadata %}
+              <span class="badge bg-warning text-dark ms-1" title="Exadata detected — additional licence obligations may apply"><i class="bi bi-grid-3x3-gap-fill me-1"></i>Exadata</span>
+            {% endif %}
           </td></tr>
           <tr><th>Physical Cores</th><td>
             {{ cpu_validation.cpu_sockets }} socket{{ 's' if cpu_validation.cpu_sockets != 1 }} ×

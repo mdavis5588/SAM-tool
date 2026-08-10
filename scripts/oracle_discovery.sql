@@ -71,6 +71,7 @@ DECLARE
   v_vcpu_count       NUMBER := 0;
   v_is_vmware        VARCHAR2(5) := 'false';
   v_virt_type        VARCHAR2(64) := 'physical';
+  v_is_exadata       VARCHAR2(5) := 'false';
   v_ram_mb           NUMBER := 0;
 
   -- Run metadata
@@ -269,6 +270,44 @@ BEGIN
   -- --------------------------------------------------------
   BEGIN SELECT COUNT(*) INTO v_node_count FROM gv$instance; EXCEPTION WHEN OTHERS THEN v_node_count := 1; END;
   v_is_rac := (v_node_count > 1);
+
+  -- --------------------------------------------------------
+  -- Exadata detection
+  -- --------------------------------------------------------
+  BEGIN
+    -- v$cell exists only on Exadata; any non-zero row count means Exadata
+    DECLARE v_cell_cnt NUMBER := 0;
+    BEGIN
+      EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM v$cell' INTO v_cell_cnt;
+      IF v_cell_cnt > 0 THEN v_is_exadata := 'true'; END IF;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+  END;
+  IF v_is_exadata = 'false' THEN
+    -- cell_offload_processing = TRUE is set by Exadata initialisation
+    BEGIN
+      DECLARE v_cop VARCHAR2(10);
+      BEGIN
+        SELECT UPPER(value) INTO v_cop FROM v$parameter WHERE name = 'cell_offload_processing';
+        IF v_cop = 'TRUE' THEN v_is_exadata := 'true'; END IF;
+      EXCEPTION WHEN OTHERS THEN NULL;
+      END;
+    END;
+  END IF;
+  IF v_is_exadata = 'false' THEN
+    -- Smart Scan / Exadata feature usage is a strong secondary signal
+    BEGIN
+      DECLARE v_ex_feat NUMBER := 0;
+      BEGIN
+        SELECT COUNT(*) INTO v_ex_feat
+        FROM   dba_feature_usage_statistics
+        WHERE  (UPPER(name) LIKE '%EXADATA%' OR UPPER(name) LIKE '%SMART SCAN%')
+          AND  detected_usages > 0;
+        IF v_ex_feat > 0 THEN v_is_exadata := 'true'; END IF;
+      EXCEPTION WHEN OTHERS THEN NULL;
+      END;
+    END;
+  END IF;
 
   -- --------------------------------------------------------
   -- Instances
@@ -496,6 +535,7 @@ BEGIN
   DBMS_OUTPUT.PUT_LINE('  "vcpu_count":'            || v_vcpu_count      || ',');
   DBMS_OUTPUT.PUT_LINE('  "virt_type":"'            || j(v_virt_type)    || '",');
   DBMS_OUTPUT.PUT_LINE('  "is_vmware":'             || v_is_vmware       || ',');
+  DBMS_OUTPUT.PUT_LINE('  "is_exadata":'            || v_is_exadata      || ',');
   DBMS_OUTPUT.PUT_LINE('  "instances":['            || v_instances_json  || ']');
   DBMS_OUTPUT.PUT_LINE('},');
 

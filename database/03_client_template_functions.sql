@@ -506,7 +506,7 @@ BEGIN
       -- Insert processor snapshot
       INSERT INTO %I.oracle_processors
         (server_id, cpu_model, cpu_architecture, cpu_sockets, cores_per_socket,
-         threads_per_core, virt_type, is_vmware, vcpu_count, discovery_run_id)
+         threads_per_core, virt_type, is_vmware, is_exadata, vcpu_count, discovery_run_id)
       VALUES (
         v_server_id,
         p_payload->>'cpu_model',
@@ -516,6 +516,7 @@ BEGIN
         (p_payload->>'cpu_threads_per_core')::INTEGER,
         (COALESCE(p_payload->>'virt_type','unknown'))::virt_type,
         COALESCE((p_payload->>'is_vmware')::BOOLEAN, FALSE),
+        COALESCE((p_payload->>'is_exadata')::BOOLEAN, FALSE),
         (p_payload->>'vcpu_count')::INTEGER,
         p_payload->>'run_id'
       );
@@ -584,7 +585,7 @@ BEGIN
       IF p_payload ? 'cpu_sockets' THEN
         INSERT INTO %I.oracle_processors
           (server_id, cpu_model, cpu_architecture, cpu_sockets, cores_per_socket,
-           threads_per_core, virt_type, is_vmware, vcpu_count, discovery_run_id)
+           threads_per_core, virt_type, is_vmware, is_exadata, vcpu_count, discovery_run_id)
         VALUES (
           v_server_id,
           p_payload->>'cpu_model',
@@ -593,7 +594,8 @@ BEGIN
           (p_payload->>'cpu_cores_per_socket')::INTEGER,
           (p_payload->>'cpu_threads_per_core')::INTEGER,
           (COALESCE(p_payload->>'virt_type','unknown'))::virt_type,
-          (p_payload->>'is_vmware')::BOOLEAN,
+          COALESCE((p_payload->>'is_vmware')::BOOLEAN, FALSE),
+          COALESCE((p_payload->>'is_exadata')::BOOLEAN, FALSE),
           (p_payload->>'vcpu_count')::INTEGER,
           p_payload->>'run_id'
         );

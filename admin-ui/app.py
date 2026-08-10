@@ -2200,6 +2200,7 @@ def _process_csv_upload(schema: str, files) -> dict:
         "vcpu_count":           _safe_int(server_row.get("vcpu_count")),
         "virt_type":            server_row.get("virt_type", "unknown").strip() or "unknown",
         "is_vmware":            server_row.get("virt_type", "").strip().lower() == "vmware",
+        "is_exadata":           server_row.get("is_exadata", "false").strip().lower() == "true",
         "environment":          "unknown",
         "run_id":               run_id,
         "instances":            instances_list,
@@ -3827,10 +3828,10 @@ def edit_server(server_id):
     # CPU validation
     try:
         cpu_validation = query(
-            f"""SELECT v.*, p.cpu_architecture, p.virt_type::TEXT, p.is_vmware
+            f"""SELECT v.*, p.cpu_architecture, p.virt_type::TEXT, p.is_vmware, p.is_exadata
                 FROM {schema}.cpu_validation_report v
                 LEFT JOIN LATERAL (
-                    SELECT cpu_architecture, virt_type, is_vmware
+                    SELECT cpu_architecture, virt_type, is_vmware, is_exadata
                     FROM {schema}.oracle_processors
                     WHERE server_id = v.server_id
                     ORDER BY recorded_at DESC LIMIT 1
@@ -8084,7 +8085,7 @@ def export_lms():
                p.cpu_sockets, p.cores_per_socket,
                p.cpu_sockets * p.cores_per_socket AS total_physical_cores,
                p.threads_per_core, p.virt_type::TEXT AS virt_type,
-               p.is_vmware, p.vcpu_count,
+               p.is_vmware, p.is_exadata, p.vcpu_count,
                shared.cpu_core_factor_lookup(p.cpu_model) AS oracle_core_factor,
                p.recorded_at::DATE AS snapshot_date
         FROM {schema}.oracle_servers s
@@ -8096,7 +8097,7 @@ def export_lms():
     """)
     ws3 = wb.create_sheet("Processor Details")
     cols3 = ["Hostname", "CPU Model", "Architecture", "Sockets", "Cores/Socket",
-             "Total Physical Cores", "Threads/Core", "Virt Type", "Is VMware",
+             "Total Physical Cores", "Threads/Core", "Virt Type", "Is VMware", "Is Exadata",
              "vCPU Count", "Oracle Core Factor", "Snapshot Date"]
     ws3.append(cols3)
     for cell in ws3[1]:
@@ -8105,7 +8106,7 @@ def export_lms():
         row = [r.get("hostname"), r.get("cpu_model"), r.get("cpu_architecture"),
                r.get("cpu_sockets"), r.get("cores_per_socket"),
                r.get("total_physical_cores"), r.get("threads_per_core"),
-               r.get("virt_type"), r.get("is_vmware"), r.get("vcpu_count"),
+               r.get("virt_type"), r.get("is_vmware"), r.get("is_exadata"), r.get("vcpu_count"),
                r.get("oracle_core_factor"), str(r.get("snapshot_date", ""))]
         ws3.append(row)
         if r.get("oracle_core_factor") is None:
