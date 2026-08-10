@@ -5991,15 +5991,29 @@ def licence_analysis():
                     ORDER  BY m.product_family, m.product_detail
                 """, (server_id_int,))
 
-                # Compute assigned_cost per assignment row for the template
-                assignments = [
-                    {**dict(a), "assigned_cost": (
-                        round(float(a["licences_consumed"] or 0)
-                              * float(a["list_price_per_unit"]), 2)
-                        if a.get("list_price_per_unit") is not None else None
-                    )}
-                    for a in assignments
-                ]
+                # Compute assigned_cost and assigned_annual_support per row
+                enriched = []
+                for a in assignments:
+                    consumed  = float(a["licences_consumed"] or 0)
+                    unit_price = float(a["list_price_per_unit"]) if a.get("list_price_per_unit") is not None else None
+                    assigned_cost = round(consumed * unit_price, 2) if unit_price is not None else None
+                    assigned_annual = round(assigned_cost * SUPPORT_RATE, 2) if assigned_cost is not None else None
+                    enriched.append({**dict(a),
+                                     "assigned_cost":   assigned_cost,
+                                     "assigned_annual": assigned_annual})
+                assignments = enriched
+
+                # Build per-product-family rollup for the requirements table
+                assign_by_family: dict = {}
+                for a in assignments:
+                    pf = a["product_family"]
+                    if pf not in assign_by_family:
+                        assign_by_family[pf] = {"consumed": 0.0, "initial": 0.0, "annual": 0.0}
+                    assign_by_family[pf]["consumed"] += float(a["licences_consumed"] or 0)
+                    if a["assigned_cost"] is not None:
+                        assign_by_family[pf]["initial"] += a["assigned_cost"]
+                    if a["assigned_annual"] is not None:
+                        assign_by_family[pf]["annual"]  += a["assigned_annual"]
 
                 input_label   = server["hostname"]
                 input_env     = server["environment"] or ""
@@ -6014,6 +6028,7 @@ def licence_analysis():
                 client        = None
                 server        = None
                 assignments   = []
+                assign_by_family = {}
                 physical_cores = float(form_vals["m_cores"])
                 edition       = form_vals["m_edition"]
                 input_label   = form_vals["m_hostname"] or "Manual Entry"
@@ -6312,6 +6327,7 @@ def licence_analysis():
                 "client":            client,
                 "server":            server,
                 "assignments":       assignments,
+                "assign_by_family":  assign_by_family if ready_server else {},
                 "lines":             lines,
                 "support_rate_pct":  22,
                 "total_licence_cost": round(total_licence_cost, 2),
