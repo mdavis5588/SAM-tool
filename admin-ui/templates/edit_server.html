@@ -126,8 +126,16 @@
             </tr>
             <tr>
               <th>CPU Arch</th>
-              <td><input type="text" name="cpu_architecture" class="form-control form-control-sm"
-                         value="{{ cpu_validation.cpu_architecture or '' }}" placeholder="e.g. x86_64"></td>
+              <td>
+                <select name="cpu_architecture" class="form-select form-select-sm">
+                  {% for arch in ['x86_64','aarch64','sparc64','ppc64','ppc64le','ia64','s390x'] %}
+                  <option value="{{ arch }}" {% if cpu_validation.cpu_architecture == arch %}selected{% endif %}>{{ arch }}</option>
+                  {% endfor %}
+                  {% if cpu_validation.cpu_architecture and cpu_validation.cpu_architecture not in ['x86_64','aarch64','sparc64','ppc64','ppc64le','ia64','s390x'] %}
+                  <option value="{{ cpu_validation.cpu_architecture }}" selected>{{ cpu_validation.cpu_architecture }}</option>
+                  {% endif %}
+                </select>
+              </td>
             </tr>
             <tr>
               <th>CPU Sockets</th>
