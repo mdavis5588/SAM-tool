@@ -498,39 +498,77 @@
       delegate_to: localhost
       ignore_errors: true
 
-    - name: Load management pack parameters into oracle_options
+    # Determine which management packs are licensed from the collected db_parameters.
+    # control_management_pack_access values: NONE | DIAGNOSTIC | DIAGNOSTIC+TUNING
+    - name: Derive management pack access flags from db_parameters
+      ansible.builtin.set_fact:
+        sam_mgmt_pack_value: >-
+          {{
+            (sam_db_params | default([])
+              | selectattr('name', 'equalto', 'control_management_pack_access')
+              | map(attribute='value') | list | first | upper) if
+            (sam_db_params | default([]) | selectattr('name', 'equalto', 'control_management_pack_access') | list | length > 0)
+            else 'NONE'
+          }}
+
+    - name: Set diagnostics and tuning pack flags
+      ansible.builtin.set_fact:
+        sam_diagnostics_licensed: "{{ sam_mgmt_pack_value in ['DIAGNOSTIC', 'DIAGNOSTIC+TUNING'] }}"
+        sam_tuning_licensed:      "{{ sam_mgmt_pack_value == 'DIAGNOSTIC+TUNING' }}"
+
+    # Detect ASO usage: look for encryption/security keywords in feature_usage
+    - name: Set ASO licensed flag from feature usage keywords
+      ansible.builtin.set_fact:
+        sam_aso_licensed: >-
+          {{
+            sam_instances_extended | default([])
+            | map(attribute='feature_usage') | flatten
+            | map(attribute='feature_name') | map('lower')
+            | select('search', 'encrypt|redact|securefile|label security|advanced security|tde|rman encryption|network encryption')
+            | list | length > 0
+          }}
+
+    # Build the list of licensed option names to upsert
+    - name: Collect licensed option names
+      ansible.builtin.set_fact:
+        sam_licensed_options: >-
+          {{
+            (['Diagnostics Pack'] if sam_diagnostics_licensed | bool else []) +
+            (['Tuning Pack']      if sam_tuning_licensed      | bool else []) +
+            (['Advanced Security'] if sam_aso_licensed        | bool else [])
+          }}
+
+    # Insert/update each licensed option into oracle_options for every instance on this server.
+    # oracle_options has: instance_id, option_name, status, discovery_run_id — no server_id, no is_active.
+    - name: Upsert licensed management pack options into oracle_options
       community.postgresql.postgresql_query:
         db:             "{{ sam_db_name }}"
         login_host:     "{{ sam_db_host }}"
         login_port:     "{{ sam_db_port }}"
         login_user:     "{{ sam_db_user }}"
         login_password: "{{ sam_db_password }}"
-        query: >
+        query: |
           INSERT INTO {{ sam_client_schema }}.oracle_options
-              (server_id, option_name, is_active, discovery_run_id)
-          SELECT s.server_id,
-                 CASE WHEN (%(con_id)s)::int <= 1
-                      THEN 'param:' || %(name)s
-                      ELSE 'param:pdb' || %(con_id)s || ':' || %(name)s
-                 END,
-                 LOWER(%(value)s) NOT IN ('none','false','0',''),
+              (instance_id, option_name, status, discovery_run_id)
+          SELECT i.instance_id,
+                 %(option_name)s,
+                 'TRUE',
                  %(run_id)s
-          FROM   {{ sam_client_schema }}.oracle_servers s
+          FROM   {{ sam_client_schema }}.oracle_instances i
+          JOIN   {{ sam_client_schema }}.oracle_servers   s ON s.server_id = i.server_id
           WHERE  s.hostname = %(hostname)s
-          ON CONFLICT (server_id, option_name) DO UPDATE SET
-              is_active        = EXCLUDED.is_active,
+          ON CONFLICT (instance_id, option_name) DO UPDATE SET
+              status           = 'TRUE',
               discovery_run_id = EXCLUDED.discovery_run_id,
-              updated_at       = NOW()
+              recorded_at      = NOW()
         named_args:
-          con_id:   "{{ item.con_id }}"
-          name:     "{{ item.name }}"
-          value:    "{{ item.value }}"
-          run_id:   "{{ sam_run_id }}"
-          hostname: "{{ inventory_hostname }}"
-      loop: "{{ sam_db_params | default([]) }}"
+          option_name: "{{ item }}"
+          run_id:      "{{ sam_run_id }}"
+          hostname:    "{{ inventory_hostname }}"
+      loop: "{{ sam_licensed_options }}"
       delegate_to: localhost
       ignore_errors: true
-      when: sam_db_params is defined and sam_db_params | length > 0
+      when: sam_licensed_options | length > 0
 
     - name: Print discovery summary
       ansible.builtin.debug:
