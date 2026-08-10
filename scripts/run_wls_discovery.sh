@@ -26,30 +26,41 @@ RUN_ID="${TIMESTAMP}-${HOSTNAME_VAL}"
 OUTPUT_FILE="${1:-wls_discovery_${HOSTNAME_VAL}_${TIMESTAMP}.json}"
 
 # ---------------------------------------------------------------------------
-# CPU topology
+# CPU topology  (same logic as run_discovery.sh)
 # ---------------------------------------------------------------------------
 CPU_SOCKETS=1
 CPU_CORES_PER_SOCKET=1
 CPU_THREADS_PER_CORE=1
-CPU_MODEL="Unknown"
-CPU_ARCH=$(uname -m 2>/dev/null || echo "x86_64")
+CPU_MODEL="unknown"
+CPU_ARCH="x86_64"
 TOTAL_RAM_MB=0
 
 if command -v lscpu >/dev/null 2>&1; then
-    CPU_SOCKETS=$(lscpu 2>/dev/null | awk -F: '/^Socket\(s\)/{gsub(/ /,"",$2); print $2}')
-    CPU_CORES_PER_SOCKET=$(lscpu 2>/dev/null | awk -F: '/^Core\(s\) per socket/{gsub(/ /,"",$2); print $2}')
-    CPU_THREADS_PER_CORE=$(lscpu 2>/dev/null | awk -F: '/^Thread\(s\) per core/{gsub(/ /,"",$2); print $2}')
-    CPU_ARCH=$(lscpu 2>/dev/null | awk -F: '/^Architecture/{gsub(/ /,"",$2); print $2}')
-    : "${CPU_SOCKETS:=1}" "${CPU_CORES_PER_SOCKET:=1}" "${CPU_THREADS_PER_CORE:=1}"
+    _model=$(lscpu 2>/dev/null | awk -F': +' '/^Model name/{print $2; exit}')
+    _arch=$(lscpu  2>/dev/null | awk -F': +' '/^Architecture/{print $2; exit}')
+    _sockets=$(lscpu 2>/dev/null | awk -F': +' '/^Socket\(s\)/{print $2; exit}')
+    _cores=$(lscpu   2>/dev/null | awk -F': +' '/^Core\(s\) per socket/{print $2; exit}')
+    _threads=$(lscpu 2>/dev/null | awk -F': +' '/^Thread\(s\) per core/{print $2; exit}')
+    [[ -n "$_model"   ]] && CPU_MODEL="$_model"
+    [[ -n "$_arch"    ]] && CPU_ARCH="$_arch"
+    [[ -n "$_sockets" ]] && CPU_SOCKETS="$_sockets"
+    [[ -n "$_cores"   ]] && CPU_CORES_PER_SOCKET="$_cores"
+    [[ -n "$_threads" ]] && CPU_THREADS_PER_CORE="$_threads"
+elif [[ -f /proc/cpuinfo ]]; then
+    _model=$(awk -F': ' '/^model name/{print $2; exit}' /proc/cpuinfo)
+    [[ -n "$_model" ]] && CPU_MODEL="$_model"
+elif command -v sysctl >/dev/null 2>&1; then
+    _model=$(sysctl -n machdep.cpu.brand_string 2>/dev/null \
+          || sysctl -n hw.model 2>/dev/null \
+          || true)
+    _arch=$(uname -m 2>/dev/null || true)
+    [[ -n "$_model" ]] && CPU_MODEL="$_model"
+    [[ -n "$_arch"  ]] && CPU_ARCH="$_arch"
 fi
 
-if [ -r /proc/cpuinfo ]; then
-    CPU_MODEL=$(grep -m1 "model name" /proc/cpuinfo 2>/dev/null | sed 's/.*: //' | sed 's/  */ /g' | head -c 200)
-fi
-if command -v sysctl >/dev/null 2>&1 && [ -z "${CPU_MODEL:-}" ]; then
-    CPU_MODEL=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "Unknown")
-fi
-: "${CPU_MODEL:=Unknown}"
+# Sanitize for JSON: strip characters that break string values
+CPU_MODEL=$(echo "$CPU_MODEL" | sed "s/\"/'/g; s/\\\\/\\\\\\\\/g; s/  */ /g" | sed 's/[[:space:]]*$//')
+CPU_ARCH=$(echo  "$CPU_ARCH"  | sed "s/\"/'/g")
 
 if [ -r /proc/meminfo ]; then
     TOTAL_RAM_MB=$(awk '/^MemTotal/{printf "%.0f", $2/1024}' /proc/meminfo 2>/dev/null || echo 0)
