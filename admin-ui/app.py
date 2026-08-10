@@ -3582,69 +3582,28 @@ def edit_server(server_id):
         elif action == "update_server_details":
             if not can_write_licences():
                 abort(403)
-            new_env       = request.form.get("environment", "").strip() or None
-            new_dc        = request.form.get("datacenter", "").strip() or None
-            new_ip        = request.form.get("ip_address", "").strip() or None
-            new_last_seen = request.form.get("last_seen", "").strip() or None
-            new_cpu_model = request.form.get("cpu_model", "").strip() or None
-            new_cpu_arch  = request.form.get("cpu_architecture", "").strip() or None
-            new_sockets   = request.form.get("cpu_sockets", "").strip() or None
-            new_cores     = request.form.get("cores_per_socket", "").strip() or None
+            new_env = request.form.get("environment", "").strip() or None
+            new_dc  = request.form.get("datacenter", "").strip() or None
+            new_ip  = request.form.get("ip_address", "").strip() or None
 
             old_server = query(
-                f"SELECT environment::TEXT, datacenter, ip_address::TEXT, last_seen::DATE "
+                f"SELECT environment::TEXT, datacenter, ip_address::TEXT "
                 f"FROM {schema}.oracle_servers WHERE server_id = %s",
                 (server_id,), fetchall=False
             )
             execute(
                 f"""UPDATE {schema}.oracle_servers
-                    SET environment  = COALESCE(%s::environment_type, environment),
-                        datacenter   = %s,
-                        ip_address   = COALESCE(%s::INET, ip_address),
-                        last_seen    = COALESCE(%s::DATE, last_seen)
+                    SET environment = COALESCE(%s::environment_type, environment),
+                        datacenter  = %s,
+                        ip_address  = COALESCE(%s::INET, ip_address)
                     WHERE server_id = %s""",
-                (new_env, new_dc, new_ip, new_last_seen, server_id)
+                (new_env, new_dc, new_ip, server_id)
             )
             _audit("server.update_details", entity_type="server", entity_id=server_id,
                    old_values=dict(old_server) if old_server else None,
                    new_values={"environment": new_env, "datacenter": new_dc,
-                               "ip_address": new_ip, "last_seen": new_last_seen},
+                               "ip_address": new_ip},
                    client_schema=schema)
-
-            # If processor fields supplied, insert a new processor snapshot
-            if any([new_cpu_model, new_cpu_arch, new_sockets, new_cores]):
-                latest_proc = query(
-                    f"""SELECT cpu_model, cpu_architecture, cpu_sockets, cores_per_socket,
-                               threads_per_core, vcpu_count, virt_type::TEXT,
-                               is_vmware, is_exadata
-                        FROM {schema}.oracle_processors
-                        WHERE server_id = %s
-                        ORDER BY recorded_at DESC LIMIT 1""",
-                    (server_id,), fetchall=False
-                ) or {}
-                cpu_model   = new_cpu_model   or latest_proc.get("cpu_model")
-                cpu_arch    = new_cpu_arch    or latest_proc.get("cpu_architecture")
-                sockets     = int(new_sockets)     if new_sockets     else (latest_proc.get("cpu_sockets") or 1)
-                cores       = int(new_cores)       if new_cores       else (latest_proc.get("cores_per_socket") or 1)
-                execute(
-                    f"""INSERT INTO {schema}.oracle_processors
-                          (server_id, cpu_model, cpu_architecture, cpu_sockets,
-                           cores_per_socket, threads_per_core, vcpu_count,
-                           virt_type, is_vmware, is_exadata, discovery_run_id)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s::virt_type, %s, %s, 'manual')""",
-                    (server_id, cpu_model, cpu_arch, sockets, cores,
-                     latest_proc.get("threads_per_core") or 1,
-                     latest_proc.get("vcpu_count"),
-                     latest_proc.get("virt_type") or "unknown",
-                     latest_proc.get("is_vmware") or False,
-                     latest_proc.get("is_exadata") or False)
-                )
-                _audit("server.update_processor", entity_type="server", entity_id=server_id,
-                       old_values={k: latest_proc.get(k) for k in
-                                   ("cpu_model", "cpu_architecture", "cpu_sockets", "cores_per_socket")},
-                       new_values={"cpu_model": cpu_model, "cpu_architecture": cpu_arch,
-                                   "cpu_sockets": sockets, "cores_per_socket": cores},
-                       client_schema=schema)
             flash("Server details updated.", "success")
 
         elif action == "deactivate_server":
