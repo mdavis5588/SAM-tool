@@ -6015,13 +6015,11 @@ def licence_analysis():
                 server        = None
                 assignments   = []
                 physical_cores = float(form_vals["m_cores"])
-                sockets       = int(form_vals["m_sockets"] or 1)
-                cps           = max(1, round(physical_cores / sockets))
                 edition       = form_vals["m_edition"]
                 input_label   = form_vals["m_hostname"] or "Manual Entry"
                 input_env     = ""
-                input_sockets = sockets
-                input_cps     = cps
+                input_sockets = 1
+                input_cps     = int(physical_cores)
                 input_ram_gb  = float(form_vals["m_ram_gb"]) if form_vals["m_ram_gb"] else None
 
                 # Synthetic requirements: base edition + any selected options
