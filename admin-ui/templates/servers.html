@@ -51,6 +51,12 @@
             </td>
             <td>
               <strong>{{ s.hostname }}</strong>
+              {% if s.is_exadata %}
+                <span class="badge bg-warning text-dark ms-1"
+                      title="Exadata detected — additional licence obligations may apply">
+                  <i class="bi bi-grid-3x3-gap-fill me-1"></i>Exadata
+                </span>
+              {% endif %}
               {% if s.cpu_unvalidated %}
                 <span class="badge bg-warning text-dark ms-1"
                       title="CPU model not in Oracle core factor table — licence calculation may be wrong">
