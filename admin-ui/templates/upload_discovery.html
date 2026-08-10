@@ -57,9 +57,9 @@
     <h4 class="mb-0">Upload Discovery Output</h4>
   </div>
   <p class="text-muted mb-4" style="font-size:.9rem;">
-    Upload the output from <code>oracle_discovery.sql</code> (JSON) or
-    <code>oracle_discovery_csv.sql</code> (CSV files) to register a server
-    and load its Oracle inventory without running an automated discovery.
+    Upload the output from <code>oracle_discovery.sql</code> / <code>run_discovery.sh</code> (Oracle DB)
+    or <code>run_wls_discovery.sh</code> / <code>wls_discovery_csv.sh</code> (WebLogic)
+    to register a server and load its inventory without running an automated discovery.
   </p>
 
   {% if result %}
@@ -103,12 +103,22 @@
     <ul class="nav nav-tabs mb-4" role="tablist">
       <li class="nav-item">
         <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-json" type="button">
-          <i class="bi bi-filetype-json me-1"></i>JSON (oracle_discovery.sql)
+          <i class="bi bi-database me-1"></i>Oracle DB — JSON
         </button>
       </li>
       <li class="nav-item">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-csv" type="button">
-          <i class="bi bi-file-earmark-spreadsheet me-1"></i>CSV (oracle_discovery_csv.sql)
+          <i class="bi bi-database me-1"></i>Oracle DB — CSV
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-wls-json" type="button">
+          <i class="bi bi-layers me-1"></i>WebLogic — JSON
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-wls-csv" type="button">
+          <i class="bi bi-layers me-1"></i>WebLogic — CSV
         </button>
       </li>
     </ul>
@@ -175,14 +185,79 @@
           </button>
         </form>
       </div>
+      <!-- WebLogic JSON tab -->
+      <div class="tab-pane fade" id="tab-wls-json">
+        <form method="POST" enctype="multipart/form-data" action="/servers/upload-discovery">
+          <input type="hidden" name="upload_type" value="wls_json">
+          <input type="hidden" name="target_schema" id="schema_wls_json" value="{{ active_schema }}">
+
+          <div class="drop-zone mb-3" id="wls-json-drop" onclick="document.getElementById('wls_json_file').click()">
+            <i class="bi bi-filetype-json d-block mb-2"></i>
+            <div class="fw-semibold">Click to select WebLogic JSON file</div>
+            <div class="text-muted" style="font-size:.8rem;">or drag and drop here</div>
+            <div id="wls-json-selected" class="mt-2 text-muted" style="font-size:.85rem;"></div>
+          </div>
+          <input type="file" name="wls_json_file" id="wls_json_file" accept=".json,.txt" class="d-none"
+                 onchange="showSelected(this, 'wls-json-selected')">
+
+          <div class="text-muted mb-3" style="font-size:.8rem;">
+            <i class="bi bi-info-circle me-1"></i>
+            Produced by running <code>scripts/run_wls_discovery.sh</code> on the WebLogic server.
+            The script runs WLST in offline mode — no running server required.
+          </div>
+
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-upload me-1"></i>Upload &amp; ingest
+          </button>
+        </form>
+      </div>
+
+      <!-- WebLogic CSV tab -->
+      <div class="tab-pane fade" id="tab-wls-csv">
+        <form method="POST" enctype="multipart/form-data" action="/servers/upload-discovery">
+          <input type="hidden" name="upload_type" value="wls_csv">
+          <input type="hidden" name="target_schema" id="schema_wls_csv" value="{{ active_schema }}">
+
+          <div class="drop-zone mb-3" id="wls-csv-drop" onclick="document.getElementById('wls_csv_files').click()">
+            <i class="bi bi-file-earmark-spreadsheet d-block mb-2"></i>
+            <div class="fw-semibold">Click to select WebLogic CSV files</div>
+            <div class="text-muted" style="font-size:.8rem;">or drag and drop — select all files from the output directory</div>
+            <ul id="wls-csv-selected" class="file-list list-unstyled mb-0 mt-2"></ul>
+          </div>
+          <input type="file" name="wls_csv_files" id="wls_csv_files" accept=".csv" multiple class="d-none"
+                 onchange="showWlsCsvSelected(this)">
+
+          <div class="mb-3" style="font-size:.8rem;">
+            <div class="fw-semibold mb-1 text-muted"><i class="bi bi-info-circle me-1"></i>Required files</div>
+            <div class="d-flex flex-wrap gap-2">
+              <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">*_wls_server.csv</span>
+              <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">*_wls_domains.csv</span>
+            </div>
+            <div class="fw-semibold mb-1 mt-2 text-muted">Optional files</div>
+            <div class="d-flex flex-wrap gap-2">
+              {% for f in ["*_wls_managed_servers.csv", "*_wls_products.csv"] %}
+              <span class="badge bg-secondary-subtle text-secondary-emphasis border">{{ f }}</span>
+              {% endfor %}
+            </div>
+            <div class="mt-2 text-muted">Produced by running <code>scripts/wls_discovery_csv.sh</code> on the WebLogic server.</div>
+          </div>
+
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-upload me-1"></i>Upload &amp; ingest
+          </button>
+        </form>
+      </div>
+
     </div><!-- tab-content -->
   </div><!-- ud-card -->
 </div>
 
 <script>
 function syncSchema(sel) {
-  document.getElementById('schema_json').value = sel.value;
-  document.getElementById('schema_csv').value  = sel.value;
+  document.getElementById('schema_json').value     = sel.value;
+  document.getElementById('schema_csv').value      = sel.value;
+  document.getElementById('schema_wls_json').value = sel.value;
+  document.getElementById('schema_wls_csv').value  = sel.value;
 }
 
 function showSelected(input, targetId) {
@@ -192,6 +267,16 @@ function showSelected(input, targetId) {
 
 function showCsvSelected(input) {
   const ul = document.getElementById('csv-selected');
+  ul.innerHTML = '';
+  Array.from(input.files).forEach(f => {
+    const li = document.createElement('li');
+    li.textContent = f.name;
+    ul.appendChild(li);
+  });
+}
+
+function showWlsCsvSelected(input) {
+  const ul = document.getElementById('wls-csv-selected');
   ul.innerHTML = '';
   Array.from(input.files).forEach(f => {
     const li = document.createElement('li');
@@ -226,6 +311,36 @@ function showCsvSelected(input) {
     if (e.dataTransfer.files.length) {
       inp.files = e.dataTransfer.files;
       showCsvSelected(inp);
+    }
+  });
+})();
+
+// Drag-and-drop for WLS JSON
+(function() {
+  const zone = document.getElementById('wls-json-drop');
+  const inp  = document.getElementById('wls_json_file');
+  zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) {
+      inp.files = e.dataTransfer.files;
+      showSelected(inp, 'wls-json-selected');
+    }
+  });
+})();
+
+// Drag-and-drop for WLS CSV
+(function() {
+  const zone = document.getElementById('wls-csv-drop');
+  const inp  = document.getElementById('wls_csv_files');
+  zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) {
+      inp.files = e.dataTransfer.files;
+      showWlsCsvSelected(inp);
     }
   });
 })();

@@ -2341,6 +2341,164 @@ def _process_csv_upload(schema: str, files) -> dict:
     }
 
 
+def _process_wls_json_upload(schema: str, file_obj) -> dict:
+    """Process a WebLogic discovery JSON file (from run_wls_discovery.sh)."""
+    raw = file_obj.read().decode("utf-8", errors="replace")
+    # Strip any shell banner / non-JSON preamble lines
+    lines = raw.splitlines()
+    json_start = next((i for i, l in enumerate(lines) if l.strip().startswith("{")), None)
+    if json_start is None:
+        raise ValueError("No JSON object found in the uploaded file.")
+    doc = json.loads("\n".join(lines[json_start:]))
+
+    hostname = doc.get("hostname") or doc.get("fqdn", "")
+    if not hostname:
+        raise ValueError("JSON is missing 'hostname' field.")
+
+    messages = []
+
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT {schema}.upsert_wls_discovery(%s::jsonb)",
+                (json.dumps(doc),)
+            )
+        conn.commit()
+
+    domains = doc.get("domains", [])
+    total_ms = sum(len(d.get("managed_servers", [])) for d in domains)
+    messages.append(f"Server upserted: {hostname}")
+    messages.append(f"Domains loaded: {len(domains)}")
+    messages.append(f"Managed servers loaded: {total_ms}")
+
+    return {"success": True, "hostname": hostname, "db": "", "messages": messages}
+
+
+def _process_wls_csv_upload(schema: str, files) -> dict:
+    """Process CSV files from wls_discovery_csv.sh."""
+    import io as _io
+
+    named = {}
+    for f in files:
+        if f and f.filename:
+            named[f.filename.lower()] = f
+
+    def find_csv(suffix):
+        for name, fobj in named.items():
+            if name.endswith(suffix):
+                return fobj
+        return None
+
+    server_file  = find_csv("_wls_server.csv")
+    domains_file = find_csv("_wls_domains.csv")
+
+    if not server_file:
+        raise ValueError("Missing *_wls_server.csv — cannot proceed.")
+    if not domains_file:
+        raise ValueError("Missing *_wls_domains.csv — cannot proceed.")
+
+    def read_csv(fobj):
+        text = fobj.read().decode("utf-8", errors="replace")
+        reader = csv.DictReader(_io.StringIO(text))
+        return [dict(r) for r in reader]
+
+    server_rows  = read_csv(server_file)
+    domains_rows = read_csv(domains_file)
+    ms_file      = find_csv("_wls_managed_servers.csv")
+    prods_file   = find_csv("_wls_products.csv")
+    ms_rows      = read_csv(ms_file)   if ms_file   else []
+    prod_rows    = read_csv(prods_file) if prods_file else []
+
+    if not server_rows:
+        raise ValueError("*_wls_server.csv is empty.")
+
+    srv = server_rows[0]
+    hostname = srv.get("hostname") or srv.get("fqdn", "")
+    if not hostname:
+        raise ValueError("*_wls_server.csv is missing 'hostname'.")
+
+    run_id       = srv.get("run_id", f"csv-{hostname}")
+    discovered_at = srv.get("discovered_at", "")
+
+    # Build domains list
+    domain_map = {}
+    for dr in domains_rows:
+        domain_map[dr["domain_name"]] = {
+            "domain_name":       dr.get("domain_name", ""),
+            "domain_home":       dr.get("domain_home", ""),
+            "wls_version":       dr.get("wls_version") or None,
+            "wls_edition":       dr.get("wls_edition") or None,
+            "admin_server_host": dr.get("admin_server_host", ""),
+            "admin_server_port": _safe_int(dr.get("admin_server_port")),
+            "managed_servers":   [],
+            "installed_products": [],
+        }
+
+    for ms in ms_rows:
+        dn = ms.get("domain_name", "")
+        if dn in domain_map:
+            domain_map[dn]["managed_servers"].append({
+                "name":        ms.get("managed_server_name", ""),
+                "listen_port": _safe_int(ms.get("listen_port")),
+                "ssl_port":    _safe_int(ms.get("ssl_port")) or None,
+                "cluster":     ms.get("cluster_name") or None,
+                "machine":     ms.get("machine_name") or None,
+                "state":       "UNKNOWN",
+            })
+
+    for pr in prod_rows:
+        dn = pr.get("domain_name", "")
+        if dn in domain_map:
+            domain_map[dn]["installed_products"].append({
+                "name":    pr.get("product_name", ""),
+                "version": pr.get("product_version", ""),
+                "home":    pr.get("home_path", ""),
+            })
+
+    payload = {
+        "run_id":             run_id,
+        "hostname":           hostname,
+        "fqdn":               srv.get("fqdn", hostname),
+        "ip_address":         srv.get("ip_address", ""),
+        "os_family":          srv.get("os_family", ""),
+        "os_distribution":    srv.get("os_distribution", ""),
+        "os_version":         srv.get("os_version", ""),
+        "environment":        srv.get("environment", "unknown"),
+        "criticality":        srv.get("criticality", "unknown"),
+        "datacenter":         srv.get("datacenter", ""),
+        "cpu_sockets":        _safe_int(srv.get("cpu_sockets")),
+        "cpu_cores_per_socket": _safe_int(srv.get("cores_per_socket")),
+        "cpu_threads_per_core": _safe_int(srv.get("threads_per_core")),
+        "cpu_model":          srv.get("cpu_model", ""),
+        "cpu_architecture":   srv.get("cpu_architecture", ""),
+        "virt_type":          srv.get("virt_type", "physical"),
+        "is_vmware":          srv.get("is_vmware", "false").lower() == "true",
+        "total_ram_mb":       _safe_int(srv.get("total_ram_mb")),
+        "discovered_at":      discovered_at,
+        "domains":            list(domain_map.values()),
+    }
+
+    messages = []
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT {schema}.upsert_wls_discovery(%s::jsonb)",
+                (json.dumps(payload),)
+            )
+        conn.commit()
+
+    messages.append(f"Server upserted: {hostname}")
+    messages.append(f"Domains loaded: {len(domain_map)}")
+    total_ms = sum(len(d["managed_servers"]) for d in domain_map.values())
+    messages.append(f"Managed servers loaded: {total_ms}")
+    if ms_file:
+        messages.append(f"Managed servers file processed ({len(ms_rows)} rows).")
+    if prods_file:
+        messages.append(f"Products file processed ({len(prod_rows)} rows).")
+
+    return {"success": True, "hostname": hostname, "db": "", "messages": messages}
+
+
 @app.route("/servers/upload-discovery", methods=["GET", "POST"])
 @login_required
 def upload_discovery():
@@ -2357,11 +2515,23 @@ def upload_discovery():
                 if not f or not f.filename:
                     raise ValueError("No JSON file selected.")
                 result = _process_json_upload(target_schema, f)
-            else:
+            elif upload_type == "csv":
                 files = request.files.getlist("csv_files")
                 if not files or not any(f.filename for f in files):
                     raise ValueError("No CSV files selected.")
                 result = _process_csv_upload(target_schema, files)
+            elif upload_type == "wls_json":
+                f = request.files.get("wls_json_file")
+                if not f or not f.filename:
+                    raise ValueError("No WebLogic JSON file selected.")
+                result = _process_wls_json_upload(target_schema, f)
+            elif upload_type == "wls_csv":
+                files = request.files.getlist("wls_csv_files")
+                if not files or not any(f.filename for f in files):
+                    raise ValueError("No WebLogic CSV files selected.")
+                result = _process_wls_csv_upload(target_schema, files)
+            else:
+                raise ValueError(f"Unknown upload type: {upload_type}")
         except Exception as exc:
             result = {"success": False, "error": str(exc), "messages": []}
 
