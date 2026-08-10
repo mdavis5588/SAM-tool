@@ -94,7 +94,13 @@
               {% if s.licence_rows %}
                 {% for row in s.licence_rows %}
                 <div class="{% if not loop.last %}mb-2 pb-2 border-bottom{% endif %}">
-                  <span class="badge bg-secondary">{{ row.licences_required }}</span>
+                  {% if (row.licences_required | int) == 0 %}
+                    <span class="badge bg-danger" title="0 licences required — check CPU topology data">
+                      <i class="bi bi-exclamation-triangle-fill me-1"></i>0
+                    </span>
+                  {% else %}
+                    <span class="badge bg-secondary">{{ row.licences_required }}</span>
+                  {% endif %}
                 </div>
                 {% endfor %}
               {% else %}

@@ -216,7 +216,15 @@
             {% endif %}
             {{ r.product_detail }}
           </td>
-          <td class="text-end">{{ r.licences_required | int }}</td>
+          <td class="text-end">
+            {% if (r.licences_required | int) == 0 %}
+              <span class="text-danger fw-bold" title="Check CPU topology data">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>0
+              </span>
+            {% else %}
+              {{ r.licences_required | int }}
+            {% endif %}
+          </td>
           <td class="text-end">{{ r.total_licensed | int }}</td>
           <td class="text-end"><span class="badge bg-danger">{{ r.shortfall | int }}</span></td>
         </tr>

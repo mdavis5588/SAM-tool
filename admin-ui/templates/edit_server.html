@@ -500,7 +500,13 @@
           <small class="text-muted ms-2">{{ row.product_family | replace('_',' ') | title }}</small>
         </div>
         <div class="d-flex align-items-center gap-2">
-          <span class="badge bg-secondary">{{ row.licences_required | int }} required</span>
+          {% if (row.licences_required | int) == 0 %}
+            <span class="badge bg-danger" title="0 licences required — check CPU topology data">
+              <i class="bi bi-exclamation-triangle-fill me-1"></i>0 required
+            </span>
+          {% else %}
+            <span class="badge bg-secondary">{{ row.licences_required | int }} required</span>
+          {% endif %}
           <span class="badge bg-primary">{{ row.total_licensed | int }} assigned</span>
           {% if still_needed == 0 %}
             <span class="badge bg-success"><i class="bi bi-check-circle"></i> Covered</span>
