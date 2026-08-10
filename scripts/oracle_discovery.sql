@@ -224,8 +224,28 @@ BEGIN
   -- CPU / hardware
   -- --------------------------------------------------------
   BEGIN SELECT value INTO v_cpu_sockets     FROM v$osstat WHERE stat_name = 'NUM_CPU_SOCKETS';     EXCEPTION WHEN OTHERS THEN v_cpu_sockets := 1; END;
-  BEGIN SELECT value INTO v_cores_per_sock  FROM v$osstat WHERE stat_name = 'NUM_CORES_PER_SOCKET'; EXCEPTION WHEN OTHERS THEN v_cores_per_sock := 1; END;
-  BEGIN SELECT value INTO v_threads_per_core FROM v$osstat WHERE stat_name = 'NUM_THREADS_PER_CORE'; EXCEPTION WHEN OTHERS THEN v_threads_per_core := 1; END;
+  DECLARE v_total_cores NUMBER := 0;
+  BEGIN
+    SELECT value INTO v_cores_per_sock FROM v$osstat WHERE stat_name = 'NUM_CORES_PER_SOCKET';
+  EXCEPTION WHEN OTHERS THEN
+    -- Derive from total cores / sockets when the per-socket stat is unavailable
+    BEGIN
+      SELECT value INTO v_total_cores FROM v$osstat WHERE stat_name = 'NUM_CPU_CORES';
+      v_cores_per_sock := GREATEST(1, ROUND(v_total_cores / GREATEST(1, v_cpu_sockets)));
+    EXCEPTION WHEN OTHERS THEN v_cores_per_sock := 1;
+    END;
+  END;
+  DECLARE v_total_cores2 NUMBER := 0;
+  BEGIN
+    SELECT value INTO v_threads_per_core FROM v$osstat WHERE stat_name = 'NUM_THREADS_PER_CORE';
+  EXCEPTION WHEN OTHERS THEN
+    -- Derive from vcpu_count / total_cores when the per-core stat is unavailable
+    BEGIN
+      SELECT value INTO v_total_cores2 FROM v$osstat WHERE stat_name = 'NUM_CPU_CORES';
+      v_threads_per_core := GREATEST(1, ROUND(v_vcpu_count / GREATEST(1, v_total_cores2)));
+    EXCEPTION WHEN OTHERS THEN v_threads_per_core := 1;
+    END;
+  END;
   BEGIN SELECT value INTO v_vcpu_count      FROM v$osstat WHERE stat_name = 'NUM_CPUS';             EXCEPTION WHEN OTHERS THEN v_vcpu_count := v_cpu_sockets * v_cores_per_sock; END;
   BEGIN
     SELECT value / 1024 / 1024 INTO v_ram_mb FROM v$osstat WHERE stat_name = 'PHYSICAL_MEMORY_BYTES';

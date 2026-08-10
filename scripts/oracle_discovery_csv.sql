@@ -69,12 +69,29 @@ SELECT
   END                                                                     AS os_family,
   SUBSTR(d.platform_name, 1, 100)                                        AS os_platform,
   SUBSTR(i.version, 1, 20)                                               AS db_version,
-  (SELECT value FROM v$osstat WHERE stat_name = 'NUM_CPU_SOCKETS')       AS cpu_sockets,
-  (SELECT value FROM v$osstat WHERE stat_name = 'NUM_CORES_PER_SOCKET')  AS cores_per_socket,
-  (SELECT value FROM v$osstat WHERE stat_name = 'NUM_THREADS_PER_CORE')  AS threads_per_core,
-  (SELECT value FROM v$osstat WHERE stat_name = 'NUM_CPU_SOCKETS') *
-  (SELECT value FROM v$osstat WHERE stat_name = 'NUM_CORES_PER_SOCKET')  AS total_physical_cores,
-  (SELECT value FROM v$osstat WHERE stat_name = 'NUM_CPUS')              AS vcpu_count,
+  -- CPU topology: prefer direct stats; derive from totals when not available.
+  -- NUM_CORES_PER_SOCKET and NUM_THREADS_PER_CORE are absent on some platforms.
+  NVL((SELECT value FROM v$osstat WHERE stat_name = 'NUM_CPU_SOCKETS'), 1)
+                                                                         AS cpu_sockets,
+  NVL(
+    (SELECT value FROM v$osstat WHERE stat_name = 'NUM_CORES_PER_SOCKET'),
+    GREATEST(1, ROUND(
+      NVL((SELECT value FROM v$osstat WHERE stat_name = 'NUM_CPU_CORES'), 1)
+      / GREATEST(1, NVL((SELECT value FROM v$osstat WHERE stat_name = 'NUM_CPU_SOCKETS'), 1))
+    ))
+  )                                                                      AS cores_per_socket,
+  NVL(
+    (SELECT value FROM v$osstat WHERE stat_name = 'NUM_THREADS_PER_CORE'),
+    GREATEST(1, ROUND(
+      NVL((SELECT value FROM v$osstat WHERE stat_name = 'NUM_CPUS'), 1)
+      / GREATEST(1, NVL((SELECT value FROM v$osstat WHERE stat_name = 'NUM_CPU_CORES'), 1))
+    ))
+  )                                                                      AS threads_per_core,
+  NVL((SELECT value FROM v$osstat WHERE stat_name = 'NUM_CPU_CORES'),
+    NVL((SELECT value FROM v$osstat WHERE stat_name = 'NUM_CPU_SOCKETS'), 1) *
+    NVL((SELECT value FROM v$osstat WHERE stat_name = 'NUM_CORES_PER_SOCKET'), 1)
+  )                                                                      AS total_physical_cores,
+  NVL((SELECT value FROM v$osstat WHERE stat_name = 'NUM_CPUS'), 1)     AS vcpu_count,
   ROUND((SELECT value FROM v$osstat WHERE stat_name = 'PHYSICAL_MEMORY_BYTES') / 1048576) AS ram_mb,
   NVL((SELECT SUBSTR(value,1,100) FROM v$parameter WHERE name = 'processor_type'), 'unknown') AS cpu_model,
   CASE
