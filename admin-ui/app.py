@@ -95,6 +95,7 @@ _OCI_STATIC_SKUS = [
     # ExaCC (Exadata Cloud@Customer) X9M — Oracle-managed Exadata on-premises
     # Source: Oracle price list 2024. Note: infrastructure subscription fees apply
     # separately on top of these per-OCPU software rates.
+    # Prices are quoted in CAD.
     {
         "name":                 "Exadata Cloud@Customer X9M — BYOL",
         "part_number":          "B93189",
@@ -114,7 +115,6 @@ _OCI_STATIC_SKUS = [
         "is_exacc":             True,
     },
 ]
-
 
 _NO_PROXY = {"http": None, "https": None}  # bypass any HTTPS_PROXY env var
 
