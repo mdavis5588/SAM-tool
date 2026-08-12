@@ -108,7 +108,7 @@ _OCI_STATIC_SKUS = [
         "name":                 "Exadata Cloud@Customer X9M — Licence Included",
         "part_number":          "B93190",
         "metric":               "ocpu per hour",
-        "unit_price":           3.5168,   # per OCPU per hour, EE licence bundled
+        "unit_price":           0.3226,   # per OCPU per hour, EE licence bundled (Oracle list price Aug 2024)
         "is_byol":              False,
         "is_licence_included":  True,
         "is_exacc":             True,
