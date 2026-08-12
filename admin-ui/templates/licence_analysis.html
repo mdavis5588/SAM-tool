@@ -653,8 +653,13 @@
                     </div>
                   </div>
                   </div>
+                  {% if result.licence_discount_pct %}
+                  <div class="mt-2 pt-2 border-top" style="font-size:.72rem; color:#15803d;">
+                    <i class="bi bi-tag me-1"></i>{{ result.licence_discount_pct }}% licence discount — saving <strong>${{ "{:,.0f}".format(result.licence_discount_saving) }}</strong> on purchase price
+                  </div>
+                  {% endif %}
                   {% if result.adjustments.onprem %}
-                  <div class="mt-2 pt-2 border-top" style="font-size:.7rem; color:#92400e;">
+                  <div class="mt-1 pt-1" style="font-size:.7rem; color:#92400e;">
                     <i class="bi bi-sliders me-1"></i>Managed service cost included: +${{ "{:,.0f}".format(result.adjustments.onprem) }}/yr
                   </div>
                   {% endif %}
@@ -971,6 +976,15 @@
                 {% endfor %}
               </tbody>
               <tfoot class="table-secondary fw-semibold">
+                {% if result.licence_discount_pct %}
+                <tr class="table-success">
+                  <td colspan="4" class="text-end text-success" style="font-size:.8rem; font-weight:normal;">
+                    <i class="bi bi-tag me-1"></i>{{ result.licence_discount_pct }}% licence discount saving
+                  </td>
+                  <td class="text-end text-success" style="font-size:.8rem; font-weight:normal;">-${{ "{:,.0f}".format(result.licence_discount_saving) }}</td>
+                  <td colspan="{{ 3 + (1 if has_assignments else 0) }}"></td>
+                </tr>
+                {% endif %}
                 <tr>
                   <td colspan="4" class="text-end">Totals</td>
                   <td class="text-end">${{ "{:,.0f}".format(result.total_licence_cost) }}</td>

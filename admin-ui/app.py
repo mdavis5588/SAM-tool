@@ -6270,9 +6270,10 @@ def licence_analysis():
             # Cost model — perpetual on-prem
             # ----------------------------------------------------------
             lines = []
-            total_licence_cost  = 0.0
-            total_yr1_support   = 0.0
-            total_yr2_annual    = 0.0
+            total_licence_cost      = 0.0
+            total_licence_cost_raw  = 0.0   # before discount, for display
+            total_yr1_support       = 0.0
+            total_yr2_annual        = 0.0
 
             # Build a quick lookup: product_family -> unit_price from assigned CSIs
             assignment_prices: dict = {}
@@ -6307,9 +6308,10 @@ def licence_analysis():
                 yr1_total    = round(licence_cost + yr1_sup, 2) if licence_cost is not None else None
 
                 if licence_cost is not None:
-                    total_licence_cost += licence_cost
-                    total_yr1_support  += yr1_sup
-                    total_yr2_annual   += yr1_sup
+                    total_licence_cost     += licence_cost
+                    total_licence_cost_raw += _raw_licence
+                    total_yr1_support      += yr1_sup
+                    total_yr2_annual       += yr1_sup
 
                 lines.append({
                     "product_label":    req["product_label"],
@@ -6413,6 +6415,7 @@ def licence_analysis():
                 "new_licence_cost":  round(total_licence_cost, 2),
                 "new_licence_support_yr1": round(total_yr1_support, 2),
                 "licence_discount_pct": licence_discount_pct,
+                "licence_discount_saving": round(total_licence_cost_raw - total_licence_cost, 2),
                 "adjustments": {
                     "onprem":         adj_onprem,
                     "oci":            adj_oci,
