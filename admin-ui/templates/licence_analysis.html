@@ -173,8 +173,8 @@
               <label class="form-label mb-1" style="font-size:.75rem;">Managed Service Cost per core (USD)</label>
               <div class="input-group input-group-sm">
                 <span class="input-group-text">$</span>
-                <input type="number" name="adj_onprem" class="form-control" min="0" step="0.01"
-                       placeholder="2175.58" value="{{ form_vals.adj_onprem or '' }}" form="form-server">
+                <input type="number" id="adj-onprem" class="form-control adj-input" min="0" step="0.01"
+                       placeholder="2175.58" value="{{ form_vals.adj_onprem or '' }}" form="form-server" name="adj_onprem">
               </div>
               <div class="form-text mt-1">Annual cost per physical core — multiplied by core count</div>
             </div>
@@ -191,8 +191,8 @@
               <label class="form-label mb-1" style="font-size:.75rem;">Extra annual cost (USD)</label>
               <div class="input-group input-group-sm mb-2">
                 <span class="input-group-text">$</span>
-                <input type="number" name="adj_oci" class="form-control" min="0" step="1"
-                       placeholder="0" value="{{ form_vals.adj_oci or '' }}" form="form-server">
+                <input type="number" id="adj-oci" class="form-control adj-input" min="0" step="1"
+                       placeholder="0" value="{{ form_vals.adj_oci or '' }}" form="form-server" name="adj_oci">
               </div>
               <div class="form-text mt-1">e.g. storage, networking, support tiers</div>
             </div>
@@ -209,8 +209,8 @@
               <label class="form-label mb-1" style="font-size:.75rem;">Managed Service Cost per core (USD)</label>
               <div class="input-group input-group-sm">
                 <span class="input-group-text">$</span>
-                <input type="number" name="adj_exacc" class="form-control" min="0" step="0.01"
-                       placeholder="2175.58" value="{{ form_vals.adj_exacc }}" form="form-server">
+                <input type="number" id="adj-exacc" class="form-control adj-input" min="0" step="0.01"
+                       placeholder="2175.58" value="{{ form_vals.adj_exacc }}" form="form-server" name="adj_exacc">
               </div>
               <div class="form-text mt-1">Annual cost per physical core — multiplied by core count</div>
             </div>
@@ -227,8 +227,8 @@
               <label class="form-label mb-1" style="font-size:.75rem;">Extra annual cost (USD)</label>
               <div class="input-group input-group-sm mb-2">
                 <span class="input-group-text">$</span>
-                <input type="number" name="adj_azure" class="form-control" min="0" step="1"
-                       placeholder="0" value="{{ form_vals.adj_azure or '' }}" form="form-server">
+                <input type="number" id="adj-azure" class="form-control adj-input" min="0" step="1"
+                       placeholder="0" value="{{ form_vals.adj_azure or '' }}" form="form-server" name="adj_azure">
               </div>
               <div class="form-text mt-1">e.g. storage, networking, support tiers</div>
             </div>
@@ -244,8 +244,8 @@
               </div>
               <label class="form-label mb-1" style="font-size:.75rem;">Discount on new licence purchase (%)</label>
               <div class="input-group input-group-sm">
-                <input type="number" name="licence_discount" class="form-control" min="0" max="100" step="0.1"
-                       placeholder="0" value="{{ form_vals.licence_discount or '' }}" form="form-server">
+                <input type="number" id="adj-licence-discount" class="form-control adj-input" min="0" max="100" step="0.1"
+                       placeholder="0" value="{{ form_vals.licence_discount or '' }}" form="form-server" name="licence_discount">
                 <span class="input-group-text">%</span>
               </div>
               <div class="form-text mt-1">Applied to new licence cost only — not support or existing pool</div>
@@ -266,8 +266,7 @@
 
       {% if result %}
       <div class="mt-3 text-end">
-        <button type="submit" form="{{ 'form-manual' if form_vals.mode == 'manual' else 'form-server' }}"
-                class="btn btn-sm btn-success">
+        <button type="button" id="btn-apply-adjustments" class="btn btn-sm btn-success">
           <i class="bi bi-arrow-clockwise me-1"></i>Apply &amp; Recalculate
         </button>
       </div>
@@ -1545,6 +1544,31 @@
 {% endif %}
 
 <script>
+// ---- Apply & Recalculate adjustments ----
+const btnApply = document.getElementById('btn-apply-adjustments');
+if (btnApply) {
+  btnApply.addEventListener('click', function() {
+    const params = new URLSearchParams(window.location.search);
+    const fields = {
+      'adj_onprem':        document.getElementById('adj-onprem'),
+      'adj_oci':           document.getElementById('adj-oci'),
+      'adj_exacc':         document.getElementById('adj-exacc'),
+      'adj_azure':         document.getElementById('adj-azure'),
+      'licence_discount':  document.getElementById('adj-licence-discount'),
+    };
+    for (const [key, el] of Object.entries(fields)) {
+      if (!el) continue;
+      const val = el.value.trim();
+      if (val) {
+        params.set(key, val);
+      } else {
+        params.delete(key);
+      }
+    }
+    window.location.href = window.location.pathname + '?' + params.toString();
+  });
+}
+
 // ---- Mode tab switching ----
 document.querySelectorAll('[data-mode]').forEach(tab => {
   tab.addEventListener('click', e => {
