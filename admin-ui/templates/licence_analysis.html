@@ -263,6 +263,15 @@
         <input type="number" name="adj_azure"         form="form-manual" value="{{ form_vals.adj_azure or '' }}">
         <input type="number" name="licence_discount"  form="form-manual" value="{{ form_vals.licence_discount or '' }}">
       </div>
+
+      {% if result %}
+      <div class="mt-3 text-end">
+        <button type="submit" form="{{ 'form-manual' if form_vals.mode == 'manual' else 'form-server' }}"
+                class="btn btn-sm btn-success">
+          <i class="bi bi-arrow-clockwise me-1"></i>Apply &amp; Recalculate
+        </button>
+      </div>
+      {% endif %}
     </div>
   </div>
 </div>
