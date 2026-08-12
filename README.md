@@ -123,6 +123,19 @@ ansible-playbook ansible/playbooks/discover_oracle.yml \
   --limit client_acme_oracle
 ```
 
+### Least-privileged discovery account
+
+The discovery scripts only need `SELECT` on a fixed set of views. Run this once on each target database as SYSDBA to create a dedicated account:
+
+```bash
+sqlplus / as sysdba @scripts/create_sam_discovery_user.sql
+```
+
+This creates `sam_discovery` with `CREATE SESSION` and `SELECT` on:
+`v$database`, `v$instance`, `v$version`, `v$osstat`, `v$parameter`, `v$option`, `v$pdbs`, `v$cell`, `gv$instance`, `gv$parameter`, `dba_users`, `dba_feature_usage_statistics`.
+
+Change the password in the script before running. After creating the user, connect the discovery scripts as `sam_discovery` rather than `sys/sysdba`.
+
 ### Manual (no Ansible — air-gapped or firewalled servers)
 
 Two discovery formats are supported: **JSON** (recommended, richer data) and **CSV** (lighter, no SQL*Plus spool quirks).
@@ -676,7 +689,8 @@ SAM-tool/
 │       ├── 31_add_is_exadata.sql
 │       └── 32_patch_upsert_is_exadata.sql
 ├── scripts/
-│   ├── run_discovery.sh                     ★ Run on Oracle DB server — collects CPU via lscpu, outputs JSON
+│   ├── create_sam_discovery_user.sql        ★ Run as SYSDBA once per DB — creates least-privileged sam_discovery account
+│   ├── run_discovery.sh                     Run on Oracle DB server — collects CPU via lscpu, outputs JSON
 │   ├── oracle_discovery.sql                 SQL*Plus script called by run_discovery.sh
 │   ├── run_discovery_csv.sh                 CSV variant of run_discovery.sh
 │   ├── oracle_discovery_csv.sql             SQL*Plus script called by run_discovery_csv.sh
