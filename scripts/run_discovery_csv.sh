@@ -8,9 +8,13 @@
 #   ./scripts/run_discovery_csv.sh [connect_string]
 #
 # Examples:
-#   ./scripts/run_discovery_csv.sh                       # OS auth: / as sysdba
-#   ./scripts/run_discovery_csv.sh sys/secret@orcl       # explicit credentials
-#   ./scripts/run_discovery_csv.sh "/@mydb as sysdba"
+#   ./scripts/run_discovery_csv.sh                              # sam_discovery user, prompted for password
+#   ./scripts/run_discovery_csv.sh sam_discovery/secret@orcl   # sam_discovery with password in-line
+#   ./scripts/run_discovery_csv.sh "/ as sysdba"               # OS auth (fallback / legacy)
+#
+# Prerequisites:
+#   Run scripts/create_sam_discovery_user.sql as SYSDBA once per target database
+#   to create the least-privileged sam_discovery account before using this script.
 #
 # CSV files are written in the current directory with the pattern:
 #   <hostname>_<db>_<timestamp>_server.csv
@@ -19,7 +23,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CONNECT="${1:-/ as sysdba}"
+
+# Default to sam_discovery — prompt for password if not supplied in connect string
+if [[ $# -eq 0 ]]; then
+    read -r -s -p "Password for sam_discovery: " _pw
+    echo ""
+    CONNECT="sam_discovery/${_pw}"
+    unset _pw
+else
+    CONNECT="${1}"
+fi
 DISCOVERY_SQL="${SCRIPT_DIR}/oracle_discovery_csv.sql"
 
 # ---------------------------------------------------------------------------
