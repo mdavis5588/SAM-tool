@@ -5890,6 +5890,12 @@ def licence_analysis():
     adj_exacc  = 0.0   # resolved per-analysis once physical_cores is known
     adj_any = any([onprem_per_core, adj_oci, managed_per_core, adj_azure])
 
+    try:
+        _ld = float(request.args.get("licence_discount", "") or 0)
+        licence_discount_pct = max(0.0, min(100.0, _ld))
+    except (ValueError, TypeError):
+        licence_discount_pct = 0.0
+
     form_vals = {
         "mode":                mode,
         "client_id":           request.args.get("client_id", ""),
@@ -5910,6 +5916,7 @@ def licence_analysis():
         "adj_onprem_upfront":  int(adj_onprem_upfront) if adj_onprem_upfront else "",
         "adj_exacc_upfront":   int(adj_exacc_upfront)  if adj_exacc_upfront  else "",
         "adj_any":             adj_any,
+        "licence_discount":    licence_discount_pct if licence_discount_pct else "",
         # manual mode: which options are selected
         "m_options": [p for p, _, _, _ in MANUAL_DB_OPTIONS
                       if request.args.get(p)],
@@ -6293,8 +6300,9 @@ def licence_analysis():
                     or find_price(req["product_label"], req["metric"])
                 )
 
-                # Cost of new licences only
-                licence_cost = round(units_new * unit_price, 2) if unit_price is not None else None
+                # Cost of new licences only (discount applied to purchase price only)
+                _raw_licence  = round(units_new * unit_price, 2) if unit_price is not None else None
+                licence_cost  = round(_raw_licence * (1 - licence_discount_pct / 100), 2) if _raw_licence is not None else None
                 yr1_sup      = round(licence_cost * SUPPORT_RATE, 2) if licence_cost is not None else None
                 yr1_total    = round(licence_cost + yr1_sup, 2) if licence_cost is not None else None
 
@@ -6404,6 +6412,7 @@ def licence_analysis():
                 "pool_existing_support_yr2": round(pool_existing_support_yr2, 2),
                 "new_licence_cost":  round(total_licence_cost, 2),
                 "new_licence_support_yr1": round(total_yr1_support, 2),
+                "licence_discount_pct": licence_discount_pct,
                 "adjustments": {
                     "onprem":         adj_onprem,
                     "oci":            adj_oci,

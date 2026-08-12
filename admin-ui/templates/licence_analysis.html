@@ -235,14 +235,33 @@
           </div>
         </div>
 
+        <!-- Licence Discount -->
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="card border-0 h-100" style="background:#f0fdf4; border:1px solid #bbf7d0 !important;">
+            <div class="card-body py-2 px-3">
+              <div class="fw-semibold small mb-2" style="color:#15803d;">
+                <i class="bi bi-tag me-1"></i>New Licence Discount
+              </div>
+              <label class="form-label mb-1" style="font-size:.75rem;">Discount on new licence purchase (%)</label>
+              <div class="input-group input-group-sm">
+                <input type="number" name="licence_discount" class="form-control" min="0" max="100" step="0.1"
+                       placeholder="0" value="{{ form_vals.licence_discount or '' }}" form="form-server">
+                <span class="input-group-text">%</span>
+              </div>
+              <div class="form-text mt-1">Applied to new licence cost only — not support or existing pool</div>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <!-- Hidden inputs to carry adjustments in manual-mode form -->
       <div style="display:none">
-        <input type="number" name="adj_onprem" form="form-manual" value="{{ form_vals.adj_onprem or '' }}">
-        <input type="number" name="adj_oci"    form="form-manual" value="{{ form_vals.adj_oci or '' }}">
-        <input type="number" name="adj_exacc"  form="form-manual" value="{{ form_vals.adj_exacc }}">
-        <input type="number" name="adj_azure"  form="form-manual" value="{{ form_vals.adj_azure or '' }}">
+        <input type="number" name="adj_onprem"        form="form-manual" value="{{ form_vals.adj_onprem or '' }}">
+        <input type="number" name="adj_oci"           form="form-manual" value="{{ form_vals.adj_oci or '' }}">
+        <input type="number" name="adj_exacc"         form="form-manual" value="{{ form_vals.adj_exacc }}">
+        <input type="number" name="adj_azure"         form="form-manual" value="{{ form_vals.adj_azure or '' }}">
+        <input type="number" name="licence_discount"  form="form-manual" value="{{ form_vals.licence_discount or '' }}">
       </div>
     </div>
   </div>
@@ -477,10 +496,11 @@
           <input type="hidden" name="m_ram_gb"     value="{{ form_vals.m_ram_gb }}">
           <input type="hidden" name="m_edition"    value="{{ form_vals.m_edition }}">
           <input type="hidden" name="horizon_years" value="{{ form_vals.horizon_years }}">
-          <input type="hidden" name="adj_onprem"   value="{{ form_vals.adj_onprem or '' }}">
-          <input type="hidden" name="adj_oci"      value="{{ form_vals.adj_oci or '' }}">
-          <input type="hidden" name="adj_exacc"    value="{{ form_vals.adj_exacc or '' }}">
-          <input type="hidden" name="adj_azure"    value="{{ form_vals.adj_azure or '' }}">
+          <input type="hidden" name="adj_onprem"        value="{{ form_vals.adj_onprem or '' }}">
+          <input type="hidden" name="adj_oci"           value="{{ form_vals.adj_oci or '' }}">
+          <input type="hidden" name="adj_exacc"         value="{{ form_vals.adj_exacc or '' }}">
+          <input type="hidden" name="adj_azure"         value="{{ form_vals.adj_azure or '' }}">
+          <input type="hidden" name="licence_discount"  value="{{ form_vals.licence_discount or '' }}">
           {% for param, _, _, _ in manual_db_options %}
             {% if param in form_vals.m_options %}
             <input type="hidden" name="{{ param }}" value="1">
@@ -1083,6 +1103,7 @@
                     </div>
                   </div>
                   <table class="table table-sm table-borderless mb-0 border-top pt-1" style="font-size:.72rem;">
+                    {% if result.licence_discount_pct %}<tr><td class="ps-0 py-0" colspan="2"><span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-tag me-1"></i>{{ result.licence_discount_pct }}% licence discount applied</span></td></tr>{% endif %}
                     <tr><td class="text-muted ps-0 py-0">Licence (yr1 purchase + support)</td><td class="text-end pe-0 py-0 fw-semibold">${{ "{:,.0f}".format(result.licence_yr1) }}</td></tr>
                     <tr><td class="text-muted ps-0 py-0">Licence (yr2+ support only)</td><td class="text-end pe-0 py-0 fw-semibold">${{ "{:,.0f}".format(result.licence_yr2) }}</td></tr>
                     <tr><td class="text-muted ps-0 py-0">Compute ({{ "{:,.0f}".format(oci.ocpus) }} OCPUs)</td><td class="text-end pe-0 py-0 fw-semibold">${{ "{:,.0f}".format(oci_byol_compute2) }}/yr</td></tr>
@@ -1172,6 +1193,7 @@
                     </div>
                   </div>
                   <table class="table table-sm table-borderless mb-0 border-top pt-1" style="font-size:.72rem;">
+                    {% if result.licence_discount_pct %}<tr><td class="ps-0 py-0" colspan="2"><span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-tag me-1"></i>{{ result.licence_discount_pct }}% licence discount applied</span></td></tr>{% endif %}
                     <tr><td class="text-muted ps-0 py-0">Licence (yr1 purchase + support)</td><td class="text-end pe-0 py-0 fw-semibold">${{ "{:,.0f}".format(result.licence_yr1) }}</td></tr>
                     <tr><td class="text-muted ps-0 py-0">Licence (yr2+ support only)</td><td class="text-end pe-0 py-0 fw-semibold">${{ "{:,.0f}".format(result.licence_yr2) }}</td></tr>
                     <tr><td class="text-muted ps-0 py-0">Compute ({{ "{:,.0f}".format(oci.ocpus) }} OCPUs)</td><td class="text-end pe-0 py-0 fw-semibold">${{ "{:,.0f}".format(exacc_byol_compute2) }}/yr</td></tr>
@@ -1370,6 +1392,9 @@
                   </div>
                   <table class="table table-sm table-borderless mb-2" style="font-size:.72rem;">
                     <tbody>
+                      {% if result.licence_discount_pct %}
+                      <tr><td class="ps-0 py-0" colspan="2"><span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-tag me-1"></i>{{ result.licence_discount_pct }}% licence discount applied</span></td></tr>
+                      {% endif %}
                       <tr>
                         <td class="text-muted ps-0">Licence (yr1 purchase + support)</td>
                         <td class="text-end pe-0 fw-semibold">${{ "{:,.0f}".format(result.licence_yr1) }}</td>
