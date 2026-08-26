@@ -2081,14 +2081,20 @@ def _process_json_upload(schema: str, file_obj) -> dict:
     if mgmt.get("tuning_licensed"):
         pack_options.append("Tuning Pack")
 
-    # Detect ASO from feature_usage — any of these names indicates ASO is in use
+    # Detect ASO from feature_usage — require currently_used=TRUE to avoid
+    # false-positives from features that appear in dba_feature_usage_statistics
+    # but have never actually been used (detected_usages=0, currently_used=FALSE).
     _aso_keywords = (
         "transparent data encryption", "encrypted tablespace",
         "data redaction", "securefile encryption", "backup encryption",
         "network encryption", "advanced security", "rman encryption",
         "tde", "securefile", "label security",
     )
-    top_feature_names = [f.get("feature_name", "").lower() for f in doc.get("feature_usage", [])]
+    top_feature_names = [
+        f.get("feature_name", "").lower()
+        for f in doc.get("feature_usage", [])
+        if f.get("currently_used") in (True, "true", "TRUE")
+    ]
     if any(kw in fn for fn in top_feature_names for kw in _aso_keywords):
         pack_options.append("Advanced Security")
     if pack_options:
@@ -2304,9 +2310,11 @@ def _process_csv_upload(schema: str, files) -> dict:
         "network encryption", "advanced security", "rman encryption",
         "tde", "securefile", "label security",
     )
+    _cdb_feats = [_feat_row_to_dict(r) for r in parsed.get("feature_usage", [])]
     cdb_feature_names = [
-        _feat_row_to_dict(r).get("feature_name", "").lower()
-        for r in parsed.get("feature_usage", [])
+        f.get("feature_name", "").lower()
+        for f in _cdb_feats
+        if f.get("currently_used")
     ]
     if any(kw in fn for fn in cdb_feature_names for kw in _aso_keywords):
         pack_options.append("Advanced Security")
@@ -3990,7 +3998,7 @@ def edit_server(server_id):
                     f.detected_usages
                   FROM {schema}.oracle_feature_usage f
                   JOIN {schema}.oracle_instances i ON i.instance_id = f.instance_id
-                  WHERE i.server_id = %s AND f.detected_usages > 0
+                  WHERE i.server_id = %s AND f.currently_used = TRUE
                 ) mapped
                 WHERE product IS NOT NULL
                 GROUP BY product
