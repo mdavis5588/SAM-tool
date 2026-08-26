@@ -6,9 +6,16 @@
 # A single explicit connect string can be passed to run against one database only.
 #
 # Usage:
-#   ./scripts/run_discovery_csv.sh                       # iterate /etc/oratab (default)
-#   ./scripts/run_discovery_csv.sh sys/secret@orcl       # single DB, explicit credentials
-#   ./scripts/run_discovery_csv.sh "/@mydb as sysdba"    # single DB, OS auth
+#   ./scripts/run_discovery_csv.sh                           # iterate /etc/oratab (default, OS auth)
+#   ./scripts/run_discovery_csv.sh "/@CDB1 as sysdba"       # single CDB via TNS alias
+#   ./scripts/run_discovery_csv.sh "/@PDB1"                  # single PDB direct (limited discovery)
+#   ./scripts/run_discovery_csv.sh sam_discovery/pw@CDB1    # named account
+#
+# Connection context:
+#   CDB$ROOT (oratab entries / "as sysdba"): full discovery — all PDBs captured.
+#   PDB direct connection: server, instances, and feature/product usage for that
+#   PDB only; pdb_feature_usage reflects the connected PDB. For full multi-PDB
+#   coverage always connect to CDB$ROOT.
 #
 # CSV files are written in the current directory with the pattern:
 #   <hostname>_<db>_<timestamp>_server.csv
