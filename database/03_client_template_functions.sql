@@ -519,7 +519,18 @@ BEGIN
         COALESCE((p_payload->>'is_exadata')::BOOLEAN, FALSE),
         (p_payload->>'vcpu_count')::INTEGER,
         p_payload->>'run_id'
-      );
+      )
+      ON CONFLICT (server_id) DO UPDATE SET
+        cpu_model        = EXCLUDED.cpu_model,
+        cpu_architecture = EXCLUDED.cpu_architecture,
+        cpu_sockets      = EXCLUDED.cpu_sockets,
+        cores_per_socket = EXCLUDED.cores_per_socket,
+        threads_per_core = EXCLUDED.threads_per_core,
+        virt_type        = EXCLUDED.virt_type,
+        is_vmware        = EXCLUDED.is_vmware,
+        is_exadata       = EXCLUDED.is_exadata,
+        vcpu_count       = EXCLUDED.vcpu_count,
+        discovery_run_id = EXCLUDED.discovery_run_id;
 
       -- Upsert Oracle instances
       FOR v_instance IN SELECT * FROM jsonb_array_elements(p_payload->'instances')
