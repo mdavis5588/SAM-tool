@@ -2339,11 +2339,24 @@ def _process_csv_upload(schema: str, files) -> dict:
             elif "open" in cat or "active" in cat:
                 nup_active = cnt
 
+        # upsert_oracle_extended_discovery expects PDBs and NUP nested under
+        # instances[].pdbs / instances[].nup_active_users so the DB function
+        # can match them to the right oracle_instances row via oracle_sid.
+        extended_instances = [
+            {
+                "sid":             sid,
+                "pdbs":            pdbs_list,
+                "nup_active_users": nup_active,
+                "nup_total_users":  nup_total,
+                "rac_nodes":       [],
+            }
+            for sid in (sids if sids else [primary_sid])
+            if sid
+        ]
         extended_payload = {
             "hostname":  hostname,
             "run_id":    run_id,
-            "pdbs":      pdbs_list,
-            "nup_users": {"total": nup_total, "active": nup_active},
+            "instances": extended_instances,
         }
         _call_upsert(schema, "upsert_oracle_extended_discovery", extended_payload)
 
