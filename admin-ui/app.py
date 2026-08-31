@@ -2173,38 +2173,97 @@ def _detect_csv_type(filename: str) -> str:
     return "unknown"
 
 
-def _process_csv_upload(schema: str, files) -> dict:
+def _group_csv_files(files) -> dict:
     """
-    Process a bundle of CSV files from oracle_discovery_csv.sql and upsert
-    into the given schema.  Requires at minimum _server.csv + _instances.csv.
+    Group uploaded CSV files by their Oracle-home prefix
+    (everything before the trailing _<type>.csv).
+
+    Each unique prefix represents one Oracle home / database.  Files from
+    different homes on the same host all share the same hostname in their
+    _server.csv but have different db_unique_name components in the prefix.
+
+    Returns: {prefix: {csv_type: [rows]}}
     """
-    parsed = {}
+    suffixes = ("_server", "_instances", "_feature_usage", "_pdb_feature_usage",
+                "_users", "_pdbs", "_mgmt_packs", "_rac_nodes", "_product_usage")
+    groups: dict = {}
     for f in files:
         if not f.filename:
             continue
-        csv_type = _detect_csv_type(f.filename)
-        parsed[csv_type] = _parse_csv_file(f)
+        name = f.filename.lower()
+        csv_type = _detect_csv_type(name)
+        if csv_type == "unknown":
+            continue
+        # Strip the known suffix to get the per-home prefix
+        prefix = name
+        for sfx in suffixes:
+            if name.endswith(sfx + ".csv"):
+                prefix = name[: -len(sfx + ".csv")]
+                break
+        if prefix not in groups:
+            groups[prefix] = {}
+        groups[prefix][csv_type] = _parse_csv_file(f)
+    return groups
 
-    if "server" not in parsed:
+
+def _process_csv_upload(schema: str, files) -> dict:
+    """
+    Process one or more bundles of CSV files from oracle_discovery_csv.sql.
+
+    Supports uploading CSVs from multiple Oracle homes on the same host in a
+    single operation.  Files are grouped by their filename prefix
+    (hostname_db_timestamp) so each Oracle home is processed independently
+    while the server hardware record is shared.
+
+    Requires at least one _server.csv and one _instances.csv across the upload.
+    """
+    groups = _group_csv_files(files)
+    if not groups:
+        raise ValueError("No recognised CSV files found in the upload.")
+
+    # ------------------------------------------------------------------ #
+    # Server hardware — use the first group that has a server row.         #
+    # All groups on the same host share the same hardware, so we only need #
+    # one.  Prefer a group whose cpu_model is non-empty.                   #
+    # ------------------------------------------------------------------ #
+    server_row = None
+    for g in groups.values():
+        if "server" in g and g["server"]:
+            candidate = g["server"][0]
+            if server_row is None or candidate.get("cpu_model", "").strip():
+                server_row = candidate
+    if server_row is None:
         raise ValueError("_server.csv is required — cannot identify the host.")
-    if "instances" not in parsed:
+
+    has_instances = any("instances" in g for g in groups.values())
+    if not has_instances:
         raise ValueError("_instances.csv is required — cannot register Oracle instances.")
 
-    server_row = parsed["server"][0]
-    hostname   = server_row.get("hostname", "").strip()
-    run_id     = "csv-" + datetime.now().strftime("%Y%m%d%H%M%S") + "-" + _uuid.uuid4().hex[:6]
-    messages   = []
+    hostname = server_row.get("hostname", "").strip()
+    run_id   = "csv-" + datetime.now().strftime("%Y%m%d%H%M%S") + "-" + _uuid.uuid4().hex[:6]
+    messages = []
 
-    # Build base payload for upsert_oracle_discovery
-    instances_list = []
-    for row in parsed.get("instances", []):
-        instances_list.append({
-            "sid":           row.get("instance_name", "").strip(),
-            "db_name":       row.get("db_name", "").strip(),
-            "edition":       row.get("edition", "").strip(),
-            "version":       row.get("version", "").strip(),
-            "platform_name": row.get("platform_name", "").strip(),
-        })
+    # ------------------------------------------------------------------ #
+    # Collect ALL instances across every Oracle home into one list so     #
+    # upsert_oracle_discovery registers them all against the server.      #
+    # ------------------------------------------------------------------ #
+    all_instances: list = []
+    # Track which SIDs belong to each group prefix for later association
+    group_sids: dict = {}   # prefix -> [sid, ...]
+    for prefix, g in groups.items():
+        sids = []
+        for row in g.get("instances", []):
+            sid = row.get("instance_name", "").strip()
+            all_instances.append({
+                "sid":           sid,
+                "db_name":       row.get("db_name", "").strip(),
+                "edition":       row.get("edition", "").strip(),
+                "version":       row.get("version", "").strip(),
+                "platform_name": row.get("platform_name", "").strip(),
+            })
+            if sid:
+                sids.append(sid)
+        group_sids[prefix] = sids
 
     base_payload = {
         "hostname":             hostname,
@@ -2221,144 +2280,158 @@ def _process_csv_upload(schema: str, files) -> dict:
         "is_exadata":           server_row.get("is_exadata", "false").strip().lower() == "true",
         "environment":          "unknown",
         "run_id":               run_id,
-        "instances":            instances_list,
+        "instances":            all_instances,
     }
-
     _call_upsert(schema, "upsert_oracle_discovery", base_payload)
-    messages.append(f"Server '{hostname}' upserted ({len(instances_list)} instance(s)).")
+    messages.append(f"Server '{hostname}' upserted ({len(all_instances)} instance(s) across "
+                    f"{len(groups)} Oracle home(s)).")
 
-    # Extended: PDBs + NUP users
-    pdbs_list = []
-    for row in parsed.get("pdbs", []):
-        pdbs_list.append({
-            "pdb_name":   row.get("pdb_name", "").strip(),
-            "con_id":     _safe_int(row.get("con_id")),
-            "open_mode":  row.get("open_mode", "").strip(),
-            "restricted": row.get("restricted", "NO").strip(),
-        })
-
-    nup_rows   = parsed.get("users", [])
-    nup_total  = 0
-    nup_active = 0
-    for r in nup_rows:
-        cat = r.get("category", "").lower()
-        cnt = _safe_int(r.get("user_count"))
-        if "total" in cat:
-            nup_total = cnt
-        elif "open" in cat or "active" in cat:
-            nup_active = cnt
-
-    extended_payload = {
-        "hostname": hostname,
-        "run_id":   run_id,
-        "pdbs":     pdbs_list,
-        "nup_users": {"total": nup_total, "active": nup_active},
-    }
-    _call_upsert(schema, "upsert_oracle_extended_discovery", extended_payload)
-    if pdbs_list:
-        messages.append(f"PDB topology upserted ({len(pdbs_list)} PDB(s)).")
-    if nup_total:
-        messages.append(f"NUP user counts upserted (total={nup_total}, active={nup_active}).")
-
-    # Feature usage — build migration-21 payload
+    # ------------------------------------------------------------------ #
+    # Feature usage helper                                                 #
+    # ------------------------------------------------------------------ #
     def _feat_row_to_dict(row):
         return {
-            "feature_name":    row.get("feature_name", "").strip().strip('"'),
-            "db_version":      row.get("db_version", "").strip(),
-            "detected_usages": _safe_int(row.get("detected_usages")),
-            "total_samples":   _safe_int(row.get("total_samples")),
-            "currently_used":  row.get("currently_used", "FALSE").strip().upper() == "TRUE",
+            "feature_name":     row.get("feature_name", "").strip().strip('"'),
+            "db_version":       row.get("db_version", "").strip(),
+            "detected_usages":  _safe_int(row.get("detected_usages")),
+            "total_samples":    _safe_int(row.get("total_samples")),
+            "currently_used":   row.get("currently_used", "FALSE").strip().upper() == "TRUE",
             "first_usage_date": row.get("first_usage_date") or None,
             "last_usage_date":  row.get("last_usage_date")  or None,
         }
 
-    if instances_list and ("feature_usage" in parsed or "pdb_feature_usage" in parsed):
-        # Group PDB features by pdb_name
-        pdb_feats: dict = {}
-        for row in parsed.get("pdb_feature_usage", []):
-            pdb = row.get("pdb_name", "").strip()
-            pdb_feats.setdefault(pdb, []).append(_feat_row_to_dict(row))
-
-        # Attach features to the first (and usually only) instance at CDB level
-        sid = instances_list[0]["sid"]
-        feat_instances = [{
-            "sid":           sid,
-            "feature_usage": [_feat_row_to_dict(r) for r in parsed.get("feature_usage", [])],
-            "pdbs": [
-                {"pdb_name": pdb_name, "feature_usage": feats}
-                for pdb_name, feats in pdb_feats.items()
-            ],
-        }]
-        _call_upsert(schema, "upsert_oracle_feature_usage",
-                     {"run_id": run_id, "instances": feat_instances})
-        n_cdb = len(feat_instances[0]["feature_usage"])
-        n_pdb = sum(len(v) for v in pdb_feats.values())
-        messages.append(f"Feature usage upserted ({n_cdb} CDB features, {n_pdb} PDB features).")
-
-    # Store Diagnostics Pack / Tuning Pack from _mgmt_packs.csv and
-    # Advanced Security from feature_usage keywords as oracle_options rows.
-    pack_options = []
-    mgmt_rows = parsed.get("mgmt_packs", [])
-    if any(r.get("diagnostics_licensed", "").strip().upper() == "YES" for r in mgmt_rows):
-        pack_options.append("Diagnostics Pack")
-    if any(r.get("tuning_licensed", "").strip().upper() == "YES" for r in mgmt_rows):
-        pack_options.append("Tuning Pack")
-
+    # ------------------------------------------------------------------ #
+    # Per-home: extended data (PDBs, NUP, feature usage, management packs) #
+    # ------------------------------------------------------------------ #
     _aso_keywords = (
         "transparent data encryption", "encrypted tablespace",
         "data redaction", "securefile encryption", "backup encryption",
         "network encryption", "advanced security", "rman encryption",
         "tde", "securefile", "label security",
     )
-    _cdb_feats = [_feat_row_to_dict(r) for r in parsed.get("feature_usage", [])]
-    cdb_feature_names = [
-        f.get("feature_name", "").lower()
-        for f in _cdb_feats
-        if f.get("currently_used")
-    ]
-    if any(kw in fn for fn in cdb_feature_names for kw in _aso_keywords):
-        pack_options.append("Advanced Security")
 
-    if pack_options and instances_list:
-        try:
-            with get_db() as conn:
-                with conn.cursor() as cur:
-                    sid = instances_list[0]["sid"]
-                    cur.execute(
-                        f"""SELECT i.instance_id
-                            FROM {schema}.oracle_instances i
-                            JOIN {schema}.oracle_servers   s ON s.server_id = i.server_id
-                            WHERE s.hostname = %s AND i.oracle_sid = %s
-                            LIMIT 1""",
-                        (hostname, sid)
-                    )
-                    row = cur.fetchone()
-                    if row:
-                        instance_id = row[0]
-                        for pack in pack_options:
-                            cur.execute(
-                                f"""UPDATE {schema}.oracle_options
-                                    SET status = 'TRUE', discovery_run_id = %s
-                                    WHERE instance_id = %s AND option_name = %s""",
-                                (run_id, instance_id, pack)
-                            )
-                            if cur.rowcount == 0:
+    total_pdbs = 0
+    total_feat_cdb = 0
+    total_feat_pdb = 0
+
+    for prefix, g in groups.items():
+        sids = group_sids.get(prefix, [])
+        primary_sid = sids[0] if sids else None
+
+        # -- PDBs and NUP users --
+        pdbs_list = [
+            {
+                "pdb_name":   row.get("pdb_name", "").strip(),
+                "con_id":     _safe_int(row.get("con_id")),
+                "open_mode":  row.get("open_mode", "").strip(),
+                "restricted": row.get("restricted", "NO").strip(),
+            }
+            for row in g.get("pdbs", [])
+        ]
+        total_pdbs += len(pdbs_list)
+
+        nup_total = nup_active = 0
+        for r in g.get("users", []):
+            cat = r.get("category", "").lower()
+            cnt = _safe_int(r.get("user_count"))
+            if "total" in cat:
+                nup_total = cnt
+            elif "open" in cat or "active" in cat:
+                nup_active = cnt
+
+        extended_payload = {
+            "hostname":  hostname,
+            "run_id":    run_id,
+            "pdbs":      pdbs_list,
+            "nup_users": {"total": nup_total, "active": nup_active},
+        }
+        _call_upsert(schema, "upsert_oracle_extended_discovery", extended_payload)
+
+        # -- Feature usage (CDB-level + PDB-level) --
+        if primary_sid and ("feature_usage" in g or "pdb_feature_usage" in g):
+            pdb_feats: dict = {}
+            for row in g.get("pdb_feature_usage", []):
+                pdb = row.get("pdb_name", "").strip()
+                pdb_feats.setdefault(pdb, []).append(_feat_row_to_dict(row))
+
+            cdb_features = [_feat_row_to_dict(r) for r in g.get("feature_usage", [])]
+            feat_instances = [{
+                "sid":           primary_sid,
+                "feature_usage": cdb_features,
+                "pdbs": [
+                    {"pdb_name": pdb_name, "feature_usage": feats}
+                    for pdb_name, feats in pdb_feats.items()
+                ],
+            }]
+            _call_upsert(schema, "upsert_oracle_feature_usage",
+                         {"run_id": run_id, "instances": feat_instances})
+            total_feat_cdb += len(cdb_features)
+            total_feat_pdb += sum(len(v) for v in pdb_feats.values())
+
+        # -- Management packs / ASO options --
+        pack_options = []
+        mgmt_rows = g.get("mgmt_packs", [])
+        if any(r.get("diagnostics_licensed", "").strip().upper() == "YES" for r in mgmt_rows):
+            pack_options.append("Diagnostics Pack")
+        if any(r.get("tuning_licensed", "").strip().upper() == "YES" for r in mgmt_rows):
+            pack_options.append("Tuning Pack")
+
+        _cdb_feats = [_feat_row_to_dict(r) for r in g.get("feature_usage", [])]
+        active_feat_names = [
+            f.get("feature_name", "").lower()
+            for f in _cdb_feats
+            if f.get("currently_used")
+        ]
+        if any(kw in fn for fn in active_feat_names for kw in _aso_keywords):
+            pack_options.append("Advanced Security")
+
+        if pack_options and primary_sid:
+            try:
+                with get_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            f"""SELECT i.instance_id
+                                FROM {schema}.oracle_instances i
+                                JOIN {schema}.oracle_servers   s ON s.server_id = i.server_id
+                                WHERE s.hostname = %s AND i.oracle_sid = %s
+                                LIMIT 1""",
+                            (hostname, primary_sid)
+                        )
+                        row = cur.fetchone()
+                        if row:
+                            instance_id = row[0]
+                            for pack in pack_options:
                                 cur.execute(
-                                    f"""INSERT INTO {schema}.oracle_options
-                                          (instance_id, option_name, status, discovery_run_id)
-                                        VALUES (%s, %s, 'TRUE', %s)""",
-                                    (instance_id, pack, run_id)
+                                    f"""UPDATE {schema}.oracle_options
+                                        SET status = 'TRUE', discovery_run_id = %s
+                                        WHERE instance_id = %s AND option_name = %s""",
+                                    (run_id, instance_id, pack)
                                 )
-                conn.commit()
-            messages.append(f"Management pack access stored ({', '.join(pack_options)}).")
-        except Exception as e:
-            messages.append(f"Warning: could not store management pack options: {e}")
+                                if cur.rowcount == 0:
+                                    cur.execute(
+                                        f"""INSERT INTO {schema}.oracle_options
+                                              (instance_id, option_name, status, discovery_run_id)
+                                            VALUES (%s, %s, 'TRUE', %s)""",
+                                        (instance_id, pack, run_id)
+                                    )
+                    conn.commit()
+                messages.append(f"Management pack access stored for {primary_sid} "
+                                 f"({', '.join(pack_options)}).")
+            except Exception as e:
+                messages.append(f"Warning: could not store management pack options for "
+                                 f"{primary_sid}: {e}")
+
+    if total_pdbs:
+        messages.append(f"PDB topology upserted ({total_pdbs} PDB(s) total).")
+    if total_feat_cdb or total_feat_pdb:
+        messages.append(f"Feature usage upserted ({total_feat_cdb} CDB features, "
+                        f"{total_feat_pdb} PDB features).")
 
     return {
         "success":  True,
         "messages": messages,
         "hostname": hostname,
-        "db":       instances_list[0]["db_name"] if instances_list else "",
+        "db":       all_instances[0]["db_name"] if all_instances else "",
     }
 
 
