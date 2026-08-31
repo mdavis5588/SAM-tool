@@ -2282,11 +2282,6 @@ def _process_csv_upload(schema: str, files) -> dict:
         "run_id":               run_id,
         "instances":            all_instances,
     }
-    # Debug: show what was parsed from the CSV files
-    messages.append(f"DEBUG groups found: {list(groups.keys())}")
-    messages.append(f"DEBUG server_row keys: {list(server_row.keys())}")
-    messages.append(f"DEBUG hostname={hostname!r} cpu_model={base_payload['cpu_model']!r} "
-                    f"cpu_sockets={base_payload['cpu_sockets']} instances={[i['sid'] for i in all_instances]}")
     _call_upsert(schema, "upsert_oracle_discovery", base_payload)
     messages.append(f"Server '{hostname}' upserted ({len(all_instances)} instance(s) across "
                     f"{len(groups)} Oracle home(s)).")

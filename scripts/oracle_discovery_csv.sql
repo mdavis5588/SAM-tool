@@ -83,11 +83,9 @@ CROSS  JOIN v$database d;
 COLUMN _con_id NEW_VALUE _con_id NOPRINT
 SELECT NVL(SYS_CONTEXT('USERENV','CON_ID'), 1) AS _con_id FROM dual;
 
--- Safely pre-count v$cell rows.  The view is absent on non-Exadata hosts;
--- SELECT fails with ORA-00942 → WHENEVER SQLERROR CONTINUE keeps _vcell_cnt = 0.
-COLUMN _vcell_cnt NEW_VALUE _vcell_cnt NOPRINT
-SELECT 0 AS _vcell_cnt FROM dual;
-SELECT COUNT(*) AS _vcell_cnt FROM v$cell;
+-- Exadata check: detect v$cell via v$fixed_table (always present) rather
+-- than querying v$cell directly (ORA-00942 on non-Exadata) or using a
+-- substitution variable (SQL*Plus prompts for undefined &var inside SPOOL).
 
 -- =============================================================================
 -- 1. SERVER — hardware, OS, virtualisation
@@ -151,7 +149,8 @@ SELECT
     ELSE 'physical'
   END                                                                     AS virt_type,
   CASE
-    WHEN &_vcell_cnt > 0                                                  THEN 'true'
+    WHEN (SELECT COUNT(*) FROM v$fixed_table
+          WHERE name = 'GV$CELL') > 0                                   THEN 'true'
     WHEN UPPER(NVL((SELECT value FROM v$parameter
                     WHERE name = 'cell_offload_processing'), '')) = 'TRUE' THEN 'true'
     WHEN (SELECT COUNT(*) FROM dba_feature_usage_statistics
