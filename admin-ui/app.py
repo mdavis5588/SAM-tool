@@ -2771,6 +2771,20 @@ def clients():
             )
             flash("Client reactivated.", "success")
 
+        elif action == "delete":
+            client_code = request.form.get("client_code")
+            if not client_code:
+                flash("Missing client code.", "danger")
+            else:
+                try:
+                    result = query(
+                        "SELECT sam_admin.deprovision_client(%s) AS msg",
+                        (client_code,), fetchall=False
+                    )
+                    flash(result["msg"], "success")
+                except Exception as e:
+                    flash(f"Error deleting client: {e}", "danger")
+
         return redirect(url_for("clients"))
 
     all_clients = query("""

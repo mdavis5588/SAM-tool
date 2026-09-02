@@ -97,6 +97,34 @@ END;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- DEPROVISION CLIENT
+-- Drops the client schema (CASCADE) and removes the client row.
+-- This is irreversible — all server, licence, and discovery data is deleted.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION sam_admin.deprovision_client(p_code TEXT)
+RETURNS TEXT LANGUAGE plpgsql AS $$
+DECLARE
+  v_schema TEXT;
+  v_name   TEXT;
+BEGIN
+  SELECT schema_name, client_name INTO v_schema, v_name
+  FROM sam_admin.clients WHERE client_code = p_code;
+
+  IF v_schema IS NULL THEN
+    RAISE EXCEPTION 'Client not found: %', p_code;
+  END IF;
+
+  -- Drop schema and all its objects
+  EXECUTE format('DROP SCHEMA IF EXISTS %I CASCADE', v_schema);
+
+  -- Remove client row (cascades to any FK-linked rows in sam_admin)
+  DELETE FROM sam_admin.clients WHERE client_code = p_code;
+
+  RETURN format('Client "%s" (schema %s) permanently deleted.', v_name, v_schema);
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- INSTALL CLIENT TABLES
 -- Called by provision_client. Creates all tables and views in a client schema.
 -- Also called for schema migrations — idempotent via IF NOT EXISTS.
