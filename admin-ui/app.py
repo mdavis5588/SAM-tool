@@ -8743,6 +8743,23 @@ def healthz():
     return jsonify({"status": "ok"})
 
 
+@app.route("/debug-db")
+def debug_db():
+    row = query("SELECT current_database() AS db, current_user AS usr, "
+                "version() AS ver", fetchall=False)
+    schemas = query("SELECT schema_name FROM information_schema.schemata "
+                    "WHERE schema_name LIKE 'client_%' ORDER BY schema_name")
+    clients = query("SELECT client_code, schema_name FROM sam_admin.clients ORDER BY client_code")
+    return jsonify({
+        "connected_db":   row["db"],
+        "connected_user": row["usr"],
+        "pg_version":     row["ver"],
+        "client_schemas_in_db": [r["schema_name"] for r in schemas],
+        "clients_in_sam_admin": [{"code": r["client_code"], "schema": r["schema_name"]} for r in clients],
+        "DB_CONFIG": {k: v for k, v in DB_CONFIG.items() if k != "password"},
+    })
+
+
 # ---------------------------------------------------------------------------
 # Context processor — inject shared variables into every template
 # ---------------------------------------------------------------------------
