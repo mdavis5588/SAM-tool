@@ -442,7 +442,9 @@ def query(sql, params=None, fetchall=True):
     with get_db() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, params or ())
-            return cur.fetchall() if fetchall else cur.fetchone()
+            result = cur.fetchall() if fetchall else cur.fetchone()
+        conn.commit()
+        return result
 
 
 def execute(sql, params=None):
