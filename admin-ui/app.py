@@ -8750,7 +8750,7 @@ def debug_db():
         row = query("SELECT current_database() AS db, current_user AS usr, "
                     "version() AS ver", fetchall=False)
         schemas = query("SELECT schema_name FROM information_schema.schemata "
-                        "WHERE schema_name LIKE 'client_%' ORDER BY schema_name")
+                        "WHERE schema_name LIKE 'client_%%' ORDER BY schema_name")
         clients = query("SELECT client_code, schema_name FROM sam_admin.clients ORDER BY client_code")
         return jsonify({
             "connected_db":   row["db"] if row else None,
