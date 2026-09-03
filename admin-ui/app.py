@@ -2332,7 +2332,7 @@ def _process_csv_upload(schema: str, files) -> dict:
         ]
         total_pdbs += len(pdbs_list)
 
-        nup_total = nup_active = 0
+        nup_total = nup_active = nup_locked = 0
         for r in g.get("users", []):
             cat = r.get("category", "").lower()
             cnt = _safe_int(r.get("user_count"))
@@ -2340,17 +2340,20 @@ def _process_csv_upload(schema: str, files) -> dict:
                 nup_total = cnt
             elif "open" in cat or "active" in cat:
                 nup_active = cnt
+            elif "lock" in cat:
+                nup_locked = cnt
 
         # upsert_oracle_extended_discovery expects PDBs and NUP nested under
         # instances[].pdbs / instances[].nup_active_users so the DB function
         # can match them to the right oracle_instances row via oracle_sid.
         extended_instances = [
             {
-                "sid":             sid,
-                "pdbs":            pdbs_list,
+                "sid":              sid,
+                "pdbs":             pdbs_list,
                 "nup_active_users": nup_active,
                 "nup_total_users":  nup_total,
-                "rac_nodes":       [],
+                "nup_locked_users": nup_locked,
+                "rac_nodes":        [],
             }
             for sid in (sids if sids else [primary_sid])
             if sid

@@ -1728,7 +1728,7 @@ BEGIN
             CURRENT_DATE,
             (v_inst->>'nup_active_users')::INTEGER,
             (v_inst->>'nup_total_users')::INTEGER,
-            (v_inst->>'nup_locked_users')::INTEGER,
+            COALESCE((v_inst->>'nup_locked_users')::INTEGER, 0),
             ARRAY(SELECT jsonb_array_elements_text(COALESCE(v_inst->'nup_sample_users', '[]'::jsonb))),
             p_payload->>'run_id'
           );
