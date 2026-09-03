@@ -4026,12 +4026,15 @@ def edit_server(server_id):
     # Oracle options (from v$option / Ansible discovery)
     try:
         oracle_options = query(
-            f"""SELECT o.option_name, o.option_version, o.status,
-                       i.oracle_sid
+            f"""SELECT o.option_name,
+                       MAX(o.option_version) AS option_version,
+                       'TRUE'               AS status,
+                       STRING_AGG(DISTINCT i.oracle_sid, ', ' ORDER BY i.oracle_sid) AS oracle_sid
                 FROM {schema}.oracle_options o
                 JOIN {schema}.oracle_instances i ON i.instance_id = o.instance_id
                 WHERE i.server_id = %s AND o.status = 'TRUE'
-                ORDER BY i.oracle_sid, o.option_name""",
+                GROUP BY o.option_name
+                ORDER BY o.option_name""",
             (server_id,)
         )
     except Exception:
