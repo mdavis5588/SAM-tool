@@ -153,10 +153,6 @@ SELECT
           WHERE name = 'GV$CELL') > 0                                   THEN 'true'
     WHEN UPPER(NVL((SELECT value FROM v$parameter
                     WHERE name = 'cell_offload_processing'), '')) = 'TRUE' THEN 'true'
-    WHEN (SELECT COUNT(*) FROM dba_feature_usage_statistics
-          WHERE (UPPER(name) LIKE '%EXADATA%' OR UPPER(name) LIKE '%SMART SCAN%')
-            AND detected_usages > 0
-            AND currently_used = 'TRUE') > 0                            THEN 'true'
     ELSE 'false'
   END                                                                     AS is_exadata,
   TO_CHAR(SYSDATE, 'YYYY-MM-DD HH24:MI:SS')                             AS generated_at
