@@ -2422,9 +2422,9 @@ def _process_csv_upload(schema: str, files) -> dict:
         )
 
         for kw, opt in _feature_to_option:
-            # Multitenant: Oracle 19c+ allows 1 free PDB; only license if >1 app PDB
+            # Multitenant: Oracle 21c allows 3 free PDBs per CDB; license required if >3
             if kw == "multitenant":
-                if _app_pdb_count > 1:
+                if _app_pdb_count > 3:
                     pack_options.append(opt)
                 continue
             if any(kw in fn for fn in active_feat_names) and opt not in pack_options:
