@@ -2402,21 +2402,41 @@ def _process_csv_upload(schema: str, files) -> dict:
         ]
         if any(kw in fn for fn in active_feat_names for kw in _aso_keywords):
             pack_options.append("Advanced Security")
+        # Map feature usage to oracle_options for licensed options that don't
+        # have a dedicated mgmt_packs CSV column but appear in feature usage.
+        _feature_to_option = [
+            ("partitioning",          "Partitioning"),
+            ("real application clusters", "Real Application Clusters (RAC)"),
+            ("multitenant",           "Multitenant"),
+            ("active data guard",     "Active Data Guard"),
+            ("label security",        "Label Security"),
+            ("database vault",        "Database Vault"),
+            ("olap",                  "OLAP"),
+            ("spatial",               "Spatial and Graph"),
+        ]
+        for kw, opt in _feature_to_option:
+            if any(kw in fn for fn in active_feat_names) and opt not in pack_options:
+                pack_options.append(opt)
 
-        if pack_options and primary_sid:
+        if pack_options and sids:
             try:
                 with get_db() as conn:
                     with conn.cursor() as cur:
-                        cur.execute(
-                            f"""SELECT i.instance_id
-                                FROM {schema}.oracle_instances i
-                                JOIN {schema}.oracle_servers   s ON s.server_id = i.server_id
-                                WHERE s.hostname = %s AND i.oracle_sid = %s
-                                LIMIT 1""",
-                            (hostname, primary_sid)
-                        )
-                        row = cur.fetchone()
-                        if row:
+                        # Store options against ALL instances in this home so
+                        # that server-level aggregation catches them regardless
+                        # of which SID's feature_usage triggered the detection.
+                        for sid in sids:
+                            cur.execute(
+                                f"""SELECT i.instance_id
+                                    FROM {schema}.oracle_instances i
+                                    JOIN {schema}.oracle_servers   s ON s.server_id = i.server_id
+                                    WHERE s.hostname = %s AND i.oracle_sid = %s
+                                    LIMIT 1""",
+                                (hostname, sid)
+                            )
+                            row = cur.fetchone()
+                            if not row:
+                                continue
                             instance_id = row[0]
                             for pack in pack_options:
                                 cur.execute(
@@ -2433,11 +2453,11 @@ def _process_csv_upload(schema: str, files) -> dict:
                                         (instance_id, pack, run_id)
                                     )
                     conn.commit()
-                messages.append(f"Management pack access stored for {primary_sid} "
-                                 f"({', '.join(pack_options)}).")
+                messages.append(f"Management pack/options stored for {', '.join(sids)}: "
+                                 f"{', '.join(pack_options)}.")
             except Exception as e:
                 messages.append(f"Warning: could not store management pack options for "
-                                 f"{primary_sid}: {e}")
+                                 f"{', '.join(sids)}: {e}")
 
     if total_pdbs:
         messages.append(f"PDB topology upserted ({total_pdbs} PDB(s) total).")
