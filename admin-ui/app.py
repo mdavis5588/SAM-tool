@@ -2418,13 +2418,10 @@ def _process_csv_upload(schema: str, files) -> dict:
             if any(kw in fn for fn in active_feat_names) and opt not in pack_options:
                 pack_options.append(opt)
 
-        if pack_options and sids:
+        if sids:
             try:
                 with get_db() as conn:
                     with conn.cursor() as cur:
-                        # Store options against ALL instances in this home so
-                        # that server-level aggregation catches them regardless
-                        # of which SID's feature_usage triggered the detection.
                         for sid in sids:
                             cur.execute(
                                 f"""SELECT i.instance_id
@@ -2438,25 +2435,28 @@ def _process_csv_upload(schema: str, files) -> dict:
                             if not row:
                                 continue
                             instance_id = row[0]
+                            # Clear all auto-detected options for this instance
+                            # so stale detections from previous uploads don't persist.
+                            cur.execute(
+                                f"""DELETE FROM {schema}.oracle_options
+                                    WHERE instance_id = %s""",
+                                (instance_id,)
+                            )
                             for pack in pack_options:
                                 cur.execute(
-                                    f"""UPDATE {schema}.oracle_options
-                                        SET status = 'TRUE', discovery_run_id = %s
-                                        WHERE instance_id = %s AND option_name = %s""",
-                                    (run_id, instance_id, pack)
+                                    f"""INSERT INTO {schema}.oracle_options
+                                          (instance_id, option_name, status, discovery_run_id)
+                                        VALUES (%s, %s, 'TRUE', %s)""",
+                                    (instance_id, pack, run_id)
                                 )
-                                if cur.rowcount == 0:
-                                    cur.execute(
-                                        f"""INSERT INTO {schema}.oracle_options
-                                              (instance_id, option_name, status, discovery_run_id)
-                                            VALUES (%s, %s, 'TRUE', %s)""",
-                                        (instance_id, pack, run_id)
-                                    )
                     conn.commit()
-                messages.append(f"Management pack/options stored for {', '.join(sids)}: "
-                                 f"{', '.join(pack_options)}.")
+                if pack_options:
+                    messages.append(f"Licensed options stored for {', '.join(sids)}: "
+                                     f"{', '.join(pack_options)}.")
+                else:
+                    messages.append(f"No licensed options detected for {', '.join(sids)} — previous entries cleared.")
             except Exception as e:
-                messages.append(f"Warning: could not store management pack options for "
+                messages.append(f"Warning: could not store licensed options for "
                                  f"{', '.join(sids)}: {e}")
 
     if total_pdbs:
