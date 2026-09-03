@@ -792,8 +792,12 @@ BEGIN
 
   FOR rec IN EXECUTE format(
     'SELECT hostname, environment, product_family, product_detail,
-            licence_metric, licences_required, licences_assigned,
-            surplus_deficit, compliance_status, csi_number, contract_ref
+            licence_metric, licences_required,
+            COALESCE(total_licensed, 0)          AS licences_assigned,
+            COALESCE(licence_surplus_deficit, 0) AS surplus_deficit,
+            compliance_status,
+            COALESCE(assigned_csi_numbers, '''') AS csi_number,
+            NULL::TEXT                           AS contract_ref
      FROM   %I.license_position',
     v_schema
   ) LOOP
