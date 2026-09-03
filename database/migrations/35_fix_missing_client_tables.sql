@@ -27,14 +27,12 @@ BEGIN
     WHERE table_schema = v_client.schema_name
       AND table_type = 'BASE TABLE';
 
-    IF v_table_count = 0 THEN
-      RAISE NOTICE 'Schema % (%) has no tables — running install_client_tables()',
-                   v_client.schema_name, v_client.client_name;
-      PERFORM sam_admin.install_client_tables(v_client.schema_name);
-    ELSE
-      RAISE NOTICE 'Schema % (%) already has % tables — skipping',
-                   v_client.schema_name, v_client.client_name, v_table_count;
-    END IF;
+    -- Always run — install_client_tables is idempotent (IF NOT EXISTS throughout)
+    -- and also installs upsert functions and views that may be missing even when
+    -- tables already exist.
+    RAISE NOTICE 'Running install_client_tables for schema % (%) — % tables already present',
+                 v_client.schema_name, v_client.client_name, v_table_count;
+    PERFORM sam_admin.install_client_tables(v_client.schema_name);
   END LOOP;
   RAISE NOTICE 'Done.';
 END;
