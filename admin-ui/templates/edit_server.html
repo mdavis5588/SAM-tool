@@ -222,10 +222,31 @@
       <div class="card-header"><i class="bi bi-database"></i> Oracle Instances</div>
       <ul class="list-group list-group-flush">
         {% for i in instances %}
+        {% set feats = instance_features.get(i.oracle_sid, []) %}
         <li class="list-group-item">
-          <strong>{{ i.oracle_sid }}</strong>
-          <span class="badge bg-secondary ms-1">{{ i.edition or '?' }}</span>
-          <small class="text-muted d-block">{{ i.db_version or '' }}</small>
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <strong>{{ i.oracle_sid }}</strong>
+            <span class="badge bg-secondary">{{ i.edition or '?' }}</span>
+            {% if i.db_version %}<span class="badge bg-light text-dark border">{{ i.db_version }}</span>{% endif %}
+            {% if feats %}
+            <button class="btn btn-outline-secondary btn-sm py-0 ms-auto"
+                    style="font-size:.7rem"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#feats-{{ i.oracle_sid | replace('.','_') | replace('-','_') }}">
+              <i class="bi bi-list-check me-1"></i>{{ feats | length }} feature(s)
+            </button>
+            {% endif %}
+          </div>
+          {% if feats %}
+          <div class="collapse mt-2" id="feats-{{ i.oracle_sid | replace('.','_') | replace('-','_') }}">
+            <div class="d-flex flex-wrap gap-1">
+              {% for f in feats %}
+              <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle" style="font-size:.7rem">{{ f }}</span>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
         </li>
         {% endfor %}
       </ul>

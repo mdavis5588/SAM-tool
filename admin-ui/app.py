@@ -4136,9 +4136,26 @@ def edit_server(server_id):
     except Exception:
         detected_products = []
 
+    # Feature usage breakdown per instance (currently-used features only)
+    try:
+        instance_features_rows = query(
+            f"""SELECT i.oracle_sid, f.feature_name
+                FROM {schema}.oracle_feature_usage f
+                JOIN {schema}.oracle_instances i ON i.instance_id = f.instance_id
+                WHERE i.server_id = %s AND f.currently_used = TRUE
+                ORDER BY i.oracle_sid, f.feature_name""",
+            (server_id,)
+        )
+        instance_features: dict = {}
+        for r in instance_features_rows:
+            instance_features.setdefault(r["oracle_sid"], []).append(r["feature_name"])
+    except Exception:
+        instance_features = {}
+
     return render_template("edit_server.html",
                            server=server,
                            instances=instances,
+                           instance_features=instance_features,
                            assignments=assignments,
                            compatible_csis_by_line=compatible_csis_by_line,
                            ula_by_line=ula_by_line,
