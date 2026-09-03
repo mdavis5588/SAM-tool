@@ -223,23 +223,45 @@
       <ul class="list-group list-group-flush">
         {% for i in instances %}
         {% set feats = instance_features.get(i.oracle_sid, []) %}
+        {% set packs = instance_packs.get(i.oracle_sid, []) %}
+        {% set sid_key = i.oracle_sid | replace('.','_') | replace('-','_') %}
         <li class="list-group-item">
           <div class="d-flex align-items-center gap-2 flex-wrap">
             <strong>{{ i.oracle_sid }}</strong>
             <span class="badge bg-secondary">{{ i.edition or '?' }}</span>
             {% if i.db_version %}<span class="badge bg-light text-dark border">{{ i.db_version }}</span>{% endif %}
-            {% if feats %}
-            <button class="btn btn-outline-secondary btn-sm py-0 ms-auto"
-                    style="font-size:.7rem"
-                    type="button"
-                    data-bs-toggle="collapse"
-                    data-bs-target="#feats-{{ i.oracle_sid | replace('.','_') | replace('-','_') }}">
-              <i class="bi bi-list-check me-1"></i>{{ feats | length }} feature(s)
-            </button>
-            {% endif %}
+            <div class="ms-auto d-flex gap-1">
+              {% if packs %}
+              <button class="btn btn-outline-warning btn-sm py-0"
+                      style="font-size:.7rem" type="button"
+                      data-bs-toggle="collapse"
+                      data-bs-target="#packs-{{ sid_key }}">
+                <i class="bi bi-shield-check me-1"></i>{{ packs | length }} pack(s)
+              </button>
+              {% endif %}
+              {% if feats %}
+              <button class="btn btn-outline-secondary btn-sm py-0"
+                      style="font-size:.7rem" type="button"
+                      data-bs-toggle="collapse"
+                      data-bs-target="#feats-{{ sid_key }}">
+                <i class="bi bi-list-check me-1"></i>{{ feats | length }} feature(s)
+              </button>
+              {% endif %}
+            </div>
           </div>
+          {% if packs %}
+          <div class="collapse mt-2" id="packs-{{ sid_key }}">
+            <div class="small text-muted fw-semibold mb-1" style="font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">Licensed Packs &amp; Options</div>
+            <div class="d-flex flex-wrap gap-1">
+              {% for p in packs %}
+              <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle" style="font-size:.7rem">{{ p }}</span>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
           {% if feats %}
-          <div class="collapse mt-2" id="feats-{{ i.oracle_sid | replace('.','_') | replace('-','_') }}">
+          <div class="collapse mt-2" id="feats-{{ sid_key }}">
+            <div class="small text-muted fw-semibold mb-1" style="font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">Active Features</div>
             <div class="d-flex flex-wrap gap-1">
               {% for f in feats %}
               <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle" style="font-size:.7rem">{{ f }}</span>

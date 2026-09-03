@@ -4152,10 +4152,27 @@ def edit_server(server_id):
     except Exception:
         instance_features = {}
 
+    # Management packs / licensed options per instance
+    try:
+        instance_packs_rows = query(
+            f"""SELECT i.oracle_sid, o.option_name
+                FROM {schema}.oracle_options o
+                JOIN {schema}.oracle_instances i ON i.instance_id = o.instance_id
+                WHERE i.server_id = %s AND o.status = 'TRUE'
+                ORDER BY i.oracle_sid, o.option_name""",
+            (server_id,)
+        )
+        instance_packs: dict = {}
+        for r in instance_packs_rows:
+            instance_packs.setdefault(r["oracle_sid"], []).append(r["option_name"])
+    except Exception:
+        instance_packs = {}
+
     return render_template("edit_server.html",
                            server=server,
                            instances=instances,
                            instance_features=instance_features,
+                           instance_packs=instance_packs,
                            assignments=assignments,
                            compatible_csis_by_line=compatible_csis_by_line,
                            ula_by_line=ula_by_line,
