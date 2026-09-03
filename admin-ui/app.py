@@ -2414,7 +2414,19 @@ def _process_csv_upload(schema: str, files) -> dict:
             ("olap",                  "OLAP"),
             ("spatial",               "Spatial and Graph"),
         ]
+        # Count application PDBs (exclude Oracle-managed ones: PDB$SEED, CDB$ROOT, AUDSYS)
+        _app_pdb_count = sum(
+            1 for row in g.get("pdbs", [])
+            if row.get("pdb_name", "").strip().upper()
+            not in ("PDB$SEED", "CDB$ROOT", "AUDSYS")
+        )
+
         for kw, opt in _feature_to_option:
+            # Multitenant: Oracle 19c+ allows 1 free PDB; only license if >1 app PDB
+            if kw == "multitenant":
+                if _app_pdb_count > 1:
+                    pack_options.append(opt)
+                continue
             if any(kw in fn for fn in active_feat_names) and opt not in pack_options:
                 pack_options.append(opt)
 
