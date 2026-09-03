@@ -2396,7 +2396,7 @@ def _process_csv_upload(schema: str, files) -> dict:
 
         _cdb_feats = [_feat_row_to_dict(r) for r in g.get("feature_usage", [])]
         active_feat_names = [
-            f.get("feature_name", "").lower()
+            f.get("feature_name", "").strip().strip('"').lower()
             for f in _cdb_feats
             if f.get("currently_used")
         ]
@@ -2417,6 +2417,11 @@ def _process_csv_upload(schema: str, files) -> dict:
         for kw, opt in _feature_to_option:
             if any(kw in fn for fn in active_feat_names) and opt not in pack_options:
                 pack_options.append(opt)
+
+        # Debug: log what was detected for this home
+        if active_feat_names:
+            messages.append(f"Debug [{prefix}]: {len(active_feat_names)} active features detected; "
+                            f"options mapped: {pack_options or 'none'}.")
 
         if sids:
             try:
