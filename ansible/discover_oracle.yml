@@ -122,36 +122,13 @@
       ignore_errors: true
       changed_when: false
 
-    - name: Query cell_offload_processing parameter for Exadata fallback check
-      ansible.builtin.shell: |
-        export ORACLE_HOME="{{ item.oracle_home }}"
-        export ORACLE_SID="{{ item.sid }}"
-        export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
-        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
-        WHENEVER SQLERROR CONTINUE
-        SELECT UPPER(value) FROM v$parameter WHERE name = 'cell_offload_processing';
-        EXIT;
-        EOF
-      loop: "{{ sam_oracle_instances | default([]) }}"
-      loop_control:
-        label: "{{ item.sid }}"
-      register: exadata_param_results
-      no_log: true
-      ignore_errors: true
-      changed_when: false
-
     - name: Set Exadata flag
       ansible.builtin.set_fact:
         sam_is_exadata: >-
           {{
-            (exadata_cell_results.results | default([])
-              | map(attribute='stdout') | map('trim') | map('int', default=0)
-              | select('gt', 0) | list | length > 0)
-            or
-            (exadata_param_results.results | default([])
-              | map(attribute='stdout') | map('trim')
-              | select('equalto', 'TRUE') | list | length > 0)
+            exadata_cell_results.results | default([])
+            | map(attribute='stdout') | map('trim') | map('int', default=0)
+            | select('gt', 0) | list | length > 0
           }}
 
     # ------------------------------------------------------------------

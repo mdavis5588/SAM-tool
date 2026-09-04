@@ -283,17 +283,6 @@ BEGIN
     EXCEPTION WHEN OTHERS THEN NULL;
     END;
   END;
-  IF v_is_exadata = 'false' THEN
-    -- cell_offload_processing = TRUE is set by Exadata initialisation
-    BEGIN
-      DECLARE v_cop VARCHAR2(10);
-      BEGIN
-        SELECT UPPER(value) INTO v_cop FROM v$parameter WHERE name = 'cell_offload_processing';
-        IF v_cop = 'TRUE' THEN v_is_exadata := 'true'; END IF;
-      EXCEPTION WHEN OTHERS THEN NULL;
-      END;
-    END;
-  END IF;
 
   -- --------------------------------------------------------
   -- Instances
