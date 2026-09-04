@@ -2411,16 +2411,18 @@ def _process_csv_upload(schema: str, files) -> dict:
                 if prod_key in product_raw and opt_name not in pack_options:
                     pack_options.append(opt_name)
 
-        # Fallback: mgmt_packs CSV for Diagnostics/Tuning if product_usage absent
+        # Always check mgmt_packs CSV for Diagnostics/Tuning — control_management_pack_access
+        # is the authoritative licence source and product_usage can underreport these packs.
+        mgmt_rows = g.get("mgmt_packs", [])
+        if any(r.get("diagnostics_licensed", "").strip().upper() == "YES" for r in mgmt_rows):
+            if "Diagnostics Pack" not in pack_options:
+                pack_options.append("Diagnostics Pack")
+        if any(r.get("tuning_licensed", "").strip().upper() == "YES" for r in mgmt_rows):
+            if "Tuning Pack" not in pack_options:
+                pack_options.append("Tuning Pack")
+
+        # If product_usage absent entirely, also fall back to feature_usage keywords for ASO
         if not g.get("product_usage"):
-            mgmt_rows = g.get("mgmt_packs", [])
-            if any(r.get("diagnostics_licensed", "").strip().upper() == "YES" for r in mgmt_rows):
-                if "Diagnostics Pack" not in pack_options:
-                    pack_options.append("Diagnostics Pack")
-            if any(r.get("tuning_licensed", "").strip().upper() == "YES" for r in mgmt_rows):
-                if "Tuning Pack" not in pack_options:
-                    pack_options.append("Tuning Pack")
-            # ASO from feature_usage keywords as fallback
             _cdb_feats = [_feat_row_to_dict(r) for r in g.get("feature_usage", [])]
             active_feat_names = [
                 f.get("feature_name", "").strip().strip('"').lower()
