@@ -2386,54 +2386,65 @@ def _process_csv_upload(schema: str, files) -> dict:
             total_feat_cdb += len(cdb_features)
             total_feat_pdb += sum(len(v) for v in pdb_feats.values())
 
-        # -- Management packs / ASO options --
+        # -- Licensed options detection --
+        # Primary source: _product_usage.csv (usage_status = current_usage).
+        # Fallback for mgmt packs: _mgmt_packs.csv diagnostics/tuning_licensed columns.
+        # Multitenant: PDB count governs, not feature/product usage signal.
         pack_options = []
-        mgmt_rows = g.get("mgmt_packs", [])
-        if any(r.get("diagnostics_licensed", "").strip().upper() == "YES" for r in mgmt_rows):
-            pack_options.append("Diagnostics Pack")
-        if any(r.get("tuning_licensed", "").strip().upper() == "YES" for r in mgmt_rows):
-            pack_options.append("Tuning Pack")
 
-        _cdb_feats = [_feat_row_to_dict(r) for r in g.get("feature_usage", [])]
-        active_feat_names = [
-            f.get("feature_name", "").strip().strip('"').lower()
-            for f in _cdb_feats
-            if f.get("currently_used")
-        ]
-        if any(kw in fn for fn in active_feat_names for kw in _aso_keywords):
-            pack_options.append("Advanced Security")
-        # Map feature usage to oracle_options for licensed options that don't
-        # have a dedicated mgmt_packs CSV column but appear in feature usage.
-        _feature_to_option = [
-            ("partitioning",          "Partitioning"),
-            ("real application clusters", "Real Application Clusters (RAC)"),
-            ("multitenant",           "Multitenant"),
-            ("active data guard",     "Active Data Guard"),
-            ("label security",        "Label Security"),
-            ("database vault",        "Database Vault"),
-            ("olap",                  "OLAP"),
-            ("spatial",               "Spatial and Graph"),
-        ]
-        # Count application PDBs (exclude Oracle-managed ones: PDB$SEED, CDB$ROOT, AUDSYS)
+        # Map product_usage product names -> oracle_options option names
+        _product_to_option = {
+            "partitioning":                  "Partitioning",
+            "real application clusters":     "Real Application Clusters (RAC)",
+            "active data guard":             "Active Data Guard",
+            "label security":                "Label Security",
+            "database vault":                "Database Vault",
+            "olap":                          "OLAP",
+            "spatial and graph":             "Spatial and Graph",
+            "advanced security":             "Advanced Security",
+            "diagnostics pack":              "Diagnostics Pack",
+            "tuning pack":                   "Tuning Pack",
+            "data masking and subsetting":   "Data Masking and Subsetting",
+            "advanced compression":          "Advanced Compression",
+            "advanced analytics":            "Advanced Analytics",
+        }
+
+        for row in g.get("product_usage", []):
+            product_raw = row.get("product", "").strip().strip('"').lower()
+            status = row.get("usage_status", "").strip().strip('"').lower()
+            if status != "current_usage":
+                continue
+            for prod_key, opt_name in _product_to_option.items():
+                if prod_key in product_raw and opt_name not in pack_options:
+                    pack_options.append(opt_name)
+
+        # Fallback: mgmt_packs CSV for Diagnostics/Tuning if product_usage absent
+        if not g.get("product_usage"):
+            mgmt_rows = g.get("mgmt_packs", [])
+            if any(r.get("diagnostics_licensed", "").strip().upper() == "YES" for r in mgmt_rows):
+                if "Diagnostics Pack" not in pack_options:
+                    pack_options.append("Diagnostics Pack")
+            if any(r.get("tuning_licensed", "").strip().upper() == "YES" for r in mgmt_rows):
+                if "Tuning Pack" not in pack_options:
+                    pack_options.append("Tuning Pack")
+            # ASO from feature_usage keywords as fallback
+            _cdb_feats = [_feat_row_to_dict(r) for r in g.get("feature_usage", [])]
+            active_feat_names = [
+                f.get("feature_name", "").strip().strip('"').lower()
+                for f in _cdb_feats if f.get("currently_used")
+            ]
+            if any(kw in fn for fn in active_feat_names for kw in _aso_keywords):
+                if "Advanced Security" not in pack_options:
+                    pack_options.append("Advanced Security")
+
+        # Multitenant: 3 free PDBs per CDB (Oracle 21c); license required if >3
         _app_pdb_count = sum(
             1 for row in g.get("pdbs", [])
             if row.get("pdb_name", "").strip().upper()
             not in ("PDB$SEED", "CDB$ROOT", "AUDSYS")
         )
-
-        for kw, opt in _feature_to_option:
-            # Multitenant: Oracle 21c allows 3 free PDBs per CDB; license required if >3
-            if kw == "multitenant":
-                if _app_pdb_count > 3:
-                    pack_options.append(opt)
-                continue
-            if any(kw in fn for fn in active_feat_names) and opt not in pack_options:
-                pack_options.append(opt)
-
-        # Debug: log what was detected for this home
-        if active_feat_names:
-            messages.append(f"Debug [{prefix}]: {len(active_feat_names)} active features detected; "
-                            f"options mapped: {pack_options or 'none'}.")
+        if _app_pdb_count > 3 and "Multitenant" not in pack_options:
+            pack_options.append("Multitenant")
 
         if sids:
             try:
