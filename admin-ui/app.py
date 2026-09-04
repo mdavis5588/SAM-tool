@@ -2974,7 +2974,11 @@ def servers():
                     ),
                     exadata AS (
                         SELECT DISTINCT server_id
-                        FROM   {s}.oracle_processors WHERE is_exadata = TRUE
+                        FROM   {s}.oracle_processors op
+                        WHERE  is_exadata = TRUE
+                          AND  recorded_at = (
+                              SELECT MAX(recorded_at) FROM {s}.oracle_processors
+                              WHERE server_id = op.server_id)
                     )
                     SELECT
                         s.server_id, s.hostname, s.environment::TEXT, s.datacenter,
@@ -3052,8 +3056,11 @@ def servers():
         ),
         exadata AS (
             SELECT DISTINCT server_id
-            FROM   {schema}.oracle_processors
+            FROM   {schema}.oracle_processors op
             WHERE  is_exadata = TRUE
+              AND  recorded_at = (
+                  SELECT MAX(recorded_at) FROM {schema}.oracle_processors
+                  WHERE server_id = op.server_id)
         )
         SELECT
             s.server_id,
