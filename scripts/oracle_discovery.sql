@@ -275,10 +275,10 @@ BEGIN
   -- Exadata detection
   -- --------------------------------------------------------
   BEGIN
-    -- v$cell exists only on Exadata; any non-zero row count means Exadata
+    -- gv$cell has rows only when Exadata storage cells are present
     DECLARE v_cell_cnt NUMBER := 0;
     BEGIN
-      EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM v$cell' INTO v_cell_cnt;
+      EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM gv$cell' INTO v_cell_cnt;
       IF v_cell_cnt > 0 THEN v_is_exadata := 'true'; END IF;
     EXCEPTION WHEN OTHERS THEN NULL;
     END;
@@ -290,22 +290,6 @@ BEGIN
       BEGIN
         SELECT UPPER(value) INTO v_cop FROM v$parameter WHERE name = 'cell_offload_processing';
         IF v_cop = 'TRUE' THEN v_is_exadata := 'true'; END IF;
-      EXCEPTION WHEN OTHERS THEN NULL;
-      END;
-    END;
-  END IF;
-  IF v_is_exadata = 'false' THEN
-    -- Smart Scan / Exadata feature usage is a strong secondary signal.
-    -- Check currently_used OR detected_usages>0 — Oracle can report
-    -- currently_used=TRUE with detected_usages=0 on some configurations.
-    BEGIN
-      DECLARE v_ex_feat NUMBER := 0;
-      BEGIN
-        SELECT COUNT(*) INTO v_ex_feat
-        FROM   dba_feature_usage_statistics
-        WHERE  (UPPER(name) LIKE '%EXADATA%' OR UPPER(name) LIKE '%SMART SCAN%')
-          AND  (currently_used = 'TRUE' OR detected_usages > 0);
-        IF v_ex_feat > 0 THEN v_is_exadata := 'true'; END IF;
       EXCEPTION WHEN OTHERS THEN NULL;
       END;
     END;

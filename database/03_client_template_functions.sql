@@ -503,23 +503,40 @@ BEGIN
         is_active          = TRUE
       RETURNING server_id INTO v_server_id;
 
-      -- Insert processor snapshot
-      INSERT INTO %I.oracle_processors
-        (server_id, cpu_model, cpu_architecture, cpu_sockets, cores_per_socket,
-         threads_per_core, virt_type, is_vmware, is_exadata, vcpu_count, discovery_run_id)
-      VALUES (
-        v_server_id,
-        p_payload->>'cpu_model',
-        p_payload->>'cpu_architecture',
-        (p_payload->>'cpu_sockets')::INTEGER,
-        (p_payload->>'cpu_cores_per_socket')::INTEGER,
-        (p_payload->>'cpu_threads_per_core')::INTEGER,
-        (COALESCE(p_payload->>'virt_type','unknown'))::virt_type,
-        COALESCE((p_payload->>'is_vmware')::BOOLEAN, FALSE),
-        COALESCE((p_payload->>'is_exadata')::BOOLEAN, FALSE),
-        (p_payload->>'vcpu_count')::INTEGER,
-        p_payload->>'run_id'
-      );
+      -- Upsert processor row (oracle_processors has no UNIQUE on server_id,
+      -- so we UPDATE when a row exists and INSERT only when none does yet).
+      IF EXISTS (SELECT 1 FROM %I.oracle_processors WHERE server_id = v_server_id) THEN
+        UPDATE %I.oracle_processors SET
+          cpu_model        = p_payload->>'cpu_model',
+          cpu_architecture = p_payload->>'cpu_architecture',
+          cpu_sockets      = (p_payload->>'cpu_sockets')::INTEGER,
+          cores_per_socket = (p_payload->>'cpu_cores_per_socket')::INTEGER,
+          threads_per_core = (p_payload->>'cpu_threads_per_core')::INTEGER,
+          virt_type        = (COALESCE(p_payload->>'virt_type','unknown'))::virt_type,
+          is_vmware        = COALESCE((p_payload->>'is_vmware')::BOOLEAN, FALSE),
+          is_exadata       = COALESCE((p_payload->>'is_exadata')::BOOLEAN, FALSE),
+          vcpu_count       = (p_payload->>'vcpu_count')::INTEGER,
+          discovery_run_id = p_payload->>'run_id',
+          recorded_at      = NOW()
+        WHERE server_id = v_server_id;
+      ELSE
+        INSERT INTO %I.oracle_processors
+          (server_id, cpu_model, cpu_architecture, cpu_sockets, cores_per_socket,
+           threads_per_core, virt_type, is_vmware, is_exadata, vcpu_count, discovery_run_id)
+        VALUES (
+          v_server_id,
+          p_payload->>'cpu_model',
+          p_payload->>'cpu_architecture',
+          (p_payload->>'cpu_sockets')::INTEGER,
+          (p_payload->>'cpu_cores_per_socket')::INTEGER,
+          (p_payload->>'cpu_threads_per_core')::INTEGER,
+          (COALESCE(p_payload->>'virt_type','unknown'))::virt_type,
+          COALESCE((p_payload->>'is_vmware')::BOOLEAN, FALSE),
+          COALESCE((p_payload->>'is_exadata')::BOOLEAN, FALSE),
+          (p_payload->>'vcpu_count')::INTEGER,
+          p_payload->>'run_id'
+        );
+      END IF;
 
       -- Upsert Oracle instances
       FOR v_instance IN SELECT * FROM jsonb_array_elements(p_payload->'instances')
@@ -548,7 +565,7 @@ BEGIN
     END;
     $body$;
   $fn$,
-  p_schema, p_schema, p_schema, p_schema, p_schema);
+  p_schema, p_schema, p_schema, p_schema, p_schema, p_schema);
 
   -- upsert_wls_discovery: called by the WebLogic Ansible playbook
   EXECUTE format($fn$
@@ -1711,7 +1728,7 @@ BEGIN
             CURRENT_DATE,
             (v_inst->>'nup_active_users')::INTEGER,
             (v_inst->>'nup_total_users')::INTEGER,
-            (v_inst->>'nup_locked_users')::INTEGER,
+            COALESCE((v_inst->>'nup_locked_users')::INTEGER, 0),
             ARRAY(SELECT jsonb_array_elements_text(COALESCE(v_inst->'nup_sample_users', '[]'::jsonb))),
             p_payload->>'run_id'
           );

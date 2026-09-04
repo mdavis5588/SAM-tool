@@ -98,6 +98,63 @@
         sam_is_vmware: "{{ vmware_tools_check.rc == 0 or sam_virt_type in ['VMware', 'vmware'] }}"
 
     # ------------------------------------------------------------------
+    # 3b. EXADATA DETECTION
+    #     Query gv$cell row count — returns rows only on real Exadata hardware.
+    #     Fall back to cell_offload_processing parameter as secondary check.
+    #     Runs against the first available Oracle instance on this host.
+    # ------------------------------------------------------------------
+    - name: Query gv$cell row count for Exadata detection
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        WHENEVER SQLERROR CONTINUE
+        SELECT COUNT(*) FROM gv$cell;
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: exadata_cell_results
+      no_log: true
+      ignore_errors: true
+      changed_when: false
+
+    - name: Query cell_offload_processing parameter for Exadata fallback check
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        WHENEVER SQLERROR CONTINUE
+        SELECT UPPER(value) FROM v$parameter WHERE name = 'cell_offload_processing';
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: exadata_param_results
+      no_log: true
+      ignore_errors: true
+      changed_when: false
+
+    - name: Set Exadata flag
+      ansible.builtin.set_fact:
+        sam_is_exadata: >-
+          {{
+            (exadata_cell_results.results | default([])
+              | map(attribute='stdout') | map('trim') | map('int', default=0)
+              | select('gt', 0) | list | length > 0)
+            or
+            (exadata_param_results.results | default([])
+              | map(attribute='stdout') | map('trim')
+              | select('equalto', 'TRUE') | list | length > 0)
+          }}
+
+    # ------------------------------------------------------------------
     # 4. ORACLE INSTANCE DISCOVERY
     #    Parse oratab for all registered instances, then for each one
     #    connect to the database to get edition, version and options.
@@ -382,6 +439,169 @@
       ignore_errors: true
       changed_when: false
 
+    # ------------------------------------------------------------------
+    # 5b. PRODUCT-LEVEL LICENCE USAGE — same MAP CTE logic as
+    #     oracle_discovery_csv.sql _product_usage.csv output.
+    #     Produces one row per licensed product with CURRENT_USAGE /
+    #     PAST_USAGE / NO_USAGE so option detection matches the CSV path.
+    # ------------------------------------------------------------------
+    - name: Query product-level licence usage (MAP CTE, matches _product_usage.csv)
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF LONG 32767
+        WHENEVER SQLERROR CONTINUE
+        WITH
+        map AS (
+          SELECT '' product,'' feature,'' mversion,'' condition FROM dual UNION ALL
+          SELECT 'Active Data Guard','Active Data Guard - Real-Time Query on Physical Standby','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Active Data Guard','Global Data Services','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Analytics','Data Mining','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Advanced Index Compression','^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Backup HIGH Compression','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Backup LOW Compression','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Backup MEDIUM Compression','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Backup ZLIB Compression','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Data Guard','^11\.2|^1[289]\.|^2[0-9]\.','C001' FROM dual UNION ALL
+          SELECT 'Advanced Compression','HeapCompression','^12\.[2-9]|^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Heat Map','^12\.[2-9]|^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Hybrid Columnar Compression Row Level Locking','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Information Lifecycle Management','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Oracle Advanced Network Compression Service','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Oracle Utility Datapump (Export)','^11\.2|^1[289]\.|^2[0-9]\.','C001' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Oracle Utility Datapump (Import)','^11\.2|^1[289]\.|^2[0-9]\.','C001' FROM dual UNION ALL
+          SELECT 'Advanced Compression','SecureFile Compression (user)','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','SecureFile Deduplication (user)','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Security','Data Redaction','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Security','Encrypted Tablespaces','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Security','Oracle Utility Datapump (Export)','^11\.2|^1[289]\.|^2[0-9]\.','C002' FROM dual UNION ALL
+          SELECT 'Advanced Security','Oracle Utility Datapump (Import)','^11\.2|^1[289]\.|^2[0-9]\.','C002' FROM dual UNION ALL
+          SELECT 'Advanced Security','SecureFile Encryption (user)','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Security','Transparent Data Encryption','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Database Vault','Oracle Database Vault','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Database Vault','Privilege Capture','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Diagnostics Pack','ADDM','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Diagnostics Pack','AWR Baseline','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Diagnostics Pack','AWR Baseline Template','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Diagnostics Pack','AWR Report','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Diagnostics Pack','Automatic Workload Repository','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Diagnostics Pack','Baseline Adaptive Thresholds','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Diagnostics Pack','Baseline Static Computations','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Diagnostics Pack','Diagnostic Pack','^11\.2', ' ' FROM dual UNION ALL
+          SELECT 'Label Security','Label Security','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Multitenant','Oracle Multitenant','^1[28]\.','C003' FROM dual UNION ALL
+          SELECT 'Multitenant','Oracle Multitenant','^1[9]\.|^2[0-9]\.','C005' FROM dual UNION ALL
+          SELECT 'Multitenant','Oracle Pluggable Databases','^1[28]\.','C003' FROM dual UNION ALL
+          SELECT 'OLAP','OLAP - Analytic Workspaces','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'OLAP','OLAP - Cubes','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Partitioning','Partitioning (user)','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Partitioning','Zone maps','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Real Application Clusters','Real Application Clusters (RAC)','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Spatial and Graph','Spatial','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Tuning Pack','Real-Time SQL Monitoring','^11\.2', ' ' FROM dual UNION ALL
+          SELECT 'Tuning Pack','SQL Access Advisor','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Tuning Pack','SQL Monitoring and Tuning pages','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Tuning Pack','SQL Profile','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Tuning Pack','SQL Tuning Advisor','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Tuning Pack','Tuning Pack','^11\.2', ' ' FROM dual UNION ALL
+          SELECT '' product,'' feature,'' mversion,'' condition FROM dual
+        ),
+        fus AS (
+          SELECT
+            CASE
+              WHEN dbid||'#'||version||'#'||TO_CHAR(last_sample_date,'YYYYMMDDHH24MISS') =
+                   FIRST_VALUE(dbid)    OVER (ORDER BY last_sample_date DESC NULLS LAST, dbid DESC)||'#'||
+                   FIRST_VALUE(version) OVER (ORDER BY last_sample_date DESC NULLS LAST, dbid DESC)||'#'||
+                   FIRST_VALUE(TO_CHAR(last_sample_date,'YYYYMMDDHH24MISS'))
+                                        OVER (ORDER BY last_sample_date DESC NULLS LAST, dbid DESC)
+              THEN 'Y' ELSE 'N'
+            END AS current_entry,
+            name, last_sample_date, dbid, version,
+            detected_usages, total_samples, currently_used,
+            first_usage_date, last_usage_date, aux_count, feature_info
+          FROM dba_feature_usage_statistics
+        ),
+        pfus AS (
+          SELECT
+            m.product,
+            CASE
+              WHEN m.condition = 'BUG'
+                   THEN '3.SUPPRESSED_DUE_TO_BUG'
+              WHEN f.detected_usages > 0
+                   AND f.currently_used = 'TRUE'
+                   AND f.current_entry  = 'Y'
+                   AND (TRIM(m.condition) IS NULL
+                        OR (CASE
+                              WHEN m.condition = 'C001'
+                                   AND (REGEXP_LIKE(TO_CHAR(f.feature_info),'compression[ -]used:[ 0-9]*[1-9][ 0-9]*time','i')
+                                     OR REGEXP_LIKE(TO_CHAR(f.feature_info),'compression[ -]used: *TRUE','i'))
+                                   THEN 'TRUE'
+                              WHEN m.condition = 'C002'
+                                   AND (REGEXP_LIKE(TO_CHAR(f.feature_info),'encryption used:[ 0-9]*[1-9][ 0-9]*time','i')
+                                     OR REGEXP_LIKE(TO_CHAR(f.feature_info),'encryption used: *TRUE','i'))
+                                   THEN 'TRUE'
+                              WHEN m.condition = 'C003' AND f.aux_count > 1 THEN 'TRUE'
+                              WHEN m.condition = 'C005' AND f.aux_count > 3 THEN 'TRUE'
+                              WHEN m.condition = 'C004'                      THEN 'TRUE'
+                              ELSE 'FALSE'
+                            END) = 'TRUE')
+                   THEN '6.CURRENT_USAGE'
+              WHEN f.detected_usages > 0
+                   THEN '4.PAST_USAGE'
+              WHEN f.current_entry = 'Y'
+                   THEN '2.NO_CURRENT_USAGE'
+              ELSE '1.NO_PAST_USAGE'
+            END AS usage
+          FROM map m
+          JOIN fus f ON m.feature = f.name AND REGEXP_LIKE(f.version, m.mversion)
+          WHERE NVL(f.total_samples, 0) > 0
+            AND NVL(m.condition, '-') NOT IN ('INVALID')
+        )
+        SELECT '{"product":"' || REPLACE(REPLACE(product,'\','\\'),'"','\"') ||
+               '","usage_status":"' ||
+               DECODE(MAX(usage),
+                 '2.NO_CURRENT_USAGE', 'NO_USAGE',
+                 '3.SUPPRESSED_DUE_TO_BUG', 'NO_USAGE',
+                 '4.PAST_USAGE',       'PAST_USAGE',
+                 '6.CURRENT_USAGE',    'CURRENT_USAGE',
+                 'NO_USAGE') || '"}'
+        FROM pfus
+        WHERE usage IN ('2.NO_CURRENT_USAGE','4.PAST_USAGE','6.CURRENT_USAGE')
+        GROUP BY product
+        ORDER BY product;
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: product_usage_results
+      no_log: true
+      ignore_errors: true
+      changed_when: false
+
+    - name: Query application PDB count for Multitenant licence check
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        WHENEVER SQLERROR CONTINUE
+        SELECT COUNT(*) FROM v$pdbs
+        WHERE  UPPER(name) NOT IN ('PDB$SEED','CDB$ROOT','AUDSYS')
+          AND  con_id > 0;
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: pdb_count_results
+      no_log: true
+      ignore_errors: true
+      changed_when: false
+
     - name: Assemble extended instance data
       ansible.builtin.set_fact:
         sam_extended_instances: >-
@@ -449,6 +669,7 @@
           virt_type:      "{{ sam_virt_type }}"
           virt_role:      "{{ sam_virt_role }}"
           is_vmware:      "{{ sam_is_vmware | bool }}"
+          is_exadata:     "{{ sam_is_exadata | bool }}"
           total_ram_mb:   "{{ ansible_memtotal_mb | default(0) }}"
           discovered_at:  "{{ ansible_date_time.iso8601 }}"
           instances: >-
@@ -498,49 +719,115 @@
       delegate_to: localhost
       ignore_errors: true
 
-    # Determine which management packs are licensed from the collected db_parameters.
-    # control_management_pack_access values: NONE | DIAGNOSTIC | DIAGNOSTIC+TUNING
-    - name: Derive management pack access flags from db_parameters
+    # ------------------------------------------------------------------
+    # 7b. OPTION DETECTION — uses product_usage results (matches CSV/JSON
+    #     upload path). Maps product names with CURRENT_USAGE to the
+    #     oracle_options option_name values stored in the DB.
+    #     Multitenant: flagged when >3 application PDBs exist (Oracle 21c
+    #     free threshold), regardless of product_usage.
+    # ------------------------------------------------------------------
+    - name: Collect all product_usage rows across instances
       ansible.builtin.set_fact:
-        sam_mgmt_pack_value: >-
+        sam_product_usage_rows: >-
           {{
-            (sam_db_params | default([])
-              | selectattr('name', 'equalto', 'control_management_pack_access')
-              | map(attribute='value') | list | first | upper) if
-            (sam_db_params | default([]) | selectattr('name', 'equalto', 'control_management_pack_access') | list | length > 0)
-            else 'NONE'
+            product_usage_results.results | default([])
+            | map(attribute='stdout') | map('trim')
+            | map('split', '\n') | flatten
+            | reject('equalto', '')
+            | map('from_json')
+            | list
           }}
 
-    - name: Set diagnostics and tuning pack flags
+    - name: Collect max application PDB count across instances
       ansible.builtin.set_fact:
-        sam_diagnostics_licensed: "{{ sam_mgmt_pack_value in ['DIAGNOSTIC', 'DIAGNOSTIC+TUNING'] }}"
-        sam_tuning_licensed:      "{{ sam_mgmt_pack_value == 'DIAGNOSTIC+TUNING' }}"
-
-    # Detect ASO usage: look for encryption/security keywords in feature_usage
-    - name: Set ASO licensed flag from feature usage keywords
-      ansible.builtin.set_fact:
-        sam_aso_licensed: >-
+        sam_app_pdb_count: >-
           {{
-            sam_instances_extended | default([])
-            | map(attribute='feature_usage') | flatten
-            | map(attribute='feature_name') | map('lower')
-            | select('search', 'encrypt|redact|securefile|label security|advanced security|tde|rman encryption|network encryption')
-            | list | length > 0
+            pdb_count_results.results | default([])
+            | map(attribute='stdout') | map('trim')
+            | reject('equalto', '')
+            | map('int')
+            | max | default(0)
           }}
 
-    # Build the list of licensed option names to upsert
-    - name: Collect licensed option names
+    - name: Build licensed option list from product_usage (primary source)
       ansible.builtin.set_fact:
         sam_licensed_options: >-
           {{
-            (['Diagnostics Pack'] if sam_diagnostics_licensed | bool else []) +
-            (['Tuning Pack']      if sam_tuning_licensed      | bool else []) +
-            (['Advanced Security'] if sam_aso_licensed        | bool else [])
+            (sam_product_usage_rows
+              | selectattr('usage_status', 'equalto', 'CURRENT_USAGE')
+              | map(attribute='product') | map('lower') | list
+            ) | map('regex_replace', '^.*$', '')
+            | list
           }}
+      # Reset; populated in the next task via a lookup map
 
-    # Insert/update each licensed option into oracle_options for every instance on this server.
-    # oracle_options has: instance_id, option_name, status, discovery_run_id — no server_id, no is_active.
-    - name: Upsert licensed management pack options into oracle_options
+    - name: Map product_usage CURRENT_USAGE products to oracle_options names
+      ansible.builtin.set_fact:
+        sam_licensed_options: >-
+          {{
+            sam_licensed_options | default([]) + [item.1]
+          }}
+      loop: >-
+        {{
+          [
+            ['partitioning',                 'Partitioning'],
+            ['real application clusters',    'Real Application Clusters (RAC)'],
+            ['active data guard',            'Active Data Guard'],
+            ['label security',               'Label Security'],
+            ['database vault',               'Database Vault'],
+            ['olap',                         'OLAP'],
+            ['spatial and graph',            'Spatial and Graph'],
+            ['advanced security',            'Advanced Security'],
+            ['diagnostics pack',             'Diagnostics Pack'],
+            ['tuning pack',                  'Tuning Pack'],
+            ['data masking and subsetting',  'Data Masking and Subsetting'],
+            ['advanced compression',         'Advanced Compression'],
+            ['advanced analytics',           'Advanced Analytics'],
+            ['multitenant',                  'Multitenant'],
+          ]
+        }}
+      when: >-
+        sam_product_usage_rows
+        | selectattr('usage_status', 'equalto', 'CURRENT_USAGE')
+        | selectattr('product', 'defined')
+        | map(attribute='product') | map('lower')
+        | select('search', item.0)
+        | list | length > 0
+        and item.1 not in sam_licensed_options | default([])
+      vars:
+        sam_licensed_options: "{{ sam_licensed_options | default([]) }}"
+
+    - name: Add Multitenant if application PDB count exceeds free threshold (>3)
+      ansible.builtin.set_fact:
+        sam_licensed_options: "{{ sam_licensed_options | default([]) + ['Multitenant'] }}"
+      when:
+        - sam_app_pdb_count | int > 3
+        - "'Multitenant' not in sam_licensed_options | default([])"
+
+    # Clear all auto-detected options for this server's instances then re-insert,
+    # so stale options from a previous upload do not persist.
+    - name: Clear existing oracle_options for this server's instances
+      community.postgresql.postgresql_query:
+        db:             "{{ sam_db_name }}"
+        login_host:     "{{ sam_db_host }}"
+        login_port:     "{{ sam_db_port }}"
+        login_user:     "{{ sam_db_user }}"
+        login_password: "{{ sam_db_password }}"
+        query: |
+          DELETE FROM {{ sam_client_schema }}.oracle_options
+          WHERE instance_id IN (
+            SELECT i.instance_id
+            FROM   {{ sam_client_schema }}.oracle_instances i
+            JOIN   {{ sam_client_schema }}.oracle_servers   s ON s.server_id = i.server_id
+            WHERE  s.hostname = %(hostname)s
+          )
+        named_args:
+          hostname: "{{ inventory_hostname }}"
+      delegate_to: localhost
+      ignore_errors: true
+
+    # Insert each licensed option for every instance on this server.
+    - name: Insert licensed options into oracle_options
       community.postgresql.postgresql_query:
         db:             "{{ sam_db_name }}"
         login_host:     "{{ sam_db_host }}"
@@ -557,18 +844,14 @@
           FROM   {{ sam_client_schema }}.oracle_instances i
           JOIN   {{ sam_client_schema }}.oracle_servers   s ON s.server_id = i.server_id
           WHERE  s.hostname = %(hostname)s
-          ON CONFLICT (instance_id, option_name) DO UPDATE SET
-              status           = 'TRUE',
-              discovery_run_id = EXCLUDED.discovery_run_id,
-              recorded_at      = NOW()
         named_args:
           option_name: "{{ item }}"
           run_id:      "{{ sam_run_id }}"
           hostname:    "{{ inventory_hostname }}"
-      loop: "{{ sam_licensed_options }}"
+      loop: "{{ sam_licensed_options | default([]) }}"
       delegate_to: localhost
       ignore_errors: true
-      when: sam_licensed_options | length > 0
+      when: sam_licensed_options | default([]) | length > 0
 
     - name: Print discovery summary
       ansible.builtin.debug:

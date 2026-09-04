@@ -62,6 +62,14 @@
                   <i class="bi bi-play-circle"></i> Reactivate
                 </button>
               </form>
+              <form method="post" class="d-inline"
+                    onsubmit="return confirm('PERMANENTLY DELETE {{ c.client_name }}?\n\nThis drops the entire schema and all data. This cannot be undone.')">
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="client_code" value="{{ c.client_code }}">
+                <button class="btn btn-danger btn-sm">
+                  <i class="bi bi-trash3"></i> Delete
+                </button>
+              </form>
             {% endif %}
             <form method="post" action="{{ url_for('switch_client') }}" class="d-inline">
               <input type="hidden" name="schema" value="{{ c.schema_name }}">
