@@ -98,6 +98,63 @@
         sam_is_vmware: "{{ vmware_tools_check.rc == 0 or sam_virt_type in ['VMware', 'vmware'] }}"
 
     # ------------------------------------------------------------------
+    # 3b. EXADATA DETECTION
+    #     Query gv$cell row count — returns rows only on real Exadata hardware.
+    #     Fall back to cell_offload_processing parameter as secondary check.
+    #     Runs against the first available Oracle instance on this host.
+    # ------------------------------------------------------------------
+    - name: Query gv$cell row count for Exadata detection
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        WHENEVER SQLERROR CONTINUE
+        SELECT COUNT(*) FROM gv$cell;
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: exadata_cell_results
+      no_log: true
+      ignore_errors: true
+      changed_when: false
+
+    - name: Query cell_offload_processing parameter for Exadata fallback check
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        WHENEVER SQLERROR CONTINUE
+        SELECT UPPER(value) FROM v$parameter WHERE name = 'cell_offload_processing';
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: exadata_param_results
+      no_log: true
+      ignore_errors: true
+      changed_when: false
+
+    - name: Set Exadata flag
+      ansible.builtin.set_fact:
+        sam_is_exadata: >-
+          {{
+            (exadata_cell_results.results | default([])
+              | map(attribute='stdout') | map('trim') | map('int', default=0)
+              | select('gt', 0) | list | length > 0)
+            or
+            (exadata_param_results.results | default([])
+              | map(attribute='stdout') | map('trim')
+              | select('equalto', 'TRUE') | list | length > 0)
+          }}
+
+    # ------------------------------------------------------------------
     # 4. ORACLE INSTANCE DISCOVERY
     #    Parse oratab for all registered instances, then for each one
     #    connect to the database to get edition, version and options.
@@ -612,6 +669,7 @@
           virt_type:      "{{ sam_virt_type }}"
           virt_role:      "{{ sam_virt_role }}"
           is_vmware:      "{{ sam_is_vmware | bool }}"
+          is_exadata:     "{{ sam_is_exadata | bool }}"
           total_ram_mb:   "{{ ansible_memtotal_mb | default(0) }}"
           discovered_at:  "{{ ansible_date_time.iso8601 }}"
           instances: >-
