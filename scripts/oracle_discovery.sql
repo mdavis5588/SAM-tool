@@ -294,22 +294,6 @@ BEGIN
       END;
     END;
   END IF;
-  IF v_is_exadata = 'false' THEN
-    -- Smart Scan / Exadata feature usage is a strong secondary signal.
-    -- Require currently_used=TRUE to avoid false-positives from historical
-    -- usage on servers that were migrated off Exadata.
-    BEGIN
-      DECLARE v_ex_feat NUMBER := 0;
-      BEGIN
-        SELECT COUNT(*) INTO v_ex_feat
-        FROM   dba_feature_usage_statistics
-        WHERE  (UPPER(name) LIKE '%EXADATA%' OR UPPER(name) LIKE '%SMART SCAN%')
-          AND  currently_used = 'TRUE';
-        IF v_ex_feat > 0 THEN v_is_exadata := 'true'; END IF;
-      EXCEPTION WHEN OTHERS THEN NULL;
-      END;
-    END;
-  END IF;
 
   -- --------------------------------------------------------
   -- Instances
