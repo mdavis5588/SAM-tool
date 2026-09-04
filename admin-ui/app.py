@@ -2001,17 +2001,10 @@ def _process_json_upload(schema: str, file_obj) -> dict:
         if field in base and base[field] is not None:
             base[field] = int(round(float(base[field])))
 
-    # Derive is_exadata from feature_usage when the script didn't detect it
-    # directly. Require currently_used=TRUE to avoid false-positives from
-    # historical usage on servers migrated off Exadata.
+    # is_exadata is set only by hardware-level checks (v$cell, cell_offload_processing)
+    # in the discovery scripts — feature_usage keyword matching caused false positives.
     if not base.get("is_exadata"):
-        feature_usage = doc.get("feature_usage", [])
-        base["is_exadata"] = any(
-            ("exadata" in (f.get("feature_name") or "").lower() or
-             "smart scan" in (f.get("feature_name") or "").lower())
-            and f.get("currently_used") in (True, "true", "TRUE")
-            for f in feature_usage
-        )
+        base["is_exadata"] = False
 
     _call_upsert(schema, "upsert_oracle_discovery", base)
     messages.append(f"Server '{hostname}' upserted.")
