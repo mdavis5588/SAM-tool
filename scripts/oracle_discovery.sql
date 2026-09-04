@@ -275,10 +275,10 @@ BEGIN
   -- Exadata detection
   -- --------------------------------------------------------
   BEGIN
-    -- v$cell exists only on Exadata; any non-zero row count means Exadata
+    -- gv$cell has rows only when Exadata storage cells are present
     DECLARE v_cell_cnt NUMBER := 0;
     BEGIN
-      EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM v$cell' INTO v_cell_cnt;
+      EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM gv$cell' INTO v_cell_cnt;
       IF v_cell_cnt > 0 THEN v_is_exadata := 'true'; END IF;
     EXCEPTION WHEN OTHERS THEN NULL;
     END;

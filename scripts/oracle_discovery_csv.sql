@@ -149,8 +149,7 @@ SELECT
     ELSE 'physical'
   END                                                                     AS virt_type,
   CASE
-    WHEN (SELECT COUNT(*) FROM v$fixed_table
-          WHERE name = 'GV$CELL') > 0                                   THEN 'true'
+    WHEN (SELECT COUNT(*) FROM gv$cell) > 0                              THEN 'true'
     WHEN UPPER(NVL((SELECT value FROM v$parameter
                     WHERE name = 'cell_offload_processing'), '')) = 'TRUE' THEN 'true'
     ELSE 'false'
