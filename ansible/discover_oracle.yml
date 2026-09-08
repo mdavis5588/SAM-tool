@@ -636,7 +636,6 @@
           os_distribution: "{{ ansible_distribution }}"
           os_version:     "{{ ansible_distribution_version }}"
           environment:    "{{ sam_environment | default('unknown') }}"
-          criticality:    "{{ sam_criticality | default('unknown') }}"
           cpu_sockets:    "{{ sam_cpu_sockets | int }}"
           cpu_cores_per_socket: "{{ sam_cpu_cores_per_socket | int }}"
           cpu_threads_per_core: "{{ sam_cpu_threads_per_core | int }}"
@@ -670,20 +669,20 @@
     # ------------------------------------------------------------------
     # 7. WRITE TO POSTGRESQL
     # ------------------------------------------------------------------
-    - name: Load SAM payload into PostgreSQL
+    - name: Load SAM base payload into PostgreSQL (server, CPU, instances)
       community.postgresql.postgresql_query:
-        db:       "{{ client_acme }}"
-        login_host: "{{ PostgreSQL1 }}"
-        login_port: "{{ 5432 }}"
-        login_user: "{{ admin_user }}"
-        login_password: "{{ admin }}"
-        query: "SELECT sam.upsert_server_discovery(%(payload)s::jsonb)"
+        db:             "{{ sam_db_name }}"
+        login_host:     "{{ sam_db_host }}"
+        login_port:     "{{ sam_db_port }}"
+        login_user:     "{{ sam_db_user }}"
+        login_password: "{{ sam_db_password }}"
+        query: "SELECT {{ sam_client_schema }}.upsert_oracle_discovery(%(payload)s::jsonb)"
         named_args:
           payload: "{{ sam_payload | to_json }}"
       delegate_to: localhost
       ignore_errors: true
 
-    - name: Load extended SAM payload into PostgreSQL (RAC, PDB, NUP)
+    - name: Load extended SAM payload into PostgreSQL (RAC, PDB, NUP, feature usage)
       community.postgresql.postgresql_query:
         db:             "{{ sam_db_name }}"
         login_host:     "{{ sam_db_host }}"

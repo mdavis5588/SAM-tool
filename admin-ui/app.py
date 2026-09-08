@@ -2112,20 +2112,17 @@ def _process_json_upload(schema: str, file_obj) -> dict:
                         if not row:
                             continue
                         instance_id = row[0]
+                        cur.execute(
+                            f"DELETE FROM {schema}.oracle_options WHERE instance_id = %s",
+                            (instance_id,)
+                        )
                         for pack in pack_options:
                             cur.execute(
-                                f"""UPDATE {schema}.oracle_options
-                                    SET status = 'TRUE', discovery_run_id = %s
-                                    WHERE instance_id = %s AND option_name = %s""",
-                                (run_id, instance_id, pack)
+                                f"""INSERT INTO {schema}.oracle_options
+                                      (instance_id, option_name, status, discovery_run_id)
+                                    VALUES (%s, %s, 'TRUE', %s)""",
+                                (instance_id, pack, run_id)
                             )
-                            if cur.rowcount == 0:
-                                cur.execute(
-                                    f"""INSERT INTO {schema}.oracle_options
-                                          (instance_id, option_name, status, discovery_run_id)
-                                        VALUES (%s, %s, 'TRUE', %s)""",
-                                    (instance_id, pack, run_id)
-                                )
                 conn.commit()
             messages.append(f"Management pack access stored ({', '.join(pack_options)}).")
         except Exception as e:
@@ -2411,16 +2408,18 @@ def _process_csv_upload(schema: str, files) -> dict:
                 if prod_key in product_raw and opt_name not in pack_options:
                     pack_options.append(opt_name)
 
-        # Fallback: mgmt_packs CSV for Diagnostics/Tuning if product_usage absent
+        # Always check mgmt_packs CSV for Diagnostics/Tuning — control_management_pack_access
+        # is the authoritative licence source and product_usage can underreport these packs.
+        mgmt_rows = g.get("mgmt_packs", [])
+        if any(r.get("diagnostics_licensed", "").strip().upper() == "YES" for r in mgmt_rows):
+            if "Diagnostics Pack" not in pack_options:
+                pack_options.append("Diagnostics Pack")
+        if any(r.get("tuning_licensed", "").strip().upper() == "YES" for r in mgmt_rows):
+            if "Tuning Pack" not in pack_options:
+                pack_options.append("Tuning Pack")
+
+        # If product_usage absent entirely, also fall back to feature_usage keywords for ASO
         if not g.get("product_usage"):
-            mgmt_rows = g.get("mgmt_packs", [])
-            if any(r.get("diagnostics_licensed", "").strip().upper() == "YES" for r in mgmt_rows):
-                if "Diagnostics Pack" not in pack_options:
-                    pack_options.append("Diagnostics Pack")
-            if any(r.get("tuning_licensed", "").strip().upper() == "YES" for r in mgmt_rows):
-                if "Tuning Pack" not in pack_options:
-                    pack_options.append("Tuning Pack")
-            # ASO from feature_usage keywords as fallback
             _cdb_feats = [_feat_row_to_dict(r) for r in g.get("feature_usage", [])]
             active_feat_names = [
                 f.get("feature_name", "").strip().strip('"').lower()
@@ -2974,7 +2973,11 @@ def servers():
                     ),
                     exadata AS (
                         SELECT DISTINCT server_id
-                        FROM   {s}.oracle_processors WHERE is_exadata = TRUE
+                        FROM   {s}.oracle_processors op
+                        WHERE  is_exadata = TRUE
+                          AND  recorded_at = (
+                              SELECT MAX(recorded_at) FROM {s}.oracle_processors
+                              WHERE server_id = op.server_id)
                     )
                     SELECT
                         s.server_id, s.hostname, s.environment::TEXT, s.datacenter,
@@ -3052,8 +3055,11 @@ def servers():
         ),
         exadata AS (
             SELECT DISTINCT server_id
-            FROM   {schema}.oracle_processors
+            FROM   {schema}.oracle_processors op
             WHERE  is_exadata = TRUE
+              AND  recorded_at = (
+                  SELECT MAX(recorded_at) FROM {schema}.oracle_processors
+                  WHERE server_id = op.server_id)
         )
         SELECT
             s.server_id,
