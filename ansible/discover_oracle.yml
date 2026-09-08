@@ -636,7 +636,6 @@
           os_distribution: "{{ ansible_distribution }}"
           os_version:     "{{ ansible_distribution_version }}"
           environment:    "{{ sam_environment | default('unknown') }}"
-          criticality:    "{{ sam_criticality | default('unknown') }}"
           cpu_sockets:    "{{ sam_cpu_sockets | int }}"
           cpu_cores_per_socket: "{{ sam_cpu_cores_per_socket | int }}"
           cpu_threads_per_core: "{{ sam_cpu_threads_per_core | int }}"
