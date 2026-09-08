@@ -2112,20 +2112,17 @@ def _process_json_upload(schema: str, file_obj) -> dict:
                         if not row:
                             continue
                         instance_id = row[0]
+                        cur.execute(
+                            f"DELETE FROM {schema}.oracle_options WHERE instance_id = %s",
+                            (instance_id,)
+                        )
                         for pack in pack_options:
                             cur.execute(
-                                f"""UPDATE {schema}.oracle_options
-                                    SET status = 'TRUE', discovery_run_id = %s
-                                    WHERE instance_id = %s AND option_name = %s""",
-                                (run_id, instance_id, pack)
+                                f"""INSERT INTO {schema}.oracle_options
+                                      (instance_id, option_name, status, discovery_run_id)
+                                    VALUES (%s, %s, 'TRUE', %s)""",
+                                (instance_id, pack, run_id)
                             )
-                            if cur.rowcount == 0:
-                                cur.execute(
-                                    f"""INSERT INTO {schema}.oracle_options
-                                          (instance_id, option_name, status, discovery_run_id)
-                                        VALUES (%s, %s, 'TRUE', %s)""",
-                                    (instance_id, pack, run_id)
-                                )
                 conn.commit()
             messages.append(f"Management pack access stored ({', '.join(pack_options)}).")
         except Exception as e:
