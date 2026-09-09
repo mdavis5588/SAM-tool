@@ -1,15 +1,9 @@
--- Migration 33: Fix oracle_processors upsert — update existing row instead of
---              inserting a duplicate, so re-uploads refresh processor data.
---
--- oracle_processors has no UNIQUE constraint on server_id (it's a history table
--- by design).  The plain INSERT in previous versions of upsert_oracle_discovery
--- appended a new row every upload and never updated existing data, so cpu_model,
--- cpu_sockets, is_exadata etc. were blank after the first upload.
---
--- The fix: check whether a row for the server already exists and UPDATE it;
--- INSERT only when none exists yet.
+-- Migration 38: Fix unqualified ::environment_type and ::virt_type casts in
+--              upsert_oracle_discovery.  Migration 33 introduced these casts
+--              without a schema prefix, causing "type does not exist" errors
+--              when the client schema is not in the session search_path.
 
-CREATE OR REPLACE FUNCTION sam_admin._patch_upsert_processors(p_schema TEXT)
+CREATE OR REPLACE FUNCTION sam_admin._patch_upsert_env_type(p_schema TEXT)
 RETURNS VOID LANGUAGE plpgsql AS $$
 BEGIN
   EXECUTE format($fn$
@@ -21,7 +15,7 @@ BEGIN
     BEGIN
       INSERT INTO %I.oracle_servers
         (hostname, fqdn, ip_address, os_family, os_distribution, os_version,
-         environment, criticality, total_ram_mb, datacenter,
+         environment, total_ram_mb, datacenter,
          last_seen, last_discovery_run)
       VALUES (
         p_payload->>'hostname',
@@ -30,8 +24,7 @@ BEGIN
         p_payload->>'os_family',
         p_payload->>'os_distribution',
         p_payload->>'os_version',
-        (p_payload->>'environment')::%I.environment_type,
-        p_payload->>'criticality',
+        (COALESCE(p_payload->>'environment','unknown'))::%I.environment_type,
         (p_payload->>'total_ram_mb')::INTEGER,
         p_payload->>'datacenter',
         NOW(),
@@ -44,7 +37,6 @@ BEGIN
         os_distribution    = EXCLUDED.os_distribution,
         os_version         = EXCLUDED.os_version,
         environment        = EXCLUDED.environment,
-        criticality        = EXCLUDED.criticality,
         total_ram_mb       = EXCLUDED.total_ram_mb,
         datacenter         = EXCLUDED.datacenter,
         last_seen          = NOW(),
@@ -52,9 +44,6 @@ BEGIN
         is_active          = TRUE
       RETURNING server_id INTO v_server_id;
 
-      -- Update existing processor row if present; insert only when absent.
-      -- (oracle_processors has no UNIQUE constraint on server_id — it stores
-      --  a history — so ON CONFLICT cannot be used here.)
       IF EXISTS (SELECT 1 FROM %I.oracle_processors WHERE server_id = v_server_id) THEN
         UPDATE %I.oracle_processors SET
           cpu_model        = p_payload->>'cpu_model',
@@ -122,8 +111,7 @@ BEGIN
   p_schema,   -- 6: virt_type enum (UPDATE)
   p_schema,   -- 7: oracle_processors (INSERT)
   p_schema,   -- 8: virt_type enum (INSERT)
-  p_schema,   -- 9: oracle_instances
-  p_schema);  -- 10: (matches 10-arg format call)
+  p_schema);  -- 9: oracle_instances
 END;
 $$;
 
@@ -133,10 +121,10 @@ DECLARE
 BEGIN
   FOR v_client IN SELECT schema_name FROM sam_admin.clients ORDER BY schema_name
   LOOP
-    PERFORM sam_admin._patch_upsert_processors(v_client.schema_name);
+    PERFORM sam_admin._patch_upsert_env_type(v_client.schema_name);
     RAISE NOTICE 'Patched upsert_oracle_discovery for %', v_client.schema_name;
   END LOOP;
 END;
 $$;
 
-DROP FUNCTION IF EXISTS sam_admin._patch_upsert_processors(TEXT);
+DROP FUNCTION IF EXISTS sam_admin._patch_upsert_env_type(TEXT);
