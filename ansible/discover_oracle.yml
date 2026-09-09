@@ -218,6 +218,30 @@
       ignore_errors: true
       changed_when: false
 
+    - name: Detect failed sqlplus connections and record errors
+      community.postgresql.postgresql_query:
+        db:             "{{ sam_db_name }}"
+        login_host:     "{{ sam_db_host }}"
+        login_port:     "{{ sam_db_port }}"
+        login_user:     "{{ sam_db_user }}"
+        login_password: "{{ sam_db_password }}"
+        query: |
+          INSERT INTO {{ sam_client_schema }}.discovery_errors
+            (run_id, hostname, oracle_sid, error_type, error_detail)
+          VALUES (%(run_id)s, %(hostname)s, %(sid)s, 'connection_failed', %(detail)s)
+        named_args:
+          run_id:   "{{ sam_run_id }}"
+          hostname: "{{ inventory_hostname }}"
+          sid:      "{{ item.item.sid }}"
+          detail:   "{{ item.stderr | default('') | truncate(500, true, '') }}"
+      loop: "{{ sqlplus_results.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.sid }}"
+      when:
+        - item.rc != 0 or item.stdout | trim == '' or item.stdout | trim is not match('^\{')
+      delegate_to: localhost
+      ignore_errors: true
+
     - name: Query installed options per instance (dba_registry)
       ansible.builtin.shell: |
         export ORACLE_HOME="{{ item.oracle_home }}"

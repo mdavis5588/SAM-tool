@@ -6629,6 +6629,27 @@ def licence_analysis():
         except Exception as e:
             result = {"error": str(e)}
 
+    # Collect discovery errors from the latest run per client schema
+    discovery_errors = []
+    for cl in clients:
+        try:
+            sc = cl["schema_name"]
+            errs = query(
+                f"""
+                SELECT e.hostname, e.oracle_sid, e.error_type, e.error_detail,
+                       e.recorded_at, e.run_id
+                FROM   {sc}.discovery_errors e
+                WHERE  e.recorded_at >= NOW() - INTERVAL '48 hours'
+                ORDER  BY e.recorded_at DESC
+                LIMIT  100
+                """,
+                fetchall=True
+            )
+            for e in (errs or []):
+                discovery_errors.append({**dict(e), "client_name": cl["client_name"]})
+        except Exception:
+            pass  # table may not exist on older schemas
+
     return render_template(
         "licence_analysis.html",
         clients=clients,
@@ -6636,6 +6657,7 @@ def licence_analysis():
         server_list=server_list,
         result=result,
         manual_db_options=MANUAL_DB_OPTIONS,
+        discovery_errors=discovery_errors,
     )
 
 
