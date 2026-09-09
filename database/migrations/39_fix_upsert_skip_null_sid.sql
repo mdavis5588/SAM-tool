@@ -1,9 +1,8 @@
--- Migration 38: Fix unqualified ::environment_type and ::virt_type casts in
---              upsert_oracle_discovery.  Migration 33 introduced these casts
---              without a schema prefix, causing "type does not exist" errors
---              when the client schema is not in the session search_path.
+-- Migration 39: Skip oracle_instances rows where sid is null/empty.
+--              Prevents NOT NULL violation when sqlplus returns no rows
+--              for an instance (e.g. connection failed silently).
 
-CREATE OR REPLACE FUNCTION sam_admin._patch_upsert_env_type(p_schema TEXT)
+CREATE OR REPLACE FUNCTION sam_admin._patch_upsert_null_sid(p_schema TEXT)
 RETURNS VOID LANGUAGE plpgsql AS $$
 BEGIN
   EXECUTE format($fn$
@@ -122,10 +121,10 @@ DECLARE
 BEGIN
   FOR v_client IN SELECT schema_name FROM sam_admin.clients ORDER BY schema_name
   LOOP
-    PERFORM sam_admin._patch_upsert_env_type(v_client.schema_name);
+    PERFORM sam_admin._patch_upsert_null_sid(v_client.schema_name);
     RAISE NOTICE 'Patched upsert_oracle_discovery for %', v_client.schema_name;
   END LOOP;
 END;
 $$;
 
-DROP FUNCTION IF EXISTS sam_admin._patch_upsert_env_type(TEXT);
+DROP FUNCTION IF EXISTS sam_admin._patch_upsert_null_sid(TEXT);
