@@ -85,7 +85,13 @@
     # ------------------------------------------------------------------
     - name: Detect virtualisation type
       ansible.builtin.set_fact:
-        sam_virt_type: "{{ ansible_virtualization_type | default('physical') }}"
+        sam_virt_type: >-
+          {{
+            ansible_virtualization_type | default('unknown')
+            if ansible_virtualization_type | default('') | lower
+               in ['physical','vmware','hyperv','kvm','xen','lpar','zone','container','unknown']
+            else 'unknown'
+          }}
         sam_virt_role: "{{ ansible_virtualization_role | default('host') }}"
 
     - name: Check for VMware tools (confirms VMware VM)
