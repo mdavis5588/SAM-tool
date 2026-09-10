@@ -647,11 +647,11 @@
           {{
             sam_oracle_instances | default([]) | map('combine', {}) | list
             | zip(
-                nup_results.results         | map(attribute='stdout') | map('trim') | list,
-                pdb_results.results         | map(attribute='stdout') | map('trim') | list,
-                rac_results.results         | map(attribute='stdout') | map('trim') | list,
-                feature_usage_results.results | map(attribute='stdout') | map('trim') | list,
-                mgmt_pack_results.results   | map(attribute='stdout') | map('trim') | list
+                (nup_results          | default({'results': []})).results | map(attribute='stdout') | map('trim') | list,
+                (pdb_results          | default({'results': []})).results | map(attribute='stdout') | map('trim') | list,
+                (rac_results          | default({'results': []})).results | map(attribute='stdout') | map('trim') | list,
+                (feature_usage_results | default({'results': []})).results | map(attribute='stdout') | map('trim') | list,
+                (mgmt_pack_results    | default({'results': []})).results | map(attribute='stdout') | map('trim') | list
               )
             | list
           }}
