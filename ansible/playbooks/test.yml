@@ -1,0 +1,14 @@
+- name: Detect virtualisation type
+      ansible.builtin.set_fact:
+        sam_virt_type: >-
+          {{
+            ansible_virtualization_type | default('unknown')
+            if ansible_virtualization_type | default('') | lower
+               in ['physical','vmware','hyperv','kvm','xen','lpar','zone','container','unknown']
+            else 'unknown'
+          }}
+ 
+And then in "Assemble SAM discovery payload"
+         virt_type:      "{{ sam_virt_type }}"
+          virt_role:      "{{ ansible_virtualization_role | default('host') }}"
+          is_vmware:      "{{ (ansible_virtualization_type is defined and ansible_virtualization_type | lower == 'vmware') or (ansible_system_vendor is defined and 'vmware' in ansible_system_vendor | lower) }}"
