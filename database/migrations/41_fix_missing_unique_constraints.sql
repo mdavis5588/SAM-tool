@@ -115,9 +115,7 @@ BEGIN
         LOOP
           CONTINUE WHEN v_pdb->>'pdb_name' IS NULL;
           INSERT INTO %I.oracle_pdbs
-            (instance_id, pdb_name, con_id, open_mode, restricted,
-             nup_active_users, nup_total_users, mgmt_pack_access,
-             diagnostics_licensed, tuning_licensed,
+            (instance_id, pdb_name, pdb_con_id, open_mode, restricted,
              last_seen, discovery_run_id)
           VALUES (
             v_instance_id,
@@ -125,24 +123,14 @@ BEGIN
             (v_pdb->>'con_id')::INTEGER,
             v_pdb->>'open_mode',
             v_pdb->>'restricted',
-            (v_pdb->>'nup_active_users')::INTEGER,
-            (v_pdb->>'nup_total_users')::INTEGER,
-            v_pdb->>'mgmt_pack_access',
-            (v_pdb->>'diagnostics_licensed')::BOOLEAN,
-            (v_pdb->>'tuning_licensed')::BOOLEAN,
             NOW(), p_payload->>'run_id'
           )
           ON CONFLICT (instance_id, pdb_name) DO UPDATE SET
-            con_id              = EXCLUDED.con_id,
-            open_mode           = EXCLUDED.open_mode,
-            restricted          = EXCLUDED.restricted,
-            nup_active_users    = EXCLUDED.nup_active_users,
-            nup_total_users     = EXCLUDED.nup_total_users,
-            mgmt_pack_access    = EXCLUDED.mgmt_pack_access,
-            diagnostics_licensed = EXCLUDED.diagnostics_licensed,
-            tuning_licensed     = EXCLUDED.tuning_licensed,
-            last_seen           = NOW(),
-            discovery_run_id    = EXCLUDED.discovery_run_id;
+            pdb_con_id       = EXCLUDED.pdb_con_id,
+            open_mode        = EXCLUDED.open_mode,
+            restricted       = EXCLUDED.restricted,
+            last_seen        = NOW(),
+            discovery_run_id = EXCLUDED.discovery_run_id;
         END LOOP;
 
         -- Feature usage — ON CONFLICT must match (instance_id, COALESCE(pdb_name,''), feature_name)
