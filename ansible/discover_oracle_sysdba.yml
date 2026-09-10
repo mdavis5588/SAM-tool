@@ -611,6 +611,33 @@
       ignore_errors: true
       changed_when: false
 
+    - name: Query V$OPTION for installed database options (authoritative for Partitioning etc.)
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_sysdba_connect }} << 'EOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        WHENEVER SQLERROR CONTINUE
+        SELECT '{"option":"' || LOWER(parameter) || '","installed":' ||
+               CASE WHEN UPPER(value) = 'TRUE' THEN 'true' ELSE 'false' END || '}'
+        FROM   v$option
+        WHERE  UPPER(parameter) IN (
+                 'PARTITIONING','REAL APPLICATION CLUSTERS',
+                 'ADVANCED SECURITY','LABEL SECURITY',
+                 'DATABASE VAULT','OLAP','SPATIAL'
+               )
+        ORDER BY parameter;
+        EXIT;
+        EOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: voption_results
+      no_log: true
+      ignore_errors: true
+      changed_when: false
+
     - name: Assemble extended instance data
       ansible.builtin.set_fact:
         sam_extended_instances: >-
@@ -820,11 +847,32 @@
         - sam_app_pdb_count | int > 3
         - "'Multitenant' not in sam_licensed_options | default([])"
 
+    # Partitioning: DBA_FEATURE_USAGE_STATISTICS shows NO_USAGE even when enabled.
+    # v$option is the authoritative source for installed engine options.
+    - name: Collect v$option installed flags across instances
+      ansible.builtin.set_fact:
+        sam_voption_rows: "{{ voption_results.results | default([]) | map(attribute='stdout') | map('trim') | map('split', '\n') | flatten | reject('equalto', '') | select('match', '^\\{') | map('from_json') | list }}"
+
+    - name: DEBUG — print v$option rows
+      ansible.builtin.debug:
+        msg: "V$OPTION rows: {{ sam_voption_rows }}"
+
+    - name: Add Partitioning if v$option shows it installed
+      ansible.builtin.set_fact:
+        sam_licensed_options: "{{ sam_licensed_options | default([]) + ['Partitioning'] }}"
+      when:
+        - sam_voption_rows | selectattr('option', 'equalto', 'partitioning') | selectattr('installed', 'equalto', true) | list | length > 0
+        - "'Partitioning' not in sam_licensed_options | default([])"
+
     # Diagnostics/Tuning: Oracle reports NO_USAGE in product_usage even when licensed.
     # Check control_management_pack_access from gv$parameter directly (authoritative).
     - name: Collect mgmt pack access values from gv$parameter results
       ansible.builtin.set_fact:
-        sam_mgmt_pack_values: "{{ mgmt_pack_results.results | default([]) | map(attribute='stdout') | map('trim') | map('split', '\n') | flatten | reject('equalto', '') | map('from_json') | selectattr('name', 'equalto', 'control_management_pack_access') | map(attribute='value') | map('upper') | list }}"
+        sam_mgmt_pack_values: "{{ mgmt_pack_results.results | default([]) | map(attribute='stdout') | map('trim') | map('split', '\n') | flatten | reject('equalto', '') | select('match', '^\\{') | map('from_json') | selectattr('name', 'equalto', 'control_management_pack_access') | map(attribute='value') | map('upper') | list }}"
+
+    - name: DEBUG — print mgmt pack values
+      ansible.builtin.debug:
+        msg: "Mgmt pack values: {{ sam_mgmt_pack_values }}"
 
     - name: Add Diagnostics Pack if control_management_pack_access includes DIAGNOSTIC
       ansible.builtin.set_fact:
