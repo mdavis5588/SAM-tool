@@ -117,6 +117,7 @@
         export PATH="$ORACLE_HOME/bin:$PATH"
         sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
         SELECT COUNT(*) FROM gv$cell;
         EXIT;
@@ -191,6 +192,7 @@
         export PATH="$ORACLE_HOME/bin:$PATH"
         sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        SET LINESIZE 32767
         SELECT
           '{"version":"'       || SUBSTR(i.version,1,20)                         || '",'  ||
           '"edition":"'        || SUBSTR(CASE
@@ -251,6 +253,7 @@
         export PATH="$ORACLE_HOME/bin:$PATH"
         sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        SET LINESIZE 32767
         SELECT '{"option":"' || comp_name || '","version":"' || version || '","status":"' || status || '"}'
         FROM   dba_registry
         WHERE  status IN ('VALID','OPTION OFF')
@@ -277,6 +280,7 @@
         export PATH="$ORACLE_HOME/bin:$PATH"
         sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        SET LINESIZE 32767
         SELECT '{"feature_name":"' || REPLACE(REPLACE(name,'\','\\'),'"','\"') ||
                '","db_version":"'  || SUBSTR(version,1,20) ||
                '","detected_usages":' || NVL(detected_usages,0) ||
@@ -324,7 +328,9 @@
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
         sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
-        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF LINESIZE 32767
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        SET LINESIZE 32767
+        SET LINESIZE 32767
         SELECT
           '{"nup_total_users":' || COUNT(*) ||
           ',"nup_active_users":' || SUM(CASE WHEN account_status = 'OPEN' THEN 1 ELSE 0 END) ||
@@ -357,6 +363,7 @@
         export PATH="$ORACLE_HOME/bin:$PATH"
         sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF LONG 4000
+        SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
         WITH pdb_params AS (
           SELECT con_id,
@@ -408,6 +415,7 @@
         export PATH="$ORACLE_HOME/bin:$PATH"
         sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
         SELECT '{"node_name":"' || host_name || '","node_number":' || instance_number ||
                ',"instance_name":"' || instance_name || '"}'
@@ -430,6 +438,7 @@
         export PATH="$ORACLE_HOME/bin:$PATH"
         sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
         SELECT '{"con_id":' || con_id ||
                ',"name":"'  || LOWER(name)         ||
@@ -461,6 +470,7 @@
         export PATH="$ORACLE_HOME/bin:$PATH"
         sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF LONG 32767
+        SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
         WITH
         map AS (
@@ -597,6 +607,7 @@
         export PATH="$ORACLE_HOME/bin:$PATH"
         sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
         SELECT COUNT(*) FROM v$pdbs
         WHERE  UPPER(name) NOT IN ('PDB$SEED','CDB$ROOT','AUDSYS')
@@ -618,6 +629,7 @@
         export PATH="$ORACLE_HOME/bin:$PATH"
         sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
         SELECT '{"option":"' || LOWER(parameter) || '","installed":' ||
                CASE WHEN UPPER(value) = 'TRUE' THEN 'true' ELSE 'false' END || '}'
@@ -652,6 +664,7 @@
         export PATH="$ORACLE_HOME/bin:$PATH"
         sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'SQLEOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF LONG 32767
+        SET LINESIZE 32767
         SET DEFINE OFF
         WHENEVER SQLERROR CONTINUE
         WITH
