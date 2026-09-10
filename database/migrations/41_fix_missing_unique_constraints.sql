@@ -74,13 +74,19 @@ BEGIN
 
         CONTINUE WHEN v_instance_id IS NULL;
 
-        -- Update NUP counts
-        UPDATE %I.oracle_instances SET
-          nup_total_users  = (v_inst->>'nup_total_users')::INTEGER,
-          nup_active_users = (v_inst->>'nup_active_users')::INTEGER,
-          nup_locked_users = (v_inst->>'nup_locked_users')::INTEGER,
-          nup_sample_users = (v_inst->'nup_sample_users')::JSONB
-        WHERE instance_id = v_instance_id;
+        -- Insert NUP snapshot
+        INSERT INTO %I.oracle_nup_users
+          (instance_id, snapshot_date, active_user_count, total_user_count,
+           locked_user_count, sample_user_list, discovery_run_id)
+        VALUES (
+          v_instance_id,
+          CURRENT_DATE,
+          COALESCE((v_inst->>'nup_active_users')::INTEGER, 0),
+          COALESCE((v_inst->>'nup_total_users')::INTEGER,  0),
+          COALESCE((v_inst->>'nup_locked_users')::INTEGER, 0),
+          ARRAY(SELECT jsonb_array_elements_text(v_inst->'nup_sample_users')),
+          p_payload->>'run_id'
+        );
 
         -- RAC nodes
         FOR v_node IN SELECT * FROM jsonb_array_elements(v_inst->'rac_nodes')
@@ -175,7 +181,7 @@ BEGIN
   p_schema,   -- 1: function schema
   p_schema,   -- 2: oracle_servers
   p_schema,   -- 3: oracle_instances (lookup)
-  p_schema,   -- 4: oracle_instances (update NUP)
+  p_schema,   -- 4: oracle_nup_users
   p_schema,   -- 5: oracle_rac_nodes
   p_schema,   -- 6: oracle_pdbs
   p_schema);  -- 7: oracle_feature_usage
