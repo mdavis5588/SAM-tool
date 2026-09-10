@@ -927,15 +927,7 @@
     # ------------------------------------------------------------------
     - name: Collect all product_usage rows across instances
       ansible.builtin.set_fact:
-        sam_product_usage_rows: >-
-          {{
-            product_usage_results.results | default([])
-            | map(attribute='stdout') | map('trim')
-            | map('split', '\n') | flatten
-            | map('trim') | select('match', '^\{\"')
-            | map('from_json')
-            | list
-          }}
+        sam_product_usage_rows: "{{ product_usage_results.results | default([]) | map(attribute='stdout') | map('string') | map('trim') | map('split', '\n') | flatten | map('trim') | select('match', '^\\{\"') | map('from_json') | list }}"
 
     - name: Collect max application PDB count across instances
       ansible.builtin.set_fact:
