@@ -1,3 +1,20 @@
-task: Query each Oracle instance for edition and version
+still only 1 instance, but at least now it's correctly formatted
  
-The task includes an option with an undefined variable. The error was: 'dict object' has no attribute 'oracle_home'. 'dict object' has no attribute 'oracle_home'\n\nThe error appears to be in '/runner/project/test.yaml': line 188, column 7, but may\nbe elsewhere in the file depending on the exact syntax problem.\n\nThe offending line appears to be:\n\n\n   - name: Query each Oracle instance for edition and version\n      ^ here\n
+"sam_oracle_instances": [
+
+      {
+
+        "sid": "ORCLCDB",
+
+        "oracle_home": "/opt/oracle/product/19c/dbhome_1",
+
+        "autostart": "Y"
+
+      }
+
+    ]
+
+
+ It fails later at "Build extended instance payload list"
+ 
+the field 'args' has an invalid value ({'sam_instances_extended': \"{{\\n  sam_instances_extended | default([]) + [{\\n    'sid': item.0.sid,\\n    'nup_total_users':  (item.1 | from_json).nup_total_users  | default(0),\\n    'nup_active_users': (item.1 | from_json).nup_active_users | default(0),\\n    'nup_locked_users': (item.1 | from_json).nup_locked_users | default(0),\\n    'nup_sample_users': (item.1 | from_json).nup_sample_users | default([]),\\n    'pdbs':          item.2.split('\\\\n') | reject('equalto','') | map('from_json') | list,\\n    'rac_nodes':     item.3.split('\\\\n') | reject('equalto','') | map('from_json') | list,\\n    'feature_usage': item.4.split('\\\\n') | reject('equalto','') | map('from_json') | list,\\n    'db_parameters': item.5.split('\\\\n') | reject('equalto','') | map('from_json') | list\\n  }]\\n}}\"}), and could not be converted to an dict.The error was: Invalid control character at: line 1 column 81 (char 80)\n\nThe error appears to be in '/runner/project/test.yaml': line 653, column 7, but may\nbe elsewhere in the file depending on the exact syntax problem.\n\nThe offending line appears to be:\n\n\n    - name: Build extended instance payload list\n      ^ here\n
