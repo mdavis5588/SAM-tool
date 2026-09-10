@@ -198,7 +198,7 @@
                                    WHEN UPPER(v.banner) LIKE '%STANDARD%'            THEN 'Standard Edition'
                                    WHEN UPPER(v.banner) LIKE '%EXPRESS%'             THEN 'Express Edition'
                                    ELSE 'Unknown' END, 1, 60)                   || '",'  ||
-          '"sid":"'            || SUBSTR(i.instance_name,1,30)                    || '",'  ||
+          '"sid":"'            || '{{ item.sid }}'                               || '",'  ||
           '"db_name":"'        || SUBSTR(d.name,1,30)                            || '",'  ||
           '"db_unique_name":"' || SUBSTR(d.db_unique_name,1,64)                  || '",'  ||
           '"is_cdb":"'         || d.cdb                                          || '",'  ||
@@ -814,6 +814,35 @@
       when:
         - sam_app_pdb_count | int > 3
         - "'Multitenant' not in sam_licensed_options | default([])"
+
+    # Diagnostics/Tuning: Oracle reports NO_USAGE in product_usage even when licensed.
+    # Check control_management_pack_access from gv$parameter directly (authoritative).
+    - name: Collect mgmt pack access values from gv$parameter results
+      ansible.builtin.set_fact:
+        sam_mgmt_pack_values: >-
+          {{
+            mgmt_pack_results.results | default([])
+            | map(attribute='stdout') | map('trim')
+            | map('split', '\n') | flatten
+            | reject('equalto', '')
+            | map('from_json')
+            | selectattr('name', 'equalto', 'control_management_pack_access')
+            | map(attribute='value') | map('upper') | list
+          }}
+
+    - name: Add Diagnostics Pack if control_management_pack_access includes DIAGNOSTIC
+      ansible.builtin.set_fact:
+        sam_licensed_options: "{{ sam_licensed_options | default([]) + ['Diagnostics Pack'] }}"
+      when:
+        - sam_mgmt_pack_values | select('search', 'DIAGNOSTIC') | list | length > 0
+        - "'Diagnostics Pack' not in sam_licensed_options | default([])"
+
+    - name: Add Tuning Pack if control_management_pack_access is DIAGNOSTIC+TUNING
+      ansible.builtin.set_fact:
+        sam_licensed_options: "{{ sam_licensed_options | default([]) + ['Tuning Pack'] }}"
+      when:
+        - sam_mgmt_pack_values | select('equalto', 'DIAGNOSTIC+TUNING') | list | length > 0
+        - "'Tuning Pack' not in sam_licensed_options | default([])"
 
     # Clear all auto-detected options for this server's instances then re-insert,
     # so stale options from a previous upload do not persist.
