@@ -181,6 +181,10 @@
       loop: "{{ oracle_instances_raw | default([]) }}"
       when: oracle_instances_raw is defined
 
+    - name: DEBUG — print oratab instances found
+      ansible.builtin.debug:
+        msg: "Oratab instances: {{ sam_oracle_instances | default([]) | map(attribute='sid') | list }}"
+
     - name: Query each Oracle instance for edition and version
       ansible.builtin.shell: |
         export ORACLE_HOME="{{ item.oracle_home }}"
@@ -635,48 +639,30 @@
       ignore_errors: true
       changed_when: false
 
-    - name: Assemble extended instance data
-      ansible.builtin.set_fact:
-        sam_extended_instances: >-
-          {{
-            sam_oracle_instances | default([]) | map('combine', {}) | list
-            | zip(
-                (nup_results          | default({'results': []})).results | map(attribute='stdout') | map('trim') | list,
-                (pdb_results          | default({'results': []})).results | map(attribute='stdout') | map('trim') | list,
-                (rac_results          | default({'results': []})).results | map(attribute='stdout') | map('trim') | list,
-                (feature_usage_results | default({'results': []})).results | map(attribute='stdout') | map('trim') | list,
-                (mgmt_pack_results    | default({'results': []})).results | map(attribute='stdout') | map('trim') | list
-              )
-            | list
-          }}
-
     - name: Build extended instance payload list
       ansible.builtin.set_fact:
-        sam_instances_extended: >-
-          {{
-            sam_instances_extended | default([]) + [{
-              'sid': item.0.sid,
-              'nup_total_users':  (item.1 | from_json).nup_total_users  | default(0),
-              'nup_active_users': (item.1 | from_json).nup_active_users | default(0),
-              'nup_locked_users': (item.1 | from_json).nup_locked_users | default(0),
-              'nup_sample_users': (item.1 | from_json).nup_sample_users | default([]),
-              'pdbs':          item.2.split('\n') | reject('equalto','') | map('from_json') | list,
-              'rac_nodes':     item.3.split('\n') | reject('equalto','') | map('from_json') | list,
-              'feature_usage': item.4.split('\n') | reject('equalto','') | map('from_json') | list,
-              'db_parameters': item.5.split('\n') | reject('equalto','') | map('from_json') | list
-            }]
-          }}
-      loop: "{{ sam_extended_instances | default([]) }}"
-      when: sam_extended_instances is defined
-
-    - name: Flatten db_parameters across all instances for options loading
-      ansible.builtin.set_fact:
-        sam_db_params: >-
-          {{
-            sam_instances_extended | default([])
-            | map(attribute='db_parameters') | flatten
-          }}
-      when: sam_instances_extended is defined
+        sam_instances_extended: "{{ sam_instances_extended | default([]) + [_inst] }}"
+      vars:
+        _idx: "{{ ansible_loop.index0 | int }}"
+        _nup_raw: "{{ (nup_results | default({'results': []})).results[_idx | int].stdout | default('{}') | trim }}"
+        _nup: "{{ _nup_raw | from_json if _nup_raw.startswith('{') else {} }}"
+        _pdb_raw: "{{ (pdb_results | default({'results': []})).results[_idx | int].stdout | default('') | trim }}"
+        _rac_raw: "{{ (rac_results | default({'results': []})).results[_idx | int].stdout | default('') | trim }}"
+        _feat_raw: "{{ (feature_usage_results | default({'results': []})).results[_idx | int].stdout | default('') | trim }}"
+        _inst:
+          sid:              "{{ item.sid }}"
+          nup_total_users:  "{{ (_nup.nup_total_users  | default(0)) | int }}"
+          nup_active_users: "{{ (_nup.nup_active_users | default(0)) | int }}"
+          nup_locked_users: "{{ (_nup.nup_locked_users | default(0)) | int }}"
+          nup_sample_users: "{{ _nup.nup_sample_users  | default([]) }}"
+          pdbs:          "{{ _pdb_raw.splitlines()  | select('match', '^\\{') | map('from_json') | list }}"
+          rac_nodes:     "{{ _rac_raw.splitlines()  | select('match', '^\\{') | map('from_json') | list }}"
+          feature_usage: "{{ _feat_raw.splitlines() | select('match', '^\\{') | map('from_json') | list }}"
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        extended: true
+        label: "{{ item.sid }}"
+      when: sam_oracle_instances is defined
 
     # ------------------------------------------------------------------
     # 6. ASSEMBLE FACT PAYLOAD
@@ -724,7 +710,6 @@
           run_id:        "{{ sam_run_id }}"
           hostname:      "{{ inventory_hostname }}"
           instances:     "{{ sam_instances_extended | default([]) }}"
-          db_parameters: "{{ sam_db_params | default([]) }}"
 
     # ------------------------------------------------------------------
     # 7. WRITE TO POSTGRESQL
