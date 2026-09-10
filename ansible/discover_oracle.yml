@@ -823,16 +823,7 @@
     # Check control_management_pack_access from gv$parameter directly (authoritative).
     - name: Collect mgmt pack access values from gv$parameter results
       ansible.builtin.set_fact:
-        sam_mgmt_pack_values: >-
-          {{
-            mgmt_pack_results.results | default([])
-            | map(attribute='stdout') | map('trim')
-            | map('split', '\n') | flatten
-            | reject('equalto', '')
-            | map('from_json')
-            | selectattr('name', 'equalto', 'control_management_pack_access')
-            | map(attribute='value') | map('upper') | list
-          }}
+        sam_mgmt_pack_values: "{{ mgmt_pack_results.results | default([]) | map(attribute='stdout') | map('trim') | map('split', '\n') | flatten | reject('equalto', '') | map('from_json') | selectattr('name', 'equalto', 'control_management_pack_access') | map(attribute='value') | map('upper') | list }}"
 
     - name: Add Diagnostics Pack if control_management_pack_access includes DIAGNOSTIC
       ansible.builtin.set_fact:
