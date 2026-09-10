@@ -176,12 +176,8 @@
 
     - name: Set instance list fact
       ansible.builtin.set_fact:
-        sam_oracle_instances: >-
-          {{
-            oracle_instances_raw | map('zip', ['sid', 'oracle_home', 'autostart'])
-            | map('community.general.dict')
-            | list
-          }}
+        sam_oracle_instances: "{{ sam_oracle_instances | default([]) + [{'sid': item[0], 'oracle_home': item[1], 'autostart': item[2]}] }}"
+      loop: "{{ oracle_instances_raw | default([]) }}"
       when: oracle_instances_raw is defined
 
     - name: Query each Oracle instance for edition and version
