@@ -198,6 +198,7 @@
                                    WHEN UPPER(v.banner) LIKE '%STANDARD%'            THEN 'Standard Edition'
                                    WHEN UPPER(v.banner) LIKE '%EXPRESS%'             THEN 'Express Edition'
                                    ELSE 'Unknown' END, 1, 60)                   || '",'  ||
+          '"sid":"'            || SUBSTR(i.instance_name,1,30)                    || '",'  ||
           '"db_name":"'        || SUBSTR(d.name,1,30)                            || '",'  ||
           '"db_unique_name":"' || SUBSTR(d.db_unique_name,1,64)                  || '",'  ||
           '"is_cdb":"'         || d.cdb                                          || '",'  ||
