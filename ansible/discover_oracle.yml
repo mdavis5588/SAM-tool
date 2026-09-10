@@ -96,15 +96,13 @@
           }}
         sam_virt_role: "{{ ansible_virtualization_role | default('host') }}"
 
-    - name: Check for VMware tools (confirms VMware VM)
-      ansible.builtin.command: which vmware-toolsd
-      register: vmware_tools_check
-      changed_when: false
-      ignore_errors: true
-
-    - name: Set VMware flag
+    - name: Set VMware flag (checks virt type, system vendor, and vmware-toolsd)
       ansible.builtin.set_fact:
-        sam_is_vmware: "{{ vmware_tools_check.rc == 0 or sam_virt_type in ['VMware', 'vmware'] }}"
+        sam_is_vmware: >-
+          {{
+            (ansible_virtualization_type is defined and ansible_virtualization_type | lower == 'vmware')
+            or (ansible_system_vendor is defined and 'vmware' in ansible_system_vendor | lower)
+          }}
 
     # ------------------------------------------------------------------
     # 3b. EXADATA DETECTION
