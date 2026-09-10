@@ -760,6 +760,10 @@
             | max | default(0)
           }}
 
+    - name: DEBUG — print product_usage rows
+      ansible.builtin.debug:
+        msg: "Product usage: {{ sam_product_usage_rows }}"
+
     - name: Build licensed option list from product_usage (primary source)
       ansible.builtin.set_fact:
         sam_licensed_options: >-
