@@ -639,6 +639,173 @@
       ignore_errors: true
       changed_when: false
 
+    # ------------------------------------------------------------------
+    # 5c. PDB FEATURE USAGE — CDB_FEATURE_USAGE_STATISTICS
+    #     Queries at CDB$ROOT level for all PDBs (con_id > 1).
+    #     Uses the same MAP CTE + PARTITION BY con_id logic as
+    #     oracle_discovery_csv.sql section 7.
+    #     Silently skipped on non-CDB instances (WHENEVER SQLERROR CONTINUE).
+    # ------------------------------------------------------------------
+    - name: Query CDB_FEATURE_USAGE_STATISTICS for per-PDB feature usage (Oracle 12c+ CDB only)
+      ansible.builtin.shell: |
+        export ORACLE_HOME="{{ item.oracle_home }}"
+        export ORACLE_SID="{{ item.sid }}"
+        export PATH="$ORACLE_HOME/bin:$PATH"
+        sqlplus -s {{ sam_sysdba_connect }} << 'SQLEOF'
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF LONG 32767
+        SET DEFINE OFF
+        WHENEVER SQLERROR CONTINUE
+        WITH
+        map AS (
+          SELECT '' product,'' feature,'' mversion,'' condition FROM dual UNION ALL
+          SELECT 'Active Data Guard','Active Data Guard - Real-Time Query on Physical Standby','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Active Data Guard','Global Data Services','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Analytics','Data Mining','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Advanced Index Compression','^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Backup HIGH Compression','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Backup LOW Compression','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Backup MEDIUM Compression','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Backup ZLIB Compression','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Data Guard','^11\.2|^1[289]\.|^2[0-9]\.','C001' FROM dual UNION ALL
+          SELECT 'Advanced Compression','HeapCompression','^12\.[2-9]|^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Heat Map','^12\.[2-9]|^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Hybrid Columnar Compression Row Level Locking','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Information Lifecycle Management','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Oracle Advanced Network Compression Service','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Oracle Utility Datapump (Export)','^11\.2|^1[289]\.|^2[0-9]\.','C001' FROM dual UNION ALL
+          SELECT 'Advanced Compression','Oracle Utility Datapump (Import)','^11\.2|^1[289]\.|^2[0-9]\.','C001' FROM dual UNION ALL
+          SELECT 'Advanced Compression','SecureFile Compression (user)','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Compression','SecureFile Deduplication (user)','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Security','Data Redaction','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Security','Encrypted Tablespaces','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Security','Oracle Utility Datapump (Export)','^11\.2|^1[289]\.|^2[0-9]\.','C002' FROM dual UNION ALL
+          SELECT 'Advanced Security','Oracle Utility Datapump (Import)','^11\.2|^1[289]\.|^2[0-9]\.','C002' FROM dual UNION ALL
+          SELECT 'Advanced Security','SecureFile Encryption (user)','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Advanced Security','Transparent Data Encryption','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Database In-Memory','In-Memory ADO Policies','^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Database In-Memory','In-Memory Aggregation','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Database In-Memory','In-Memory Column Store','^12\.1\.0\.[3-9]\.|^12\.2|^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Database In-Memory','In-Memory Expressions','^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Database In-Memory','In-Memory FastStart','^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Database In-Memory','In-Memory Join Groups','^1[89]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Database Vault','Oracle Database Vault','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Database Vault','Privilege Capture','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Diagnostics Pack','ADDM','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Diagnostics Pack','AWR Baseline','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Diagnostics Pack','AWR Baseline Template','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Diagnostics Pack','AWR Report','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Diagnostics Pack','Automatic Workload Repository','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Diagnostics Pack','Baseline Adaptive Thresholds','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Diagnostics Pack','Baseline Static Computations','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Label Security','Label Security','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'OLAP','OLAP - Analytic Workspaces','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'OLAP','OLAP - Cubes','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Partitioning','Partitioning (user)','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Real Application Clusters','Real Application Clusters (RAC)','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Real Application Testing','Database Replay: Workload Capture','^11\.2|^1[289]\.|^2[0-9]\.','C004' FROM dual UNION ALL
+          SELECT 'Real Application Testing','Database Replay: Workload Replay','^11\.2|^1[289]\.|^2[0-9]\.','C004' FROM dual UNION ALL
+          SELECT 'Real Application Testing','SQL Performance Analyzer','^11\.2|^1[289]\.|^2[0-9]\.','C004' FROM dual UNION ALL
+          SELECT 'Spatial and Graph','Spatial','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Tuning Pack','SQL Access Advisor','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Tuning Pack','SQL Monitoring and Tuning pages','^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Tuning Pack','SQL Profile','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT 'Tuning Pack','SQL Tuning Advisor','^11\.2|^1[289]\.|^2[0-9]\.', ' ' FROM dual UNION ALL
+          SELECT '' product,'' feature,'' mversion,'' condition FROM dual
+        ),
+        fus AS (
+          SELECT
+            con_id,
+            CASE
+              WHEN dbid||'#'||version||'#'||TO_CHAR(last_sample_date,'YYYYMMDDHH24MISS') =
+                   FIRST_VALUE(dbid)    OVER (PARTITION BY con_id ORDER BY last_sample_date DESC NULLS LAST, dbid DESC)||'#'||
+                   FIRST_VALUE(version) OVER (PARTITION BY con_id ORDER BY last_sample_date DESC NULLS LAST, dbid DESC)||'#'||
+                   FIRST_VALUE(TO_CHAR(last_sample_date,'YYYYMMDDHH24MISS'))
+                                        OVER (PARTITION BY con_id ORDER BY last_sample_date DESC NULLS LAST, dbid DESC)
+              THEN 'Y' ELSE 'N'
+            END AS current_entry,
+            name, last_sample_date, dbid, version,
+            detected_usages, total_samples, currently_used,
+            first_usage_date, last_usage_date, aux_count, feature_info
+          FROM cdb_feature_usage_statistics
+          WHERE con_id > 1
+        ),
+        pfus AS (
+          SELECT
+            f.con_id,
+            m.product,
+            f.name  AS feature_being_used,
+            CASE
+              WHEN m.condition = 'BUG'   THEN '3.SUPPRESSED_DUE_TO_BUG'
+              WHEN f.detected_usages > 0
+                   AND f.currently_used = 'TRUE'
+                   AND f.current_entry  = 'Y'
+                   AND (TRIM(m.condition) IS NULL
+                        OR (CASE
+                              WHEN m.condition = 'C001'
+                                   AND (REGEXP_LIKE(TO_CHAR(f.feature_info),'compression[ -]used:[ 0-9]*[1-9][ 0-9]*time','i')
+                                     OR REGEXP_LIKE(TO_CHAR(f.feature_info),'compression[ -]used: *TRUE','i'))
+                                   THEN 'TRUE'
+                              WHEN m.condition = 'C002'
+                                   AND (REGEXP_LIKE(TO_CHAR(f.feature_info),'encryption used:[ 0-9]*[1-9][ 0-9]*time','i')
+                                     OR REGEXP_LIKE(TO_CHAR(f.feature_info),'encryption used: *TRUE','i'))
+                                   THEN 'TRUE'
+                              WHEN m.condition = 'C004' THEN 'TRUE'
+                              ELSE 'FALSE'
+                            END) = 'TRUE')
+                   THEN '6.CURRENT_USAGE'
+              WHEN f.detected_usages > 0 THEN '4.PAST_USAGE'
+              WHEN f.current_entry = 'Y' THEN '2.NO_CURRENT_USAGE'
+              ELSE '1.NO_PAST_USAGE'
+            END AS usage,
+            f.version,
+            f.detected_usages, f.total_samples, f.currently_used,
+            CASE WHEN m.condition LIKE 'C___'
+                      AND NOT (CASE
+                        WHEN m.condition='C001' AND (REGEXP_LIKE(TO_CHAR(f.feature_info),'compression[ -]used:[ 0-9]*[1-9][ 0-9]*time','i') OR REGEXP_LIKE(TO_CHAR(f.feature_info),'compression[ -]used: *TRUE','i')) THEN 'TRUE'
+                        WHEN m.condition='C002' AND (REGEXP_LIKE(TO_CHAR(f.feature_info),'encryption used:[ 0-9]*[1-9][ 0-9]*time','i') OR REGEXP_LIKE(TO_CHAR(f.feature_info),'encryption used: *TRUE','i')) THEN 'TRUE'
+                        WHEN m.condition='C004' THEN 'TRUE' ELSE 'FALSE' END) = 'TRUE'
+                 THEN TO_DATE(NULL) ELSE f.first_usage_date END AS first_usage_date,
+            CASE WHEN m.condition LIKE 'C___'
+                      AND NOT (CASE
+                        WHEN m.condition='C001' AND (REGEXP_LIKE(TO_CHAR(f.feature_info),'compression[ -]used:[ 0-9]*[1-9][ 0-9]*time','i') OR REGEXP_LIKE(TO_CHAR(f.feature_info),'compression[ -]used: *TRUE','i')) THEN 'TRUE'
+                        WHEN m.condition='C002' AND (REGEXP_LIKE(TO_CHAR(f.feature_info),'encryption used:[ 0-9]*[1-9][ 0-9]*time','i') OR REGEXP_LIKE(TO_CHAR(f.feature_info),'encryption used: *TRUE','i')) THEN 'TRUE'
+                        WHEN m.condition='C004' THEN 'TRUE' ELSE 'FALSE' END) = 'TRUE'
+                 THEN TO_DATE(NULL) ELSE f.last_usage_date  END AS last_usage_date
+          FROM map m
+          JOIN fus f ON m.feature = f.name AND REGEXP_LIKE(f.version, m.mversion)
+          WHERE NVL(f.total_samples, 0) > 0
+            AND NVL(m.condition, '-') NOT IN ('INVALID')
+            AND NOT (m.condition IN ('C003','C005'))
+        )
+        SELECT '{"pdb_name":"'       || REPLACE(p.name,'"','\"')                    ||
+               '","product":"'       || REPLACE(REPLACE(pf.product,'\','\\'),'"','\"') ||
+               '","feature_name":"'  || REPLACE(REPLACE(pf.feature_being_used,'\','\\'),'"','\"') ||
+               '","usage_status":"'  || DECODE(MAX(pf.usage),'6.CURRENT_USAGE','CURRENT_USAGE','4.PAST_USAGE','PAST_USAGE','5.PAST_OR_CURRENT_USAGE','PAST_USAGE','NO_USAGE') ||
+               '","db_version":"'    || SUBSTR(MAX(pf.version),1,20)               ||
+               '","detected_usages":' || NVL(MAX(pf.detected_usages),0)            ||
+               ',"total_samples":'   || NVL(MAX(pf.total_samples),0)               ||
+               ',"currently_used":'  || CASE WHEN MAX(pf.currently_used)='TRUE' THEN 'true' ELSE 'false' END ||
+               ',"first_usage_date":' || CASE WHEN MIN(pf.first_usage_date) IS NOT NULL
+                                              THEN '"'||TO_CHAR(MIN(pf.first_usage_date),'YYYY-MM-DD')||'"'
+                                              ELSE 'null' END ||
+               ',"last_usage_date":' || CASE WHEN MAX(pf.last_usage_date) IS NOT NULL
+                                             THEN '"'||TO_CHAR(MAX(pf.last_usage_date),'YYYY-MM-DD')||'"'
+                                             ELSE 'null' END || '}'
+        FROM pfus pf
+        JOIN v$pdbs p ON p.con_id = pf.con_id
+        WHERE pf.usage IN ('2.NO_CURRENT_USAGE','4.PAST_USAGE','6.CURRENT_USAGE')
+        GROUP BY p.name, pf.product, pf.feature_being_used
+        ORDER BY p.name, pf.product, pf.feature_being_used;
+        EXIT;
+        SQLEOF
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
+      register: pdb_feature_results
+      no_log: true
+      ignore_errors: true
+      changed_when: false
+
     - name: Build extended instance payload list
       ansible.builtin.set_fact:
         sam_instances_extended: "{{ sam_instances_extended | default([]) + [_inst] }}"
@@ -649,15 +816,17 @@
         _pdb_raw: "{{ (pdb_results | default({'results': []})).results[_idx | int].stdout | default('') | trim }}"
         _rac_raw: "{{ (rac_results | default({'results': []})).results[_idx | int].stdout | default('') | trim }}"
         _feat_raw: "{{ (feature_usage_results | default({'results': []})).results[_idx | int].stdout | default('') | trim }}"
+        _pdb_feat_raw: "{{ (pdb_feature_results | default({'results': []})).results[_idx | int].stdout | default('') | trim }}"
         _inst:
-          sid:              "{{ item.sid }}"
-          nup_total_users:  "{{ (_nup.nup_total_users  | default(0)) | int }}"
-          nup_active_users: "{{ (_nup.nup_active_users | default(0)) | int }}"
-          nup_locked_users: "{{ (_nup.nup_locked_users | default(0)) | int }}"
-          nup_sample_users: "{{ _nup.nup_sample_users  | default([]) }}"
-          pdbs:          "{{ _pdb_raw.splitlines()  | select('match', '^\\{') | map('from_json') | list }}"
-          rac_nodes:     "{{ _rac_raw.splitlines()  | select('match', '^\\{') | map('from_json') | list }}"
-          feature_usage: "{{ _feat_raw.splitlines() | select('match', '^\\{') | map('from_json') | list }}"
+          sid:                 "{{ item.sid }}"
+          nup_total_users:     "{{ (_nup.nup_total_users  | default(0)) | int }}"
+          nup_active_users:    "{{ (_nup.nup_active_users | default(0)) | int }}"
+          nup_locked_users:    "{{ (_nup.nup_locked_users | default(0)) | int }}"
+          nup_sample_users:    "{{ _nup.nup_sample_users  | default([]) }}"
+          pdbs:                "{{ _pdb_raw.splitlines()      | select('match', '^\\{') | map('from_json') | list }}"
+          rac_nodes:           "{{ _rac_raw.splitlines()      | select('match', '^\\{') | map('from_json') | list }}"
+          feature_usage:       "{{ _feat_raw.splitlines()     | select('match', '^\\{') | map('from_json') | list }}"
+          pdb_feature_usage:   "{{ _pdb_feat_raw.splitlines() | select('match', '^\\{') | map('from_json') | list }}"
       loop: "{{ sam_oracle_instances | default([]) }}"
       loop_control:
         extended: true
