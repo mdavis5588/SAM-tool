@@ -1,18 +1,2 @@
-The debug output
  
-{
-
-  "msg": "Oratab instances: ['ORCLCDB']",
-
-  "_ansible_verbose_always": true,
-
-  "_ansible_no_log": null,
-
-  "changed": false
-
-}
-
-
- but also error: Build extended instance payload list
- 
-An unhandled exception occurred while templating '{'sid': '{{ item.sid }}', 'nup_total_users': '{{ (_nup.nup_total_users  | default(0)) | int }}', 'nup_active_users': '{{ (_nup.nup_active_users | default(0)) | int }}', 'nup_locked_users': '{{ (_nup.nup_locked_users | default(0)) | int }}', 'nup_sample_users': '{{ _nup.nup_sample_users  | default([]) }}', 'pdbs': \"{{ _pdb_raw.splitlines()      | select('match', '^\\\\{') | map('from_json') | list }}\", 'rac_nodes': \"{{ _rac_raw.splitlines()      | select('match', '^\\\\{') | map('from_json') | list }}\", 'feature_usage': \"{{ _feat_raw.splitlines()     | select('match', '^\\\\{') | map('from_json') | list }}\", 'pdb_feature_usage': \"{{ _pdb_feat_raw.splitlines() | select('match', '^\\\\{') | map('from_json') | list }}\"}'. Error was a <class 'ansible.errors.AnsibleError'>, original message: An unhandled exception occurred while templating '{{ _nup_raw | from_json if _nup_raw.startswith('{') else {} }}'. Error was a <class 'json.decoder.JSONDecodeError'>, original message: Invalid control character at: line 1 column 81 (char 80)
+An unhandled exception occurred while templating '{'sid': '{{ item.sid }}', 'nup_total_users': '{{ (_nup.nup_total_users  | default(0)) | int }}', 'nup_active_users': '{{ (_nup.nup_active_users | default(0)) | int }}', 'nup_locked_users': '{{ (_nup.nup_locked_users | default(0)) | int }}', 'nup_sample_users': '{{ _nup.nup_sample_users  | default([]) }}', 'pdbs': \"{{ _pdb_raw.splitlines()      | select('match', '^\\\\{') | map('from_json') | list }}\", 'rac_nodes': \"{{ _rac_raw.splitlines()      | select('match', '^\\\\{') | map('from_json') | list }}\", 'feature_usage': \"{{ _feat_raw.splitlines()     | select('match', '^\\\\{') | map('from_json') | list }}\", 'pdb_feature_usage': \"{{ _pdb_feat_raw.splitlines() | select('match', '^\\\\{') | map('from_json') | list }}\"}'. Error was a <class 'json.decoder.JSONDecodeError'>, original message: Unterminated string starting at: line 1 column 77 (char 76)
