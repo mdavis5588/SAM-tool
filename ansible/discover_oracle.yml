@@ -181,6 +181,52 @@
       loop: "{{ oracle_instances_raw | default([]) }}"
       when: oracle_instances_raw is defined
 
+    # Supplement oratab: find any running Oracle instances not listed in oratab
+    # by looking for ora_pmon_<SID> processes (present for every running instance).
+    - name: Find running Oracle instances via pmon processes
+      ansible.builtin.shell: |
+        ps -eo args 2>/dev/null \
+          | awk '/^ora_pmon_/{sub(/^ora_pmon_/,""); print}' \
+          | grep -v '^+ASM' \
+          | sort -u
+      register: pmon_sids_raw
+      changed_when: false
+      ignore_errors: true
+
+    - name: Resolve ORACLE_HOME for pmon-discovered SIDs not in oratab
+      ansible.builtin.shell: |
+        SID="{{ item }}"
+        # Try oratab first
+        OH=$(grep -E "^${SID}:" /etc/oratab /var/opt/oracle/oratab 2>/dev/null \
+             | head -1 | cut -d: -f2)
+        if [ -z "$OH" ]; then
+          # Fall back to reading ORACLE_HOME from the pmon process environment
+          PMON_PID=$(pgrep -x "ora_pmon_${SID}" 2>/dev/null | head -1)
+          if [ -n "$PMON_PID" ]; then
+            OH=$(cat /proc/${PMON_PID}/environ 2>/dev/null \
+                 | tr '\0' '\n' | grep '^ORACLE_HOME=' | cut -d= -f2)
+          fi
+        fi
+        echo "$OH"
+      loop: >-
+        {{
+          pmon_sids_raw.stdout_lines | default([])
+          | reject('equalto', '')
+          | reject('in', sam_oracle_instances | default([]) | map(attribute='sid') | list)
+          | list
+        }}
+      register: pmon_home_results
+      changed_when: false
+      ignore_errors: true
+
+    - name: Add pmon-discovered instances to sam_oracle_instances
+      ansible.builtin.set_fact:
+        sam_oracle_instances: "{{ sam_oracle_instances | default([]) + [{'sid': item.item, 'oracle_home': item.stdout | trim, 'autostart': 'N'}] }}"
+      loop: "{{ pmon_home_results.results | default([]) }}"
+      when:
+        - item.stdout is defined
+        - item.stdout | trim != ''
+
     - name: DEBUG — print oratab instances found
       ansible.builtin.debug:
         msg: "Oratab instances: {{ sam_oracle_instances | default([]) | map(attribute='sid') | list }}"
