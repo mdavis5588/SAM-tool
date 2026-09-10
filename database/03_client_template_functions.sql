@@ -1756,7 +1756,7 @@ BEGIN
             CURRENT_DATE,
             p_payload->>'run_id'
           )
-          ON CONFLICT (instance_id, feature_name) DO UPDATE SET
+          ON CONFLICT (instance_id, COALESCE(pdb_name, ''), feature_name) DO UPDATE SET
             db_version       = EXCLUDED.db_version,
             detected_usages  = EXCLUDED.detected_usages,
             total_samples    = EXCLUDED.total_samples,
