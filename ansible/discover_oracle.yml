@@ -69,11 +69,14 @@
 
     - name: Extract key CPU fields
       ansible.builtin.set_fact:
-        sam_cpu_sockets:        "{{ (cpu_topology.lscpu | selectattr('field', 'equalto', 'Socket(s):') | map(attribute='data') | first | int) if cpu_topology is defined else ansible_processor_count }}"
+        sam_cpu_sockets:          "{{ (cpu_topology.lscpu | selectattr('field', 'equalto', 'Socket(s):') | map(attribute='data') | first | int) if cpu_topology is defined else ansible_processor_count }}"
         sam_cpu_cores_per_socket: "{{ (cpu_topology.lscpu | selectattr('field', 'equalto', 'Core(s) per socket:') | map(attribute='data') | first | int) if cpu_topology is defined else (ansible_processor_cores | default(1)) }}"
         sam_cpu_threads_per_core: "{{ (cpu_topology.lscpu | selectattr('field', 'equalto', 'Thread(s) per core:') | map(attribute='data') | first | int) if cpu_topology is defined else 1 }}"
-        sam_cpu_architecture:   "{{ (cpu_topology.lscpu | selectattr('field', 'equalto', 'Architecture:') | map(attribute='data') | first) if cpu_topology is defined else ansible_architecture }}"
-        sam_cpu_model:          "{{ ansible_processor[2] | default('Unknown') }}"
+        sam_cpu_architecture:     "{{ (cpu_topology.lscpu | selectattr('field', 'equalto', 'Architecture:') | map(attribute='data') | first) if cpu_topology is defined else ansible_architecture }}"
+        sam_cpu_model:            "{{ ansible_processor[2] | default('Unknown') }}"
+
+    - name: Calculate total physical cores
+      ansible.builtin.set_fact:
         sam_total_physical_cores: "{{ sam_cpu_sockets | int * sam_cpu_cores_per_socket | int }}"
 
     # ------------------------------------------------------------------
