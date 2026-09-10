@@ -688,6 +688,10 @@
               | list
             }}
 
+    - name: DEBUG — print instances in payload
+      ansible.builtin.debug:
+        msg: "Instances in payload: {{ sam_payload.instances }}"
+
     - name: Assemble SAM extended payload
       ansible.builtin.set_fact:
         sam_extended_payload:
