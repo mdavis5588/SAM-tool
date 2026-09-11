@@ -362,14 +362,14 @@
         sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
-        SET LINESIZE 32767
+        COLUMN json_out FORMAT A32767
         SELECT
           '{"nup_total_users":' || COUNT(*) ||
           ',"nup_active_users":' || SUM(CASE WHEN account_status = 'OPEN' THEN 1 ELSE 0 END) ||
           ',"nup_locked_users":' || SUM(CASE WHEN account_status LIKE '%LOCKED%' THEN 1 ELSE 0 END) ||
           ',"nup_sample_users":' || '[' ||
             LISTAGG('"' || username || '"', ',') WITHIN GROUP (ORDER BY username) ||
-          ']' || '}'
+          ']' || '}' AS json_out
         FROM (
           SELECT username, account_status
           FROM   dba_users
