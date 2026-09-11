@@ -1,14 +1,2 @@
-export ORACLE_HOME="SAMTST1" export ORACLE_SID="SAMTST1" export PATH="$ORACLE_HOME/bin:$PATH" sqlplus -s / as sysdba << 'EOF' SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF SET LINESIZE 32767 SELECT '{"version":"' || SUBSTR(i.version,1,20) || '",' || '"edition":"' || SUBSTR(CASE WHEN UPPER(v.banner) LIKE '%ENTERPRISE%' THEN 'Enterprise Edition' WHEN UPPER(v.banner) LIKE '%STANDARD EDITION 2%' THEN 'Standard Edition 2' WHEN UPPER(v.banner) LIKE '%STANDARD%' THEN 'Standard Edition' WHEN UPPER(v.banner) LIKE '%EXPRESS%' THEN 'Express Edition' ELSE 'Unknown' END, 1, 60) || '",' || '"sid":"' || 'SAMTST1' || '",' || '"db_name":"' || SUBSTR(d.name,1,30) || '",' || '"db_unique_name":"' || SUBSTR(d.db_unique_name,1,64) || '",' || '"is_cdb":"' || d.cdb || '",' || '"log_mode":"' || d.log_mode || '",' || '"created":"' || TO_CHAR(d.created,'YYYY-MM-DD') || '"}' FROM v$instance i CROSS JOIN v$database d CROSS JOIN (SELECT banner FROM v$version WHERE UPPER(banner) LIKE '%ORACLE DATABASE%' AND ROWNUM = 1) v; EXIT; EOF
-
-
-/bin/sh: line 3: sqlplus: command not found
  
-Is the error it gives
-
-Could it be this part?
- 
-export ORACLE_HOME="SAMTST1"
- 
-Because it doesn't look like that for ORCLCDB
- 
-export ORACLE_HOME="/opt/oracle/product/19c/dbhome_1"
+An unhandled exception occurred while templating '{'sid': '{{ item.sid }}', 'nup_total_users': '{{ (_nup.nup_total_users  | default(0)) | int }}', 'nup_active_users': '{{ (_nup.nup_active_users | default(0)) | int }}', 'nup_locked_users': '{{ (_nup.nup_locked_users | default(0)) | int }}', 'nup_sample_users': '{{ _nup.nup_sample_users  | default([]) }}', 'pdbs': '{{ (pdb_results            | default({\\'results\\': []})).results[_idx | int].stdout | default(\\'\\') | string | split(\\'\\n\\') | select(\\'match\\', \\'^\\\\{\"\\') | map(\\'from_json\\') | list }}', 'rac_nodes': '{{ (rac_results            | default({\\'results\\': []})).results[_idx | int].stdout | default(\\'\\') | string | split(\\'\\n\\') | select(\\'match\\', \\'^\\\\{\"\\') | map(\\'from_json\\') | list }}', 'feature_usage': '{{ (feature_usage_results  | default({\\'results\\': []})).results[_idx | int].stdout | default(\\'\\') | string | split(\\'\\n\\') | select(\\'match\\', \\'^\\\\{\"\\') | map(\\'from_json\\') | list }}', 'pdb_feature_usage': '{{ (pdb_feature_results    | default({\\'results\\': []})).results[_idx | int].stdout | default(\\'\\') | string | split(\\'\\n\\') | select(\\'match\\', \\'^\\\\{\"\\') | map(\\'from_json\\') | list }}'}'. Error was a <class 'ansible.errors.AnsibleError'>, original message: An unhandled exception occurred while templating '{{ _nup_raw | from_json if _nup_raw.startswith('{') else {} }}'. Error was a <class 'json.decoder.JSONDecodeError'>, original message: Expecting value: line 1 column 41 (char 40)
