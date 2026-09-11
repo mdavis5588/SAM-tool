@@ -359,11 +359,8 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF' \
-          | tr '\n' ' ' \
-          | grep -oE '\{"nup_total_users":[^}]*\}' \
-          | head -1 \
-          || echo '{}'
+        _TMPF=$(mktemp /tmp/sam_nup_XXXXXX 2>/dev/null || echo "/tmp/sam_nup_$$")
+        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} > "$_TMPF" 2>&1 << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
         SELECT
@@ -383,6 +380,8 @@
         );
         EXIT;
         EOF
+        tr '\n' ' ' < "$_TMPF" | grep -oE '\{"nup_total_users":[^}]*\}' | head -1 || echo '{}'
+        rm -f "$_TMPF"
       loop: "{{ sam_oracle_instances | default([]) }}"
       loop_control:
         label: "{{ item.sid }}"
