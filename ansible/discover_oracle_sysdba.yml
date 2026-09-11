@@ -360,17 +360,20 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_sysdba_connect }} << 'EOF'
+        sqlplus -s {{ sam_sysdba_connect }} << 'EOF' \
+          | tr '\n' ' ' \
+          | grep -oE '\{"nup_total_users":[^}]*\}' \
+          | head -1 \
+          || echo '{}'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
-        COLUMN json_out FORMAT A32767
         SELECT
           '{"nup_total_users":' || COUNT(*) ||
           ',"nup_active_users":' || SUM(CASE WHEN account_status = 'OPEN' THEN 1 ELSE 0 END) ||
           ',"nup_locked_users":' || SUM(CASE WHEN account_status LIKE '%LOCKED%' THEN 1 ELSE 0 END) ||
           ',"nup_sample_users":' || '[' ||
             LISTAGG('"' || username || '"', ',') WITHIN GROUP (ORDER BY username) ||
-          ']' || '}' AS json_out
+          ']' || '}'
         FROM (
           SELECT username, account_status
           FROM   dba_users
