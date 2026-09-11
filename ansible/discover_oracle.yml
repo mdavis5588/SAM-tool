@@ -225,7 +225,7 @@
       loop: "{{ pmon_home_results.results | default([]) }}"
       when:
         - item.stdout is defined
-        - item.stdout | trim != ''
+        - item.stdout | trim | regex_search('^/')
 
     - name: DEBUG — print oratab instances found
       ansible.builtin.debug:
