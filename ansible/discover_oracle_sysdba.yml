@@ -1003,12 +1003,12 @@
             {{
               (
                 _from_prod
-                + (_vopt_rows | selectattr('option', 'equalto', 'partitioning')
-                              | selectattr('installed', 'equalto', true)
-                              | list | length > 0) | ternary(['Partitioning'], [])
-                + (_mgmt_rows | select('search', 'DIAGNOSTIC') | list | length > 0) | ternary(['Diagnostics Pack'], [])
-                + (_mgmt_rows | select('equalto', 'DIAGNOSTIC+TUNING') | list | length > 0) | ternary(['Tuning Pack'], [])
-                + (_pdb_ct | int > 3) | ternary(['Multitenant'], [])
+                + ((_vopt_rows | selectattr('option', 'equalto', 'partitioning')
+                                | selectattr('installed', 'equalto', true)
+                                | list | length > 0) | ternary(['Partitioning'], []))
+                + ((_mgmt_rows | select('search', 'DIAGNOSTIC') | list | length > 0) | ternary(['Diagnostics Pack'], []))
+                + ((_mgmt_rows | select('equalto', 'DIAGNOSTIC+TUNING') | list | length > 0) | ternary(['Tuning Pack'], []))
+                + (((_pdb_ct | int) > 3) | ternary(['Multitenant'], []))
               ) | unique | list
             }}
       loop: "{{ sam_oracle_instances | default([]) }}"
