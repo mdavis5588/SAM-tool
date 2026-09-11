@@ -1,2 +1,72 @@
-Cannot execute SQL 'SELECT client_megantest.upsert_oracle_extended_discovery(%(payload)s::jsonb)
-cannot extract elements from a scalar\nCONTEXT:  SQL statement \"INSERT INTO client_megantest.oracle_nup_users\n          (instance_id, snapshot_date, active_user_count, total_user_count,\n           locked_user_count, sample_user_list, discovery_run_id)\n        VALUES (\n          v_instance_id,\n          CURRENT_DATE,\n          COALESCE((v_inst->>'nup_active_users')::INTEGER, 0),\n          COALESCE((v_inst->>'nup_total_users')::INTEGER,  0),\n          COALESCE((v_inst->>'nup_locked_users')::INTEGER, 0),\n          ARRAY(SELECT jsonb_array_elements_text(COALESCE(v_inst->'nup_sample_users', '[]'::jsonb))),\n          p_payload->>'run_id'\n        )\"\nPL/pgSQL function client_megantest.upsert_oracle_extended_discovery(jsonb) line 32 at SQL statement\n, query list: ['SELECT client_megantest.upsert_oracle_extended_discovery(%(payload)s::jsonb)']
+{
+
+  "msg": "Licensed options SID=ORCLCDB: []",
+
+  "_ansible_verbose_always": true,
+
+  "_ansible_no_log": null,
+
+  "changed": false,
+
+  "item": {
+
+    "sid": "ORCLCDB",
+
+    "options": []
+
+  },
+
+  "ansible_loop_var": "item",
+
+  "_ansible_item_label": "ORCLCDB"
+
+}
+ 
+{
+
+  "msg": "Licensed options SID=SAMTST1: []",
+
+  "_ansible_verbose_always": true,
+
+  "_ansible_no_log": null,
+
+  "changed": false,
+
+  "item": {
+
+    "sid": "SAMTST1",
+
+    "options": []
+
+  },
+
+  "ansible_loop_var": "item",
+
+  "_ansible_item_label": "SAMTST1"
+
+}
+ 
+{
+
+  "msg": "Licensed options SID=SAMTST2: []",
+
+  "_ansible_verbose_always": true,
+
+  "_ansible_no_log": null,
+
+  "changed": false,
+
+  "item": {
+
+    "sid": "SAMTST2",
+
+    "options": []
+
+  },
+
+  "ansible_loop_var": "item",
+
+  "_ansible_item_label": "SAMTST2"
+
+}
+ 
