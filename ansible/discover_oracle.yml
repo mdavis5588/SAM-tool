@@ -955,6 +955,10 @@
     - name: Build per-SID licensed options
       ansible.builtin.set_fact:
         sam_sid_options: "{{ sam_sid_options | default([]) + [_entry] }}"
+      loop: "{{ sam_oracle_instances | default([]) }}"
+      loop_control:
+        extended: true
+        label: "{{ item.sid }}"
       vars:
         _i: "{{ ansible_loop.index0 | int }}"
         _prod_rows: >-
@@ -1010,15 +1014,11 @@
                 + (((_pdb_ct | int) > 3) | ternary(['Multitenant'], []))
               ) | unique | list
             }}
-      loop: "{{ sam_oracle_instances | default([]) }}"
-      loop_control:
-        extended: true
-        label: "{{ item.sid }}"
       when: sam_oracle_instances is defined
 
     - name: DEBUG — print per-SID licensed options
       ansible.builtin.debug:
-        msg: "Licensed options SID={{ item.sid }}: {{ item.options }}"
+        msg: "SID={{ item.sid }}: {{ item.options }}"
       loop: "{{ sam_sid_options | default([]) }}"
       loop_control:
         label: "{{ item.sid }}"
