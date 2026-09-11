@@ -1,11 +1,32 @@
-print per-SID licensed options still empty
  
-ok: [172.16.34.131] => (item=ORCLCDB) => {
-    "msg": "SID=ORCLCDB: options=[]"
+{
+  "msg": "product_usage_results[0]:\nstdout length: 730\nstdout: \"{\"product\":\"Active Data Guard\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Analytics\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Compression\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Security\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Database Vault\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Diagnostics Pack\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Label...\"\n",
+  "_ansible_verbose_always": true,
+  "_ansible_no_log": null,
+  "changed": false,
+  "_idx": 0,
+  "ansible_loop_var": "_idx",
+  "_ansible_item_label": "index 0"
 }
-ok: [172.16.34.131] => (item=SAMTST1) => {
-    "msg": "SID=SAMTST1: options=[]"
+ 
+ 
+{
+  "msg": "product_usage_results[1]:\nstdout length: 730\nstdout: \"{\"product\":\"Active Data Guard\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Analytics\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Compression\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Security\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Database Vault\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Diagnostics Pack\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Label...\"\n",
+  "_ansible_verbose_always": true,
+  "_ansible_no_log": null,
+  "changed": false,
+  "_idx": 1,
+  "ansible_loop_var": "_idx",
+  "_ansible_item_label": "index 1"
 }
-ok: [172.16.34.131] => (item=SAMTST2) => {
-    "msg": "SID=SAMTST2: options=[]"
+ 
+ 
+{
+  "msg": "product_usage_results[2]:\nstdout length: 730\nstdout: \"{\"product\":\"Active Data Guard\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Analytics\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Compression\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Security\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Database Vault\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Diagnostics Pack\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Label...\"\n",
+  "_ansible_verbose_always": true,
+  "_ansible_no_log": null,
+  "changed": false,
+  "_idx": 2,
+  "ansible_loop_var": "_idx",
+  "_ansible_item_label": "index 2"
 }
