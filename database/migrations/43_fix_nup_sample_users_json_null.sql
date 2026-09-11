@@ -1,45 +1,12 @@
--- Migration 41: Add missing unique constraint on oracle_rac_nodes and fix
---              upsert_oracle_extended_discovery ON CONFLICT clauses to match
---              actual indexes.
+-- Migration 43: Fix nup_sample_users JSON-null handling in upsert_oracle_extended_discovery.
 --
--- Problems fixed:
---   1. oracle_rac_nodes missing UNIQUE(instance_id, node_name) constraint
---   2. oracle_feature_usage ON CONFLICT used (instance_id, feature_name) but
---      the actual unique index is (instance_id, COALESCE(pdb_name,''), feature_name)
+-- Migration 42 added COALESCE(..., '[]'::jsonb) but that only handles SQL NULL.
+-- Oracle's JSON_OBJECT encodes an empty JSON_ARRAYAGG result as JSON null
+-- ("nup_sample_users": null), which PostgreSQL stores as 'null'::jsonb — a
+-- non-NULL scalar.  NULLIF converts that JSON null to SQL NULL so COALESCE
+-- can then substitute '[]'::jsonb.
 
--- 1. Add missing unique constraint to oracle_rac_nodes in all client schemas
-CREATE OR REPLACE FUNCTION sam_admin._fix_rac_nodes_constraint(p_schema TEXT)
-RETURNS VOID LANGUAGE plpgsql AS $$
-BEGIN
-  EXECUTE format(
-    'ALTER TABLE %I.oracle_rac_nodes
-     ADD CONSTRAINT oracle_rac_nodes_instance_id_node_name_key
-     UNIQUE (instance_id, node_name)',
-    p_schema
-  );
-EXCEPTION WHEN duplicate_table THEN NULL;
-         WHEN others THEN
-           -- constraint may already exist under a different name
-           NULL;
-END;
-$$;
-
-DO $$
-DECLARE
-  v_client RECORD;
-BEGIN
-  FOR v_client IN SELECT schema_name FROM sam_admin.clients ORDER BY schema_name
-  LOOP
-    PERFORM sam_admin._fix_rac_nodes_constraint(v_client.schema_name);
-    RAISE NOTICE 'Fixed oracle_rac_nodes constraint for %', v_client.schema_name;
-  END LOOP;
-END;
-$$;
-
-DROP FUNCTION IF EXISTS sam_admin._fix_rac_nodes_constraint(TEXT);
-
--- 2. Patch upsert_oracle_extended_discovery to use correct ON CONFLICT clauses
-CREATE OR REPLACE FUNCTION sam_admin._patch_extended_upsert(p_schema TEXT)
+CREATE OR REPLACE FUNCTION sam_admin._fix_nup_json_null(p_schema TEXT)
 RETURNS VOID LANGUAGE plpgsql AS $$
 BEGIN
   EXECUTE format($fn$
@@ -133,7 +100,7 @@ BEGIN
             discovery_run_id = EXCLUDED.discovery_run_id;
         END LOOP;
 
-        -- Feature usage — ON CONFLICT must match (instance_id, COALESCE(pdb_name,''), feature_name)
+        -- Feature usage
         FOR v_feat IN SELECT * FROM jsonb_array_elements(v_inst->'feature_usage')
         LOOP
           CONTINUE WHEN v_feat->>'feature_name' IS NULL;
@@ -182,10 +149,10 @@ DECLARE
 BEGIN
   FOR v_client IN SELECT schema_name FROM sam_admin.clients ORDER BY schema_name
   LOOP
-    PERFORM sam_admin._patch_extended_upsert(v_client.schema_name);
-    RAISE NOTICE 'Patched upsert_oracle_extended_discovery for %', v_client.schema_name;
+    PERFORM sam_admin._fix_nup_json_null(v_client.schema_name);
+    RAISE NOTICE 'Fixed upsert_oracle_extended_discovery for %', v_client.schema_name;
   END LOOP;
 END;
 $$;
 
-DROP FUNCTION IF EXISTS sam_admin._patch_extended_upsert(TEXT);
+DROP FUNCTION IF EXISTS sam_admin._fix_nup_json_null(TEXT);

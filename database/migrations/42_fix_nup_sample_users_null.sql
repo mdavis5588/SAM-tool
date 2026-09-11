@@ -49,7 +49,7 @@ BEGIN
           COALESCE((v_inst->>'nup_active_users')::INTEGER, 0),
           COALESCE((v_inst->>'nup_total_users')::INTEGER,  0),
           COALESCE((v_inst->>'nup_locked_users')::INTEGER, 0),
-          ARRAY(SELECT jsonb_array_elements_text(COALESCE(v_inst->'nup_sample_users', '[]'::jsonb))),
+          ARRAY(SELECT jsonb_array_elements_text(COALESCE(NULLIF(v_inst->'nup_sample_users', 'null'::jsonb), '[]'::jsonb))),
           p_payload->>'run_id'
         );
 
