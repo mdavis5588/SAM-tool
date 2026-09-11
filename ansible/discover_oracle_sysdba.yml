@@ -970,9 +970,16 @@
             | max | default(0)
           }}
 
-    - name: DEBUG — print product_usage rows
+    - name: DEBUG — print product_usage rows per SID
       ansible.builtin.debug:
-        msg: "Product usage: {{ sam_product_usage_rows }}"
+        msg: "Product usage SID={{ item.item.sid }} rows={{ item.stdout | default('') | string | split('\n') | select('match', '^\\{\"') | map('from_json') | list }}"
+      loop: "{{ product_usage_results.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.sid }}"
+
+    - name: DEBUG — print product_usage rows (combined)
+      ansible.builtin.debug:
+        msg: "Product usage (all instances combined): {{ sam_product_usage_rows }}"
 
     - name: Build licensed option list from product_usage (primary source)
       ansible.builtin.set_fact:
@@ -1035,9 +1042,16 @@
       ansible.builtin.set_fact:
         sam_voption_rows: "{{ voption_results.results | default([]) | map(attribute='stdout') | map('trim') | map('split', '\n') | flatten | map('trim') | select('match', '^\\{\"') | map('from_json') | list }}"
 
-    - name: DEBUG — print v$option rows
+    - name: DEBUG — print v$option rows per SID
       ansible.builtin.debug:
-        msg: "V$OPTION rows: {{ sam_voption_rows }}"
+        msg: "V$OPTION SID={{ item.item.sid }} rows={{ item.stdout | default('') | string | split('\n') | select('match', '^\\{\"') | map('from_json') | list }}"
+      loop: "{{ voption_results.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.sid }}"
+
+    - name: DEBUG — print v$option rows (combined)
+      ansible.builtin.debug:
+        msg: "V$OPTION rows (all instances combined): {{ sam_voption_rows }}"
 
     - name: Add Partitioning if v$option shows it installed
       ansible.builtin.set_fact:
