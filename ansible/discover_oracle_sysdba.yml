@@ -949,140 +949,80 @@
       ignore_errors: true
 
     # ------------------------------------------------------------------
-    # 7b. OPTION DETECTION — uses product_usage results (matches CSV/JSON
-    #     upload path). Maps product names with CURRENT_USAGE to the
-    #     oracle_options option_name values stored in the DB.
-    #     Multitenant: flagged when >3 application PDBs exist (Oracle 21c
-    #     free threshold), regardless of product_usage.
+    # 7b. OPTION DETECTION — per-SID (matches CSV/JSON upload path).
+    #     Maps product names with CURRENT_USAGE to oracle_options.
+    #     Each SID only gets options it actually has, not server-wide ones.
     # ------------------------------------------------------------------
-    - name: Collect all product_usage rows across instances
+    - name: Build per-SID licensed options
       ansible.builtin.set_fact:
-        sam_product_usage_rows: "{{ product_usage_results.results | default([]) | map(attribute='stdout') | map('string') | map('trim') | map('split', '\n') | flatten | map('trim') | select('match', '^\\{\"') | map('from_json') | list }}"
-
-    - name: Collect max application PDB count across instances
-      ansible.builtin.set_fact:
-        sam_app_pdb_count: >-
-          {{
-            pdb_count_results.results | default([])
-            | map(attribute='stdout') | map('trim')
-            | reject('equalto', '')
-            | map('int')
-            | max | default(0)
-          }}
-
-    - name: DEBUG — print product_usage rows per SID
-      ansible.builtin.debug:
-        msg: "Product usage SID={{ item.item.sid }} rows={{ item.stdout | default('') | string | split('\n') | select('match', '^\\{\"') | map('from_json') | list }}"
-      loop: "{{ product_usage_results.results | default([]) }}"
-      loop_control:
-        label: "{{ item.item.sid }}"
-
-    - name: DEBUG — print product_usage rows (combined)
-      ansible.builtin.debug:
-        msg: "Product usage (all instances combined): {{ sam_product_usage_rows }}"
-
-    - name: Build licensed option list from product_usage (primary source)
-      ansible.builtin.set_fact:
-        sam_licensed_options: >-
-          {{
-            (sam_product_usage_rows
-              | selectattr('usage_status', 'equalto', 'CURRENT_USAGE')
-              | map(attribute='product') | map('lower') | list
-            ) | map('regex_replace', '^.*$', '')
-            | list
-          }}
-      # Reset; populated in the next task via a lookup map
-
-    - name: Map product_usage CURRENT_USAGE products to oracle_options names
-      ansible.builtin.set_fact:
-        sam_licensed_options: >-
-          {{
-            sam_licensed_options | default([]) + [item.1]
-          }}
-      loop: >-
-        {{
-          [
-            ['partitioning',                 'Partitioning'],
-            ['real application clusters',    'Real Application Clusters (RAC)'],
-            ['active data guard',            'Active Data Guard'],
-            ['label security',               'Label Security'],
-            ['database vault',               'Database Vault'],
-            ['olap',                         'OLAP'],
-            ['spatial and graph',            'Spatial and Graph'],
-            ['advanced security',            'Advanced Security'],
-            ['diagnostics pack',             'Diagnostics Pack'],
-            ['tuning pack',                  'Tuning Pack'],
-            ['data masking and subsetting',  'Data Masking and Subsetting'],
-            ['advanced compression',         'Advanced Compression'],
-            ['advanced analytics',           'Advanced Analytics'],
-            ['multitenant',                  'Multitenant'],
-          ]
-        }}
-      when: >-
-        sam_product_usage_rows
-        | selectattr('usage_status', 'equalto', 'CURRENT_USAGE')
-        | selectattr('product', 'defined')
-        | map(attribute='product') | map('lower')
-        | select('search', item.0)
-        | list | length > 0
-        and item.1 not in sam_licensed_options | default([])
+        sam_sid_options: "{{ sam_sid_options | default([]) + [_entry] }}"
       vars:
-        sam_licensed_options: "{{ sam_licensed_options | default([]) }}"
-
-    - name: Add Multitenant if application PDB count exceeds free threshold (>3)
-      ansible.builtin.set_fact:
-        sam_licensed_options: "{{ sam_licensed_options | default([]) + ['Multitenant'] }}"
-      when:
-        - sam_app_pdb_count | int > 3
-        - "'Multitenant' not in sam_licensed_options | default([])"
-
-    # Partitioning: DBA_FEATURE_USAGE_STATISTICS shows NO_USAGE even when enabled.
-    # v$option is the authoritative source for installed engine options.
-    - name: Collect v$option installed flags across instances
-      ansible.builtin.set_fact:
-        sam_voption_rows: "{{ voption_results.results | default([]) | map(attribute='stdout') | map('trim') | map('split', '\n') | flatten | map('trim') | select('match', '^\\{\"') | map('from_json') | list }}"
-
-    - name: DEBUG — print v$option rows per SID
-      ansible.builtin.debug:
-        msg: "V$OPTION SID={{ item.item.sid }} rows={{ item.stdout | default('') | string | split('\n') | select('match', '^\\{\"') | map('from_json') | list }}"
-      loop: "{{ voption_results.results | default([]) }}"
+        _i: "{{ ansible_loop.index0 | int }}"
+        _prod_rows: >-
+          {{ product_usage_results.results[_i | int].stdout
+             | default('') | string | split('\n')
+             | select('match', '^\\{\"') | map('from_json') | list }}
+        _vopt_rows: >-
+          {{ voption_results.results[_i | int].stdout
+             | default('') | string | split('\n')
+             | select('match', '^\\{\"') | map('from_json') | list }}
+        _mgmt_rows: >-
+          {{ mgmt_pack_results.results[_i | int].stdout
+             | default('') | string | split('\n')
+             | select('match', '^\\{\"') | map('from_json')
+             | selectattr('name', 'equalto', 'control_management_pack_access')
+             | map(attribute='value') | map('upper') | list }}
+        _pdb_ct: >-
+          {{ pdb_count_results.results[_i | int].stdout | default('0') | trim | int }}
+        _cur_prods: >-
+          {{ _prod_rows
+             | selectattr('usage_status', 'equalto', 'CURRENT_USAGE')
+             | map(attribute='product') | map('lower') | list }}
+        _prod_map:
+          partitioning:                "Partitioning"
+          real application clusters:   "Real Application Clusters (RAC)"
+          active data guard:           "Active Data Guard"
+          label security:              "Label Security"
+          database vault:              "Database Vault"
+          olap:                        "OLAP"
+          spatial and graph:           "Spatial and Graph"
+          advanced security:           "Advanced Security"
+          diagnostics pack:            "Diagnostics Pack"
+          tuning pack:                 "Tuning Pack"
+          data masking and subsetting: "Data Masking and Subsetting"
+          advanced compression:        "Advanced Compression"
+          advanced analytics:          "Advanced Analytics"
+          multitenant:                 "Multitenant"
+        _from_prod: >-
+          {{ _prod_map | dict2items
+             | selectattr('key', 'in', _cur_prods)
+             | map(attribute='value') | list }}
+        _entry:
+          sid: "{{ item.sid }}"
+          options: >-
+            {{
+              (
+                _from_prod
+                + (_vopt_rows | selectattr('option', 'equalto', 'partitioning')
+                              | selectattr('installed', 'equalto', true)
+                              | list | length > 0) | ternary(['Partitioning'], [])
+                + (_mgmt_rows | select('search', 'DIAGNOSTIC') | list | length > 0) | ternary(['Diagnostics Pack'], [])
+                + (_mgmt_rows | select('equalto', 'DIAGNOSTIC+TUNING') | list | length > 0) | ternary(['Tuning Pack'], [])
+                + (_pdb_ct | int > 3) | ternary(['Multitenant'], [])
+              ) | unique | list
+            }}
+      loop: "{{ sam_oracle_instances | default([]) }}"
       loop_control:
-        label: "{{ item.item.sid }}"
+        extended: true
+        label: "{{ item.sid }}"
+      when: sam_oracle_instances is defined
 
-    - name: DEBUG — print v$option rows (combined)
+    - name: DEBUG — print per-SID licensed options
       ansible.builtin.debug:
-        msg: "V$OPTION rows (all instances combined): {{ sam_voption_rows }}"
-
-    - name: Add Partitioning if v$option shows it installed
-      ansible.builtin.set_fact:
-        sam_licensed_options: "{{ sam_licensed_options | default([]) + ['Partitioning'] }}"
-      when:
-        - sam_voption_rows | selectattr('option', 'equalto', 'partitioning') | selectattr('installed', 'equalto', true) | list | length > 0
-        - "'Partitioning' not in sam_licensed_options | default([])"
-
-    # Diagnostics/Tuning: Oracle reports NO_USAGE in product_usage even when licensed.
-    # Check control_management_pack_access from gv$parameter directly (authoritative).
-    - name: Collect mgmt pack access values from gv$parameter results
-      ansible.builtin.set_fact:
-        sam_mgmt_pack_values: "{{ mgmt_pack_results.results | default([]) | map(attribute='stdout') | map('trim') | map('split', '\n') | flatten | map('trim') | select('match', '^\\{\"') | map('from_json') | selectattr('name', 'equalto', 'control_management_pack_access') | map(attribute='value') | map('upper') | list }}"
-
-    - name: DEBUG — print mgmt pack values
-      ansible.builtin.debug:
-        msg: "Mgmt pack values: {{ sam_mgmt_pack_values }}"
-
-    - name: Add Diagnostics Pack if control_management_pack_access includes DIAGNOSTIC
-      ansible.builtin.set_fact:
-        sam_licensed_options: "{{ sam_licensed_options | default([]) + ['Diagnostics Pack'] }}"
-      when:
-        - sam_mgmt_pack_values | select('search', 'DIAGNOSTIC') | list | length > 0
-        - "'Diagnostics Pack' not in sam_licensed_options | default([])"
-
-    - name: Add Tuning Pack if control_management_pack_access is DIAGNOSTIC+TUNING
-      ansible.builtin.set_fact:
-        sam_licensed_options: "{{ sam_licensed_options | default([]) + ['Tuning Pack'] }}"
-      when:
-        - sam_mgmt_pack_values | select('equalto', 'DIAGNOSTIC+TUNING') | list | length > 0
-        - "'Tuning Pack' not in sam_licensed_options | default([])"
+        msg: "Licensed options SID={{ item.sid }}: {{ item.options }}"
+      loop: "{{ sam_sid_options | default([]) }}"
+      loop_control:
+        label: "{{ item.sid }}"
 
     # Clear all auto-detected options for this server's instances then re-insert,
     # so stale options from a previous upload do not persist.
@@ -1106,8 +1046,8 @@
       delegate_to: localhost
       ignore_errors: true
 
-    # Insert each licensed option for every instance on this server.
-    - name: Insert licensed options into oracle_options
+    # Insert each option only for the specific SID that has it.
+    - name: Insert licensed options per instance
       community.postgresql.postgresql_query:
         db:             "{{ sam_db_name }}"
         login_host:     "{{ sam_db_host }}"
@@ -1124,14 +1064,20 @@
           FROM   {{ sam_client_schema }}.oracle_instances i
           JOIN   {{ sam_client_schema }}.oracle_servers   s ON s.server_id = i.server_id
           WHERE  s.hostname = %(hostname)s
+            AND  i.oracle_sid = %(sid)s
+          ON CONFLICT (instance_id, option_name) DO UPDATE SET
+            status           = 'TRUE',
+            discovery_run_id = EXCLUDED.discovery_run_id
         named_args:
-          option_name: "{{ item }}"
+          option_name: "{{ item.1 }}"
           run_id:      "{{ sam_run_id }}"
           hostname:    "{{ inventory_hostname }}"
-      loop: "{{ sam_licensed_options | default([]) }}"
+          sid:         "{{ item.0.sid }}"
+      loop: "{{ sam_sid_options | default([]) | subelements('options') }}"
+      loop_control:
+        label: "{{ item.0.sid }}/{{ item.1 }}"
       delegate_to: localhost
       ignore_errors: true
-      when: sam_licensed_options | default([]) | length > 0
 
     - name: Print discovery summary
       ansible.builtin.debug:
