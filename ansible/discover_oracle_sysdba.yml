@@ -1017,12 +1017,23 @@
             }}
       when: sam_oracle_instances is defined
 
-    - name: DEBUG — print per-SID licensed options
-      ansible.builtin.debug:
-        msg: "SID={{ item.sid }}: {{ item.options }}"
-      loop: "{{ sam_sid_options | default([]) }}"
-      loop_control:
-        label: "{{ item.sid }}"
+    - name: DEBUG — show per-SID option detection results
+      block:
+        - name: DEBUG — print product usage data availability
+          ansible.builtin.debug:
+            msg: |
+              product_usage_results: {{ product_usage_results.results | default([]) | length }} iterations
+              voption_results: {{ voption_results.results | default([]) | length }} iterations
+              mgmt_pack_results: {{ mgmt_pack_results.results | default([]) | length }} iterations
+              pdb_count_results: {{ pdb_count_results.results | default([]) | length }} iterations
+              sam_oracle_instances: {{ sam_oracle_instances | default([]) | length }} instances
+
+        - name: DEBUG — print per-SID licensed options
+          ansible.builtin.debug:
+            msg: "SID={{ item.sid }}: options={{ item.options | default([]) }}"
+          loop: "{{ sam_sid_options | default([]) }}"
+          loop_control:
+            label: "{{ item.sid }}"
 
     # Clear all auto-detected options for this server's instances then re-insert,
     # so stale options from a previous upload do not persist.
