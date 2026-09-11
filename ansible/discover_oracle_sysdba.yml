@@ -588,6 +588,7 @@
                               WHEN m.condition = 'C001'
                                    AND (REGEXP_LIKE(TO_CHAR(f.feature_info),'compression[ -]used:[ 0-9]*[1-9][ 0-9]*time','i')
                                      OR REGEXP_LIKE(TO_CHAR(f.feature_info),'compression[ -]used: *TRUE','i'))
+                                   AND TO_CHAR(f.feature_info) NOT LIKE '%(BASIC algorithm used: 0 times, LOW algorithm used: 0 times, MEDIUM algorithm used: 0 times, HIGH algorithm used: 0 times)%'
                                    THEN 'TRUE'
                               WHEN m.condition = 'C002'
                                    AND (REGEXP_LIKE(TO_CHAR(f.feature_info),'encryption used:[ 0-9]*[1-9][ 0-9]*time','i')
@@ -599,6 +600,20 @@
                               ELSE 'FALSE'
                             END) = 'TRUE')
                    THEN '6.CURRENT_USAGE'
+              WHEN f.detected_usages > 0
+                   AND f.currently_used = 'TRUE'
+                   AND f.current_entry  = 'Y'
+                   AND (CASE
+                          WHEN m.condition = 'C001'
+                               AND REGEXP_LIKE(TO_CHAR(f.feature_info),'compression[ -]used:[ 0-9]*[1-9][ 0-9]*time','i')
+                               AND TO_CHAR(f.feature_info) NOT LIKE '%(BASIC algorithm used: 0 times, LOW algorithm used: 0 times, MEDIUM algorithm used: 0 times, HIGH algorithm used: 0 times)%'
+                               THEN 'TRUE'
+                          WHEN m.condition = 'C002'
+                               AND REGEXP_LIKE(TO_CHAR(f.feature_info),'encryption used:[ 0-9]*[1-9][ 0-9]*time','i')
+                               THEN 'TRUE'
+                          ELSE 'FALSE'
+                        END) = 'TRUE'
+                   THEN '5.PAST_OR_CURRENT_USAGE'
               WHEN f.detected_usages > 0
                    THEN '4.PAST_USAGE'
               WHEN f.current_entry = 'Y'
@@ -613,13 +628,14 @@
         SELECT '{"product":"' || REPLACE(REPLACE(product,'\','\\'),'"','\"') ||
                '","usage_status":"' ||
                DECODE(MAX(usage),
-                 '2.NO_CURRENT_USAGE', 'NO_USAGE',
+                 '2.NO_CURRENT_USAGE',      'NO_USAGE',
                  '3.SUPPRESSED_DUE_TO_BUG', 'NO_USAGE',
-                 '4.PAST_USAGE',       'PAST_USAGE',
-                 '6.CURRENT_USAGE',    'CURRENT_USAGE',
+                 '4.PAST_USAGE',            'PAST_USAGE',
+                 '5.PAST_OR_CURRENT_USAGE', 'PAST_OR_CURRENT_USAGE',
+                 '6.CURRENT_USAGE',         'CURRENT_USAGE',
                  'NO_USAGE') || '"}'
         FROM pfus
-        WHERE usage IN ('2.NO_CURRENT_USAGE','4.PAST_USAGE','6.CURRENT_USAGE')
+        WHERE usage IN ('2.NO_CURRENT_USAGE','4.PAST_USAGE','5.PAST_OR_CURRENT_USAGE','6.CURRENT_USAGE')
         GROUP BY product
         ORDER BY product;
         EXIT;
@@ -980,7 +996,7 @@
           {{ pdb_count_results.results[_i | int].stdout | default('0') | trim | int }}
         _cur_prods: >-
           {{ _prod_rows
-             | selectattr('usage_status', 'equalto', 'CURRENT_USAGE')
+             | selectattr('usage_status', 'in', ['CURRENT_USAGE', 'PAST_OR_CURRENT_USAGE'])
              | map(attribute='product') | map('lower') | list }}
         _prod_map:
           partitioning:                "Partitioning"
