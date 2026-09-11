@@ -159,21 +159,7 @@
 
     - name: Parse oratab entries
       ansible.builtin.set_fact:
-        oracle_instances_raw: >-
-          {{
-            (oratab_content.results
-              | selectattr('content', 'defined')
-              | map(attribute='content')
-              | map('b64decode')
-              | join('\n')
-            ).split('\n')
-            | reject('match', '^\\s*#')
-            | reject('match', '^\\s*$')
-            | map('regex_findall', '^([^:]+):([^:]+):([YyNn])')
-            | select
-            | map('first')
-            | list
-          }}
+        oracle_instances_raw: "{{ oratab_content.results | selectattr('content', 'defined') | map(attribute='content') | map('b64decode') | join('\n') | regex_findall('^([^:#][^:]*):(/[^:]+):([YyNn])', multiline=True) }}"
 
     - name: Set instance list fact
       ansible.builtin.set_fact:
