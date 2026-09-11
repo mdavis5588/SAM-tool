@@ -1,1 +1,14 @@
-the field 'args' has an invalid value ({'sam_product_usage_rows': '{{\\n  product_usage_results.results | default([])\\n  | map(attribute=\\'stdout\\') | map(\\'trim\\')\\n  | map(\\'split\\', \\'\\\\n\\') | flatten\\n  | map(\\'trim\\') | select(\\'match\\', \\'^\\\\{\\\\\"\\')\\n  | map(\\'from_json\\')\\n  | list\\n}}'}), and could not be converted to an dict.The error was: Extra data: line 2 column 1 (char 58)\n\nThe error appears to be in '/runner/project/test.yaml': line 928, column 7, but may\nbe elsewhere in the file depending on the exact syntax problem.\n\nThe offending line appears to be:\n\n    # ------------------------------------------------------------------\n    - name: Collect all product_usage rows across instances\n      ^ here\n
+export ORACLE_HOME="SAMTST1" export ORACLE_SID="SAMTST1" export PATH="$ORACLE_HOME/bin:$PATH" sqlplus -s / as sysdba << 'EOF' SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF SET LINESIZE 32767 SELECT '{"version":"' || SUBSTR(i.version,1,20) || '",' || '"edition":"' || SUBSTR(CASE WHEN UPPER(v.banner) LIKE '%ENTERPRISE%' THEN 'Enterprise Edition' WHEN UPPER(v.banner) LIKE '%STANDARD EDITION 2%' THEN 'Standard Edition 2' WHEN UPPER(v.banner) LIKE '%STANDARD%' THEN 'Standard Edition' WHEN UPPER(v.banner) LIKE '%EXPRESS%' THEN 'Express Edition' ELSE 'Unknown' END, 1, 60) || '",' || '"sid":"' || 'SAMTST1' || '",' || '"db_name":"' || SUBSTR(d.name,1,30) || '",' || '"db_unique_name":"' || SUBSTR(d.db_unique_name,1,64) || '",' || '"is_cdb":"' || d.cdb || '",' || '"log_mode":"' || d.log_mode || '",' || '"created":"' || TO_CHAR(d.created,'YYYY-MM-DD') || '"}' FROM v$instance i CROSS JOIN v$database d CROSS JOIN (SELECT banner FROM v$version WHERE UPPER(banner) LIKE '%ORACLE DATABASE%' AND ROWNUM = 1) v; EXIT; EOF
+
+
+/bin/sh: line 3: sqlplus: command not found
+ 
+Is the error it gives
+
+Could it be this part?
+ 
+export ORACLE_HOME="SAMTST1"
+ 
+Because it doesn't look like that for ORCLCDB
+ 
+export ORACLE_HOME="/opt/oracle/product/19c/dbhome_1"
