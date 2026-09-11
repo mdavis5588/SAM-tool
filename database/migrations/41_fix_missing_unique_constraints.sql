@@ -89,7 +89,8 @@ BEGIN
         );
 
         -- RAC nodes
-        FOR v_node IN SELECT * FROM jsonb_array_elements(v_inst->'rac_nodes')
+        FOR v_node IN SELECT * FROM jsonb_array_elements(
+          COALESCE(NULLIF(v_inst->'rac_nodes', 'null'::jsonb), '[]'::jsonb))
         LOOP
           CONTINUE WHEN v_node->>'node_name' IS NULL;
           INSERT INTO %I.oracle_rac_nodes
@@ -111,7 +112,8 @@ BEGIN
         END LOOP;
 
         -- PDBs
-        FOR v_pdb IN SELECT * FROM jsonb_array_elements(v_inst->'pdbs')
+        FOR v_pdb IN SELECT * FROM jsonb_array_elements(
+          COALESCE(NULLIF(v_inst->'pdbs', 'null'::jsonb), '[]'::jsonb))
         LOOP
           CONTINUE WHEN v_pdb->>'pdb_name' IS NULL;
           INSERT INTO %I.oracle_pdbs
@@ -134,7 +136,8 @@ BEGIN
         END LOOP;
 
         -- Feature usage — ON CONFLICT must match (instance_id, COALESCE(pdb_name,''), feature_name)
-        FOR v_feat IN SELECT * FROM jsonb_array_elements(v_inst->'feature_usage')
+        FOR v_feat IN SELECT * FROM jsonb_array_elements(
+          COALESCE(NULLIF(v_inst->'feature_usage', 'null'::jsonb), '[]'::jsonb))
         LOOP
           CONTINUE WHEN v_feat->>'feature_name' IS NULL;
           INSERT INTO %I.oracle_feature_usage

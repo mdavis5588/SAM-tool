@@ -1668,7 +1668,7 @@ BEGIN
         IF v_instance_id IS NULL THEN CONTINUE; END IF;
 
         -- Upsert RAC nodes
-        FOR v_node IN SELECT * FROM jsonb_array_elements(COALESCE(v_inst->'rac_nodes', '[]'::jsonb))
+        FOR v_node IN SELECT * FROM jsonb_array_elements(COALESCE(NULLIF(v_inst->'rac_nodes', 'null'::jsonb), '[]'::jsonb))
         LOOP
           INSERT INTO %I.oracle_rac_nodes
             (instance_id, server_id, node_name, node_number,
@@ -1690,7 +1690,7 @@ BEGIN
 
         -- Upsert PDB records
         v_pdb_count := 0;
-        FOR v_pdb IN SELECT * FROM jsonb_array_elements(COALESCE(v_inst->'pdbs', '[]'::jsonb))
+        FOR v_pdb IN SELECT * FROM jsonb_array_elements(COALESCE(NULLIF(v_inst->'pdbs', 'null'::jsonb), '[]'::jsonb))
         LOOP
           v_pdb_count := v_pdb_count + 1;
           INSERT INTO %I.oracle_pdbs
@@ -1735,7 +1735,7 @@ BEGIN
         END IF;
 
         -- Upsert feature usage rows from DBA_FEATURE_USAGE_STATISTICS
-        FOR v_feat IN SELECT * FROM jsonb_array_elements(COALESCE(v_inst->'feature_usage', '[]'::jsonb))
+        FOR v_feat IN SELECT * FROM jsonb_array_elements(COALESCE(NULLIF(v_inst->'feature_usage', 'null'::jsonb), '[]'::jsonb))
         LOOP
           INSERT INTO %I.oracle_feature_usage
             (instance_id, feature_name, db_version,
