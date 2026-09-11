@@ -1,32 +1,57 @@
  
 {
-  "msg": "product_usage_results[0]:\nstdout length: 730\nstdout: \"{\"product\":\"Active Data Guard\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Analytics\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Compression\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Security\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Database Vault\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Diagnostics Pack\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Label...\"\n",
+  "msg": "===== SID=ORCLCDB (index 0) =====\n\nproduct_usage stdout:\n{\"product\":\"Active Data Guard\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Analytics\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Compression\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Security\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Database Vault\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Diagnostics Pack\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Label Security\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Multitenant\",\"usage_status\":\"PAST_USAGE\"}\n{\"product\":\"OLAP\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Partitioning\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Real Application Clusters\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Spatial and Graph\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Tuning Pack\",\"usage_status\":\"NO_USAGE\"}\n\nvoption stdout:\n{\"option\":\"olap\",\"installed\":true}\n{\"option\":\"partitioning\",\"installed\":true}\n{\"option\":\"real application clusters\",\"installed\":false}\n{\"option\":\"spatial\",\"installed\":true}\n\nmgmt_pack stdout:\n{\"con_id\":1,\"name\":\"control_management_pack_access\",\"value\":\"DIAGNOSTIC+TUNING\"}\n{\"con_id\":1,\"name\":\"enable_ddl_logging\",\"value\":\"FALSE\"}\n\npdb_count stdout:\n\t 2\n",
   "_ansible_verbose_always": true,
   "_ansible_no_log": null,
   "changed": false,
-  "_idx": 0,
-  "ansible_loop_var": "_idx",
-  "_ansible_item_label": "index 0"
+  "item": [
+    {
+      "sid": "ORCLCDB",
+      "oracle_home": "/opt/oracle/product/19c/dbhome_1",
+      "autostart": "Y"
+    },
+    0
+  ],
+  "ansible_loop_var": "item",
+  "_ansible_item_label": "ORCLCDB"
 }
  
  
 {
-  "msg": "product_usage_results[1]:\nstdout length: 730\nstdout: \"{\"product\":\"Active Data Guard\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Analytics\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Compression\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Security\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Database Vault\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Diagnostics Pack\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Label...\"\n",
+  "msg": "===== SID=SAMTST1 (index 1) =====\n\nproduct_usage stdout:\n{\"product\":\"Active Data Guard\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Analytics\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Compression\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Security\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Database Vault\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Diagnostics Pack\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Label Security\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Multitenant\",\"usage_status\":\"PAST_USAGE\"}\n{\"product\":\"OLAP\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Partitioning\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Real Application Clusters\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Spatial and Graph\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Tuning Pack\",\"usage_status\":\"NO_USAGE\"}\n\nvoption stdout:\n{\"option\":\"olap\",\"installed\":true}\n{\"option\":\"partitioning\",\"installed\":true}\n{\"option\":\"real application clusters\",\"installed\":false}\n{\"option\":\"spatial\",\"installed\":true}\n\nmgmt_pack stdout:\n{\"con_id\":1,\"name\":\"control_management_pack_access\",\"value\":\"DIAGNOSTIC+TUNING\"}\n{\"con_id\":1,\"name\":\"enable_ddl_logging\",\"value\":\"FALSE\"}\n\npdb_count stdout:\n\t 2\n",
   "_ansible_verbose_always": true,
   "_ansible_no_log": null,
   "changed": false,
-  "_idx": 1,
-  "ansible_loop_var": "_idx",
-  "_ansible_item_label": "index 1"
+  "item": [
+    {
+      "sid": "SAMTST1",
+      "oracle_home": "/opt/oracle/product/19c/dbhome_1",
+      "autostart": "Y"
+    },
+    1
+  ],
+  "ansible_loop_var": "item",
+  "_ansible_item_label": "SAMTST1"
 }
  
  
 {
-  "msg": "product_usage_results[2]:\nstdout length: 730\nstdout: \"{\"product\":\"Active Data Guard\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Analytics\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Compression\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Security\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Database Vault\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Diagnostics Pack\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Label...\"\n",
+  "msg": "===== SID=SAMTST2 (index 2) =====\n\nproduct_usage stdout:\n{\"product\":\"Active Data Guard\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Analytics\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Compression\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Security\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Database Vault\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Diagnostics Pack\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Label Security\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Multitenant\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"OLAP\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Partitioning\",\"usage_status\":\"PAST_USAGE\"}\n{\"product\":\"Real Application Clusters\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Spatial and Graph\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Tuning Pack\",\"usage_status\":\"NO_USAGE\"}\n\nvoption stdout:\n{\"option\":\"olap\",\"installed\":true}\n{\"option\":\"partitioning\",\"installed\":true}\n{\"option\":\"real application clusters\",\"installed\":false}\n{\"option\":\"spatial\",\"installed\":true}\n\nmgmt_pack stdout:\n{\"con_id\":0,\"name\":\"control_management_pack_access\",\"value\":\"DIAGNOSTIC+TUNING\"}\n{\"con_id\":0,\"name\":\"enable_ddl_logging\",\"value\":\"FALSE\"}\n\npdb_count stdout:\n\t 0\n",
   "_ansible_verbose_always": true,
   "_ansible_no_log": null,
   "changed": false,
-  "_idx": 2,
-  "ansible_loop_var": "_idx",
-  "_ansible_item_label": "index 2"
+  "item": [
+    {
+      "sid": "SAMTST2",
+      "oracle_home": "/opt/oracle/product/19c/dbhome_2",
+      "autostart": "Y"
+    },
+    2
+  ],
+  "ansible_loop_var": "item",
+  "_ansible_item_label": "SAMTST2"
 }
+has context menu
+
+
+has context menu
