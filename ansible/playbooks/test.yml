@@ -1,72 +1,11 @@
-{
-
-  "msg": "Licensed options SID=ORCLCDB: []",
-
-  "_ansible_verbose_always": true,
-
-  "_ansible_no_log": null,
-
-  "changed": false,
-
-  "item": {
-
-    "sid": "ORCLCDB",
-
-    "options": []
-
-  },
-
-  "ansible_loop_var": "item",
-
-  "_ansible_item_label": "ORCLCDB"
-
-}
+print per-SID licensed options still empty
  
-{
-
-  "msg": "Licensed options SID=SAMTST1: []",
-
-  "_ansible_verbose_always": true,
-
-  "_ansible_no_log": null,
-
-  "changed": false,
-
-  "item": {
-
-    "sid": "SAMTST1",
-
-    "options": []
-
-  },
-
-  "ansible_loop_var": "item",
-
-  "_ansible_item_label": "SAMTST1"
-
+ok: [172.16.34.131] => (item=ORCLCDB) => {
+    "msg": "SID=ORCLCDB: options=[]"
 }
- 
-{
-
-  "msg": "Licensed options SID=SAMTST2: []",
-
-  "_ansible_verbose_always": true,
-
-  "_ansible_no_log": null,
-
-  "changed": false,
-
-  "item": {
-
-    "sid": "SAMTST2",
-
-    "options": []
-
-  },
-
-  "ansible_loop_var": "item",
-
-  "_ansible_item_label": "SAMTST2"
-
+ok: [172.16.34.131] => (item=SAMTST1) => {
+    "msg": "SID=SAMTST1: options=[]"
 }
- 
+ok: [172.16.34.131] => (item=SAMTST2) => {
+    "msg": "SID=SAMTST2: options=[]"
+}
