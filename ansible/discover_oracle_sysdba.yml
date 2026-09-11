@@ -856,8 +856,7 @@
         sam_instances_extended: "{{ sam_instances_extended | default([]) + [_inst] }}"
       vars:
         _idx: "{{ ansible_loop.index0 | int }}"
-        _nup_raw: "{{ (nup_results | default({'results': []})).results[_idx | int].stdout | default('') | string | split('\n') | select('match', '^\\{\"') | first | default('{}') }}"
-        _nup: "{{ _nup_raw | from_json }}"
+        _nup: "{{ (nup_results | default({'results': []})).results[_idx | int].stdout | default('') | string | split('\n') | select('match', '^\\{\"') | first | default('{}') | from_json }}"
         _inst:
           sid:                 "{{ item.sid }}"
           nup_total_users:     "{{ (_nup.nup_total_users  | default(0)) | int }}"
