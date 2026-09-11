@@ -1045,16 +1045,25 @@
               - pdb_count_results.results: {{ pdb_count_results.results | default([]) | length }} items
               sam_oracle_instances: {{ sam_oracle_instances | default([]) | length }} instances
 
-        - name: DEBUG — print raw product_usage output for each SID
+        - name: DEBUG — print all raw query outputs
           ansible.builtin.debug:
             msg: |
-              product_usage_results[{{ _idx }}]:
-              stdout length: {{ product_usage_results.results[_idx].stdout | default('') | length }}
-              stdout: "{{ product_usage_results.results[_idx].stdout | default('') | truncate(500) }}"
-          loop: "{{ range(0, sam_oracle_instances | default([]) | length) | list }}"
+              ===== SID={{ item.0.sid }} (index {{ item.1 }}) =====
+
+              product_usage stdout:
+              {{ product_usage_results.results[item.1].stdout | default('(empty)') }}
+
+              voption stdout:
+              {{ voption_results.results[item.1].stdout | default('(empty)') }}
+
+              mgmt_pack stdout:
+              {{ mgmt_pack_results.results[item.1].stdout | default('(empty)') }}
+
+              pdb_count stdout:
+              {{ pdb_count_results.results[item.1].stdout | default('(empty)') }}
+          loop: "{{ sam_oracle_instances | default([]) | zip(range(sam_oracle_instances | default([]) | length)) | list }}"
           loop_control:
-            loop_var: _idx
-            label: "index {{ _idx }}"
+            label: "{{ item.0.sid }}"
 
         - name: DEBUG — print per-SID licensed options
           ansible.builtin.debug:
