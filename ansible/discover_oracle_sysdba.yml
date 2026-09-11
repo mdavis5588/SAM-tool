@@ -840,7 +840,7 @@
         SELECT '{"pdb_name":"'       || REPLACE(p.name,'"','\"')                    ||
                '","product":"'       || REPLACE(REPLACE(pf.product,'\','\\'),'"','\"') ||
                '","feature_name":"'  || REPLACE(REPLACE(pf.feature_being_used,'\','\\'),'"','\"') ||
-               '","usage_status":"'  || DECODE(MAX(pf.usage),'6.CURRENT_USAGE','CURRENT_USAGE','4.PAST_USAGE','PAST_USAGE','5.PAST_OR_CURRENT_USAGE','PAST_USAGE','NO_USAGE') ||
+               '","usage_status":"'  || DECODE(MAX(pf.usage),'6.CURRENT_USAGE','CURRENT_USAGE','4.PAST_USAGE','PAST_USAGE','5.PAST_OR_CURRENT_USAGE','PAST_OR_CURRENT_USAGE','NO_USAGE') ||
                '","db_version":"'    || SUBSTR(MAX(pf.version),1,20)               ||
                '","detected_usages":' || NVL(MAX(pf.detected_usages),0)            ||
                ',"total_samples":'   || NVL(MAX(pf.total_samples),0)               ||
