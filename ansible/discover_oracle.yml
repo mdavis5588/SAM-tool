@@ -981,10 +981,6 @@
           {{ product_usage_results.results[_i | int].stdout_lines | default([])
              | map('trim') | select('match', '^[{]')
              | map('from_json') | list }}
-        _vopt_rows: >-
-          {{ voption_results.results[_i | int].stdout_lines | default([])
-             | map('trim') | select('match', '^[{]')
-             | map('from_json') | list }}
         _mgmt_rows: >-
           {{ mgmt_pack_results.results[_i | int].stdout_lines | default([])
              | map('trim') | select('match', '^[{]')
@@ -993,9 +989,11 @@
              | map(attribute='value') | map('upper') | list }}
         _pdb_ct: >-
           {{ pdb_count_results.results[_i | int].stdout | default('0') | trim | int }}
+        # Past usage still creates a licence obligation, so it counts as in-use.
         _cur_prods: >-
           {{ _prod_rows
-             | selectattr('usage_status', 'in', ['CURRENT_USAGE', 'PAST_OR_CURRENT_USAGE'])
+             | selectattr('usage_status', 'in',
+                          ['CURRENT_USAGE', 'PAST_OR_CURRENT_USAGE', 'PAST_USAGE'])
              | map(attribute='product') | map('lower') | list }}
         _prod_map:
           partitioning:                "Partitioning"
@@ -1022,9 +1020,6 @@
             {{
               (
                 _from_prod
-                + ((_vopt_rows | selectattr('option', 'equalto', 'partitioning')
-                                | selectattr('installed', 'equalto', true)
-                                | list | length > 0) | ternary(['Partitioning'], []))
                 + ((_mgmt_rows | select('search', 'DIAGNOSTIC') | list | length > 0) | ternary(['Diagnostics Pack'], []))
                 + ((_mgmt_rows | select('equalto', 'DIAGNOSTIC+TUNING') | list | length > 0) | ternary(['Tuning Pack'], []))
                 + (((_pdb_ct | int) > 3) | ternary(['Multitenant'], []))
