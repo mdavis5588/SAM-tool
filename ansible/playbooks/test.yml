@@ -1,7 +1,340 @@
-===== SID=ORCLCDB (index 0) =====\n\nproduct_usage stdout:\n{\"product\":\"Active Data Guard\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Analytics\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Compression\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Security\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Database Vault\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Diagnostics Pack\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Label Security\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Multitenant\",\"usage_status\":\"PAST_USAGE\"}\n{\"product\":\"OLAP\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Partitioning\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Real Application Clusters\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Spatial and Graph\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Tuning Pack\",\"usage_status\":\"NO_USAGE\"}\n\nvoption stdout:\n{\"option\":\"olap\",\"installed\":true}\n{\"option\":\"partitioning\",\"installed\":true}\n{\"option\":\"real application clusters\",\"installed\":false}\n{\"option\":\"spatial\",\"installed\":true}\n\nmgmt_pack stdout:\n{\"con_id\":1,\"name\":\"control_management_pack_access\",\"value\":\"DIAGNOSTIC+TUNING\"}\n{\"con_id\":1,\"name\":\"enable_ddl_logging\",\"value\":\"FALSE\"}\n\npdb_count stdout:\n\t 2\n
+Insert licensed options per instance
  
- 
-===== SID=SAMTST1 (index 1) =====\n\nproduct_usage stdout:\n{\"product\":\"Active Data Guard\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Analytics\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Compression\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Security\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Database Vault\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Diagnostics Pack\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Label Security\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Multitenant\",\"usage_status\":\"PAST_USAGE\"}\n{\"product\":\"OLAP\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Partitioning\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Real Application Clusters\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Spatial and Graph\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Tuning Pack\",\"usage_status\":\"NO_USAGE\"}\n\nvoption stdout:\n{\"option\":\"olap\",\"installed\":true}\n{\"option\":\"partitioning\",\"installed\":true}\n{\"option\":\"real application clusters\",\"installed\":false}\n{\"option\":\"spatial\",\"installed\":true}\n\nmgmt_pack stdout:\n{\"con_id\":1,\"name\":\"control_management_pack_access\",\"value\":\"DIAGNOSTIC+TUNING\"}\n{\"con_id\":1,\"name\":\"enable_ddl_logging\",\"value\":\"FALSE\"}\n\npdb_count stdout:\n\t 2\n
- 
- 
-===== SID=SAMTST2 (index 2) =====\n\nproduct_usage stdout:\n{\"product\":\"Active Data Guard\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Analytics\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Compression\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Advanced Security\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Database Vault\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Diagnostics Pack\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Label Security\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Multitenant\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"OLAP\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Partitioning\",\"usage_status\":\"PAST_USAGE\"}\n{\"product\":\"Real Application Clusters\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Spatial and Graph\",\"usage_status\":\"NO_USAGE\"}\n{\"product\":\"Tuning Pack\",\"usage_status\":\"NO_USAGE\"}\n\nvoption stdout:\n{\"option\":\"olap\",\"installed\":true}\n{\"option\":\"partitioning\",\"installed\":true}\n{\"option\":\"real application clusters\",\"installed\":false}\n{\"option\":\"spatial\",\"installed\":true}\n\nmgmt_pack stdout:\n{\"con_id\":0,\"name\":\"control_management_pack_access\",\"value\":\"DIAGNOSTIC+TUNING\"}\n{\"con_id\":0,\"name\":\"enable_ddl_logging\",\"value\":\"FALSE\"}\n\npdb_count stdout:\n\t 0\n
+{
+  "results": [
+    {
+      "failed": true,
+      "msg": "Cannot execute SQL 'INSERT INTO client_megantest.oracle_options\n    (instance_id, option_name, status, discovery_run_id)\nSELECT i.instance_id,\n       %(option_name)s,\n       'TRUE',\n       %(run_id)s\nFROM   client_megantest.oracle_instances i\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\nWHERE  s.hostname = %(hostname)s\n  AND  i.oracle_sid = %(sid)s\nON CONFLICT (instance_id, option_name) DO UPDATE SET\n  status           = 'TRUE',\n  discovery_run_id = EXCLUDED.discovery_run_id\n' {'option_name': 'Diagnostics Pack', 'run_id': '20260914132049-79f6a4', 'hostname': '172.16.34.131', 'sid': 'ORCLCDB'}: there is no unique or exclusion constraint matching the ON CONFLICT specification\n, query list: [\"INSERT INTO client_megantest.oracle_options\\n    (instance_id, option_name, status, discovery_run_id)\\nSELECT i.instance_id,\\n       %(option_name)s,\\n       'TRUE',\\n       %(run_id)s\\nFROM   client_megantest.oracle_instances i\\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\\nWHERE  s.hostname = %(hostname)s\\n  AND  i.oracle_sid = %(sid)s\\nON CONFLICT (instance_id, option_name) DO UPDATE SET\\n  status           = 'TRUE',\\n  discovery_run_id = EXCLUDED.discovery_run_id\\n\"]",
+      "invocation": {
+        "module_args": {
+          "db": "oracle_sam",
+          "login_host": "172.16.43.24",
+          "login_port": 5432,
+          "login_user": "sam_user",
+          "login_password": "VALUE_SPECIFIED_IN_NO_LOG_PARAMETER",
+          "query": "INSERT INTO client_megantest.oracle_options\n    (instance_id, option_name, status, discovery_run_id)\nSELECT i.instance_id,\n       %(option_name)s,\n       'TRUE',\n       %(run_id)s\nFROM   client_megantest.oracle_instances i\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\nWHERE  s.hostname = %(hostname)s\n  AND  i.oracle_sid = %(sid)s\nON CONFLICT (instance_id, option_name) DO UPDATE SET\n  status           = 'TRUE',\n  discovery_run_id = EXCLUDED.discovery_run_id\n",
+          "named_args": {
+            "option_name": "Diagnostics Pack",
+            "run_id": "20260914132049-79f6a4",
+            "hostname": "172.16.34.131",
+            "sid": "ORCLCDB"
+          },
+          "port": 5432,
+          "login_unix_socket": "",
+          "ssl_mode": "prefer",
+          "connect_params": {},
+          "autocommit": false,
+          "trust_input": true,
+          "ca_cert": null,
+          "ssl_cert": null,
+          "ssl_key": null,
+          "positional_args": null,
+          "session_role": null,
+          "encoding": null,
+          "search_path": null
+        }
+      },
+      "_ansible_no_log": null,
+      "changed": false,
+      "item": [
+        {
+          "sid": "ORCLCDB",
+          "options": [
+            "Diagnostics Pack",
+            "Tuning Pack"
+          ]
+        },
+        "Diagnostics Pack"
+      ],
+      "ansible_loop_var": "item",
+      "_ansible_item_label": "ORCLCDB/Diagnostics Pack"
+    },
+    {
+      "failed": true,
+      "msg": "Cannot execute SQL 'INSERT INTO client_megantest.oracle_options\n    (instance_id, option_name, status, discovery_run_id)\nSELECT i.instance_id,\n       %(option_name)s,\n       'TRUE',\n       %(run_id)s\nFROM   client_megantest.oracle_instances i\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\nWHERE  s.hostname = %(hostname)s\n  AND  i.oracle_sid = %(sid)s\nON CONFLICT (instance_id, option_name) DO UPDATE SET\n  status           = 'TRUE',\n  discovery_run_id = EXCLUDED.discovery_run_id\n' {'option_name': 'Tuning Pack', 'run_id': '20260914132049-79f6a4', 'hostname': '172.16.34.131', 'sid': 'ORCLCDB'}: there is no unique or exclusion constraint matching the ON CONFLICT specification\n, query list: [\"INSERT INTO client_megantest.oracle_options\\n    (instance_id, option_name, status, discovery_run_id)\\nSELECT i.instance_id,\\n       %(option_name)s,\\n       'TRUE',\\n       %(run_id)s\\nFROM   client_megantest.oracle_instances i\\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\\nWHERE  s.hostname = %(hostname)s\\n  AND  i.oracle_sid = %(sid)s\\nON CONFLICT (instance_id, option_name) DO UPDATE SET\\n  status           = 'TRUE',\\n  discovery_run_id = EXCLUDED.discovery_run_id\\n\"]",
+      "invocation": {
+        "module_args": {
+          "db": "oracle_sam",
+          "login_host": "172.16.43.24",
+          "login_port": 5432,
+          "login_user": "sam_user",
+          "login_password": "VALUE_SPECIFIED_IN_NO_LOG_PARAMETER",
+          "query": "INSERT INTO client_megantest.oracle_options\n    (instance_id, option_name, status, discovery_run_id)\nSELECT i.instance_id,\n       %(option_name)s,\n       'TRUE',\n       %(run_id)s\nFROM   client_megantest.oracle_instances i\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\nWHERE  s.hostname = %(hostname)s\n  AND  i.oracle_sid = %(sid)s\nON CONFLICT (instance_id, option_name) DO UPDATE SET\n  status           = 'TRUE',\n  discovery_run_id = EXCLUDED.discovery_run_id\n",
+          "named_args": {
+            "option_name": "Tuning Pack",
+            "run_id": "20260914132049-79f6a4",
+            "hostname": "172.16.34.131",
+            "sid": "ORCLCDB"
+          },
+          "port": 5432,
+          "login_unix_socket": "",
+          "ssl_mode": "prefer",
+          "connect_params": {},
+          "autocommit": false,
+          "trust_input": true,
+          "ca_cert": null,
+          "ssl_cert": null,
+          "ssl_key": null,
+          "positional_args": null,
+          "session_role": null,
+          "encoding": null,
+          "search_path": null
+        }
+      },
+      "_ansible_no_log": null,
+      "changed": false,
+      "item": [
+        {
+          "sid": "ORCLCDB",
+          "options": [
+            "Diagnostics Pack",
+            "Tuning Pack"
+          ]
+        },
+        "Tuning Pack"
+      ],
+      "ansible_loop_var": "item",
+      "_ansible_item_label": "ORCLCDB/Tuning Pack"
+    },
+    {
+      "failed": true,
+      "msg": "Cannot execute SQL 'INSERT INTO client_megantest.oracle_options\n    (instance_id, option_name, status, discovery_run_id)\nSELECT i.instance_id,\n       %(option_name)s,\n       'TRUE',\n       %(run_id)s\nFROM   client_megantest.oracle_instances i\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\nWHERE  s.hostname = %(hostname)s\n  AND  i.oracle_sid = %(sid)s\nON CONFLICT (instance_id, option_name) DO UPDATE SET\n  status           = 'TRUE',\n  discovery_run_id = EXCLUDED.discovery_run_id\n' {'option_name': 'Diagnostics Pack', 'run_id': '20260914132049-79f6a4', 'hostname': '172.16.34.131', 'sid': 'SAMTST1'}: there is no unique or exclusion constraint matching the ON CONFLICT specification\n, query list: [\"INSERT INTO client_megantest.oracle_options\\n    (instance_id, option_name, status, discovery_run_id)\\nSELECT i.instance_id,\\n       %(option_name)s,\\n       'TRUE',\\n       %(run_id)s\\nFROM   client_megantest.oracle_instances i\\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\\nWHERE  s.hostname = %(hostname)s\\n  AND  i.oracle_sid = %(sid)s\\nON CONFLICT (instance_id, option_name) DO UPDATE SET\\n  status           = 'TRUE',\\n  discovery_run_id = EXCLUDED.discovery_run_id\\n\"]",
+      "invocation": {
+        "module_args": {
+          "db": "oracle_sam",
+          "login_host": "172.16.43.24",
+          "login_port": 5432,
+          "login_user": "sam_user",
+          "login_password": "VALUE_SPECIFIED_IN_NO_LOG_PARAMETER",
+          "query": "INSERT INTO client_megantest.oracle_options\n    (instance_id, option_name, status, discovery_run_id)\nSELECT i.instance_id,\n       %(option_name)s,\n       'TRUE',\n       %(run_id)s\nFROM   client_megantest.oracle_instances i\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\nWHERE  s.hostname = %(hostname)s\n  AND  i.oracle_sid = %(sid)s\nON CONFLICT (instance_id, option_name) DO UPDATE SET\n  status           = 'TRUE',\n  discovery_run_id = EXCLUDED.discovery_run_id\n",
+          "named_args": {
+            "option_name": "Diagnostics Pack",
+            "run_id": "20260914132049-79f6a4",
+            "hostname": "172.16.34.131",
+            "sid": "SAMTST1"
+          },
+          "port": 5432,
+          "login_unix_socket": "",
+          "ssl_mode": "prefer",
+          "connect_params": {},
+          "autocommit": false,
+          "trust_input": true,
+          "ca_cert": null,
+          "ssl_cert": null,
+          "ssl_key": null,
+          "positional_args": null,
+          "session_role": null,
+          "encoding": null,
+          "search_path": null
+        }
+      },
+      "_ansible_no_log": null,
+      "changed": false,
+      "item": [
+        {
+          "sid": "SAMTST1",
+          "options": [
+            "Diagnostics Pack",
+            "Tuning Pack"
+          ]
+        },
+        "Diagnostics Pack"
+      ],
+      "ansible_loop_var": "item",
+      "_ansible_item_label": "SAMTST1/Diagnostics Pack"
+    },
+    {
+      "failed": true,
+      "msg": "Cannot execute SQL 'INSERT INTO client_megantest.oracle_options\n    (instance_id, option_name, status, discovery_run_id)\nSELECT i.instance_id,\n       %(option_name)s,\n       'TRUE',\n       %(run_id)s\nFROM   client_megantest.oracle_instances i\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\nWHERE  s.hostname = %(hostname)s\n  AND  i.oracle_sid = %(sid)s\nON CONFLICT (instance_id, option_name) DO UPDATE SET\n  status           = 'TRUE',\n  discovery_run_id = EXCLUDED.discovery_run_id\n' {'option_name': 'Tuning Pack', 'run_id': '20260914132049-79f6a4', 'hostname': '172.16.34.131', 'sid': 'SAMTST1'}: there is no unique or exclusion constraint matching the ON CONFLICT specification\n, query list: [\"INSERT INTO client_megantest.oracle_options\\n    (instance_id, option_name, status, discovery_run_id)\\nSELECT i.instance_id,\\n       %(option_name)s,\\n       'TRUE',\\n       %(run_id)s\\nFROM   client_megantest.oracle_instances i\\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\\nWHERE  s.hostname = %(hostname)s\\n  AND  i.oracle_sid = %(sid)s\\nON CONFLICT (instance_id, option_name) DO UPDATE SET\\n  status           = 'TRUE',\\n  discovery_run_id = EXCLUDED.discovery_run_id\\n\"]",
+      "invocation": {
+        "module_args": {
+          "db": "oracle_sam",
+          "login_host": "172.16.43.24",
+          "login_port": 5432,
+          "login_user": "sam_user",
+          "login_password": "VALUE_SPECIFIED_IN_NO_LOG_PARAMETER",
+          "query": "INSERT INTO client_megantest.oracle_options\n    (instance_id, option_name, status, discovery_run_id)\nSELECT i.instance_id,\n       %(option_name)s,\n       'TRUE',\n       %(run_id)s\nFROM   client_megantest.oracle_instances i\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\nWHERE  s.hostname = %(hostname)s\n  AND  i.oracle_sid = %(sid)s\nON CONFLICT (instance_id, option_name) DO UPDATE SET\n  status           = 'TRUE',\n  discovery_run_id = EXCLUDED.discovery_run_id\n",
+          "named_args": {
+            "option_name": "Tuning Pack",
+            "run_id": "20260914132049-79f6a4",
+            "hostname": "172.16.34.131",
+            "sid": "SAMTST1"
+          },
+          "port": 5432,
+          "login_unix_socket": "",
+          "ssl_mode": "prefer",
+          "connect_params": {},
+          "autocommit": false,
+          "trust_input": true,
+          "ca_cert": null,
+          "ssl_cert": null,
+          "ssl_key": null,
+          "positional_args": null,
+          "session_role": null,
+          "encoding": null,
+          "search_path": null
+        }
+      },
+      "_ansible_no_log": null,
+      "changed": false,
+      "item": [
+        {
+          "sid": "SAMTST1",
+          "options": [
+            "Diagnostics Pack",
+            "Tuning Pack"
+          ]
+        },
+        "Tuning Pack"
+      ],
+      "ansible_loop_var": "item",
+      "_ansible_item_label": "SAMTST1/Tuning Pack"
+    },
+    {
+      "failed": true,
+      "msg": "Cannot execute SQL 'INSERT INTO client_megantest.oracle_options\n    (instance_id, option_name, status, discovery_run_id)\nSELECT i.instance_id,\n       %(option_name)s,\n       'TRUE',\n       %(run_id)s\nFROM   client_megantest.oracle_instances i\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\nWHERE  s.hostname = %(hostname)s\n  AND  i.oracle_sid = %(sid)s\nON CONFLICT (instance_id, option_name) DO UPDATE SET\n  status           = 'TRUE',\n  discovery_run_id = EXCLUDED.discovery_run_id\n' {'option_name': 'Partitioning', 'run_id': '20260914132050-79f6a4', 'hostname': '172.16.34.131', 'sid': 'SAMTST2'}: there is no unique or exclusion constraint matching the ON CONFLICT specification\n, query list: [\"INSERT INTO client_megantest.oracle_options\\n    (instance_id, option_name, status, discovery_run_id)\\nSELECT i.instance_id,\\n       %(option_name)s,\\n       'TRUE',\\n       %(run_id)s\\nFROM   client_megantest.oracle_instances i\\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\\nWHERE  s.hostname = %(hostname)s\\n  AND  i.oracle_sid = %(sid)s\\nON CONFLICT (instance_id, option_name) DO UPDATE SET\\n  status           = 'TRUE',\\n  discovery_run_id = EXCLUDED.discovery_run_id\\n\"]",
+      "invocation": {
+        "module_args": {
+          "db": "oracle_sam",
+          "login_host": "172.16.43.24",
+          "login_port": 5432,
+          "login_user": "sam_user",
+          "login_password": "VALUE_SPECIFIED_IN_NO_LOG_PARAMETER",
+          "query": "INSERT INTO client_megantest.oracle_options\n    (instance_id, option_name, status, discovery_run_id)\nSELECT i.instance_id,\n       %(option_name)s,\n       'TRUE',\n       %(run_id)s\nFROM   client_megantest.oracle_instances i\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\nWHERE  s.hostname = %(hostname)s\n  AND  i.oracle_sid = %(sid)s\nON CONFLICT (instance_id, option_name) DO UPDATE SET\n  status           = 'TRUE',\n  discovery_run_id = EXCLUDED.discovery_run_id\n",
+          "named_args": {
+            "option_name": "Partitioning",
+            "run_id": "20260914132050-79f6a4",
+            "hostname": "172.16.34.131",
+            "sid": "SAMTST2"
+          },
+          "port": 5432,
+          "login_unix_socket": "",
+          "ssl_mode": "prefer",
+          "connect_params": {},
+          "autocommit": false,
+          "trust_input": true,
+          "ca_cert": null,
+          "ssl_cert": null,
+          "ssl_key": null,
+          "positional_args": null,
+          "session_role": null,
+          "encoding": null,
+          "search_path": null
+        }
+      },
+      "_ansible_no_log": null,
+      "changed": false,
+      "item": [
+        {
+          "sid": "SAMTST2",
+          "options": [
+            "Partitioning",
+            "Diagnostics Pack",
+            "Tuning Pack"
+          ]
+        },
+        "Partitioning"
+      ],
+      "ansible_loop_var": "item",
+      "_ansible_item_label": "SAMTST2/Partitioning"
+    },
+    {
+      "failed": true,
+      "msg": "Cannot execute SQL 'INSERT INTO client_megantest.oracle_options\n    (instance_id, option_name, status, discovery_run_id)\nSELECT i.instance_id,\n       %(option_name)s,\n       'TRUE',\n       %(run_id)s\nFROM   client_megantest.oracle_instances i\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\nWHERE  s.hostname = %(hostname)s\n  AND  i.oracle_sid = %(sid)s\nON CONFLICT (instance_id, option_name) DO UPDATE SET\n  status           = 'TRUE',\n  discovery_run_id = EXCLUDED.discovery_run_id\n' {'option_name': 'Diagnostics Pack', 'run_id': '20260914132050-79f6a4', 'hostname': '172.16.34.131', 'sid': 'SAMTST2'}: there is no unique or exclusion constraint matching the ON CONFLICT specification\n, query list: [\"INSERT INTO client_megantest.oracle_options\\n    (instance_id, option_name, status, discovery_run_id)\\nSELECT i.instance_id,\\n       %(option_name)s,\\n       'TRUE',\\n       %(run_id)s\\nFROM   client_megantest.oracle_instances i\\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\\nWHERE  s.hostname = %(hostname)s\\n  AND  i.oracle_sid = %(sid)s\\nON CONFLICT (instance_id, option_name) DO UPDATE SET\\n  status           = 'TRUE',\\n  discovery_run_id = EXCLUDED.discovery_run_id\\n\"]",
+      "invocation": {
+        "module_args": {
+          "db": "oracle_sam",
+          "login_host": "172.16.43.24",
+          "login_port": 5432,
+          "login_user": "sam_user",
+          "login_password": "VALUE_SPECIFIED_IN_NO_LOG_PARAMETER",
+          "query": "INSERT INTO client_megantest.oracle_options\n    (instance_id, option_name, status, discovery_run_id)\nSELECT i.instance_id,\n       %(option_name)s,\n       'TRUE',\n       %(run_id)s\nFROM   client_megantest.oracle_instances i\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\nWHERE  s.hostname = %(hostname)s\n  AND  i.oracle_sid = %(sid)s\nON CONFLICT (instance_id, option_name) DO UPDATE SET\n  status           = 'TRUE',\n  discovery_run_id = EXCLUDED.discovery_run_id\n",
+          "named_args": {
+            "option_name": "Diagnostics Pack",
+            "run_id": "20260914132050-79f6a4",
+            "hostname": "172.16.34.131",
+            "sid": "SAMTST2"
+          },
+          "port": 5432,
+          "login_unix_socket": "",
+          "ssl_mode": "prefer",
+          "connect_params": {},
+          "autocommit": false,
+          "trust_input": true,
+          "ca_cert": null,
+          "ssl_cert": null,
+          "ssl_key": null,
+          "positional_args": null,
+          "session_role": null,
+          "encoding": null,
+          "search_path": null
+        }
+      },
+      "_ansible_no_log": null,
+      "changed": false,
+      "item": [
+        {
+          "sid": "SAMTST2",
+          "options": [
+            "Partitioning",
+            "Diagnostics Pack",
+            "Tuning Pack"
+          ]
+        },
+        "Diagnostics Pack"
+      ],
+      "ansible_loop_var": "item",
+      "_ansible_item_label": "SAMTST2/Diagnostics Pack"
+    },
+    {
+      "failed": true,
+      "msg": "Cannot execute SQL 'INSERT INTO client_megantest.oracle_options\n    (instance_id, option_name, status, discovery_run_id)\nSELECT i.instance_id,\n       %(option_name)s,\n       'TRUE',\n       %(run_id)s\nFROM   client_megantest.oracle_instances i\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\nWHERE  s.hostname = %(hostname)s\n  AND  i.oracle_sid = %(sid)s\nON CONFLICT (instance_id, option_name) DO UPDATE SET\n  status           = 'TRUE',\n  discovery_run_id = EXCLUDED.discovery_run_id\n' {'option_name': 'Tuning Pack', 'run_id': '20260914132050-79f6a4', 'hostname': '172.16.34.131', 'sid': 'SAMTST2'}: there is no unique or exclusion constraint matching the ON CONFLICT specification\n, query list: [\"INSERT INTO client_megantest.oracle_options\\n    (instance_id, option_name, status, discovery_run_id)\\nSELECT i.instance_id,\\n       %(option_name)s,\\n       'TRUE',\\n       %(run_id)s\\nFROM   client_megantest.oracle_instances i\\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\\nWHERE  s.hostname = %(hostname)s\\n  AND  i.oracle_sid = %(sid)s\\nON CONFLICT (instance_id, option_name) DO UPDATE SET\\n  status           = 'TRUE',\\n  discovery_run_id = EXCLUDED.discovery_run_id\\n\"]",
+      "invocation": {
+        "module_args": {
+          "db": "oracle_sam",
+          "login_host": "172.16.43.24",
+          "login_port": 5432,
+          "login_user": "sam_user",
+          "login_password": "VALUE_SPECIFIED_IN_NO_LOG_PARAMETER",
+          "query": "INSERT INTO client_megantest.oracle_options\n    (instance_id, option_name, status, discovery_run_id)\nSELECT i.instance_id,\n       %(option_name)s,\n       'TRUE',\n       %(run_id)s\nFROM   client_megantest.oracle_instances i\nJOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id\nWHERE  s.hostname = %(hostname)s\n  AND  i.oracle_sid = %(sid)s\nON CONFLICT (instance_id, option_name) DO UPDATE SET\n  status           = 'TRUE',\n  discovery_run_id = EXCLUDED.discovery_run_id\n",
+          "named_args": {
+            "option_name": "Tuning Pack",
+            "run_id": "20260914132050-79f6a4",
+            "hostname": "172.16.34.131",
+            "sid": "SAMTST2"
+          },
+          "port": 5432,
+          "login_unix_socket": "",
+          "ssl_mode": "prefer",
+          "connect_params": {},
+          "autocommit": false,
+          "trust_input": true,
+          "ca_cert": null,
+          "ssl_cert": null,
+          "ssl_key": null,
+          "positional_args": null,
+          "session_role": null,
+          "encoding": null,
+          "search_path": null
+        }
+      },
+      "_ansible_no_log": null,
+      "changed": false,
+      "item": [
+        {
+          "sid": "SAMTST2",
+          "options": [
+            "Partitioning",
+            "Diagnostics Pack",
+            "Tuning Pack"
+          ]
+        },
+        "Tuning Pack"
+      ],
+      "ansible_loop_var": "item",
+      "_ansible_item_label": "SAMTST2/Tuning Pack"
+    }
+  ],
+  "msg": "One or more items failed",
+  "changed": false
+}
