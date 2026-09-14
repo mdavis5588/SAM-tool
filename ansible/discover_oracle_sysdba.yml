@@ -242,9 +242,12 @@
           '"created":"'        || TO_CHAR(d.created,'YYYY-MM-DD')                || '"}'
         FROM   v$instance i
         CROSS  JOIN v$database d
-        CROSS  JOIN (SELECT banner FROM v$version
-                     WHERE  UPPER(banner) LIKE '%ORACLE DATABASE%'
-                     AND    ROWNUM = 1) v;
+        CROSS  JOIN (SELECT COALESCE(
+                       (SELECT MAX(banner) FROM v$version
+                         WHERE UPPER(banner) LIKE '%ORACLE DATABASE%'),
+                       (SELECT MAX(banner) FROM v$version),
+                       'Unknown') AS banner
+                     FROM dual) v;
         EXIT;
         EOF
       loop: "{{ sam_oracle_instances | default([]) }}"
