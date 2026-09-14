@@ -1,6 +1,87 @@
-Assemble SAM discovery payload
  
 {
-  "msg": "the field 'args' has an invalid value ({'sam_payload': {'run_id': '{{ sam_run_id }}', 'hostname': '{{ inventory_hostname }}', 'fqdn': '{{ ansible_fqdn }}', 'ip_address': \"{{ ansible_default_ipv4.address | default('') }}\", 'os_family': '{{ ansible_os_family }}', 'os_distribution': '{{ ansible_distribution }}', 'os_version': '{{ ansible_distribution_version }}', 'environment': \"{{ sam_environment | default('unknown') }}\", 'cpu_sockets': '{{ sam_cpu_sockets | int }}', 'cpu_cores_per_socket': '{{ sam_cpu_cores_per_socket | int }}', 'cpu_threads_per_core': '{{ sam_cpu_threads_per_core | int }}', 'total_physical_cores': '{{ sam_total_physical_cores | int }}', 'cpu_model': '{{ sam_cpu_model }}', 'cpu_architecture': '{{ sam_cpu_architecture }}', 'virt_type': '{{ sam_virt_type }}', 'virt_role': '{{ sam_virt_role }}', 'is_vmware': '{{ sam_is_vmware | bool }}', 'is_exadata': '{{ sam_is_exadata | bool }}', 'total_ram_mb': '{{ ansible_memtotal_mb | default(0) }}', 'discovered_at': '{{ ansible_date_time.iso8601 }}', 'instances': \"{{\\n  sqlplus_results.results\\n  | selectattr('rc', 'equalto', 0)\\n  | map(attribute='stdout')\\n  | map('trim')\\n  | map('from_json')\\n  | list\\n}}\"}}), and could not be converted to an dict.The error was: Expecting value: line 1 column 1 (char 0)\n\nThe error appears to be in '/runner/project/test.yaml': line 900, column 7, but may\nbe elsewhere in the file depending on the exact syntax problem.\n\nThe offending line appears to be:\n\n    # ------------------------------------------------------------------\n    - name: Assemble SAM discovery payload\n      ^ here\n",
-  "_ansible_no_log": false
+  "changed": true,
+  "query": "INSERT INTO client_megantest.discovery_errors\n  (run_id, hostname, oracle_sid, error_type, error_detail)\nVALUES ('20260914143508-11c000', '172.16.34.130', 'ORCLCDB', 'no_output', 'sqlplus exited 0 with no output; instance may be down, not mounted, or the query was blocked')\n",
+  "query_list": [
+    "INSERT INTO client_megantest.discovery_errors\n  (run_id, hostname, oracle_sid, error_type, error_detail)\nVALUES (%(run_id)s, %(hostname)s, %(sid)s, %(error_type)s, %(detail)s)\n"
+  ],
+  "statusmessage": "INSERT 0 1",
+  "query_result": {},
+  "query_all_results": [
+    {}
+  ],
+  "rowcount": 1,
+  "invocation": {
+    "module_args": {
+      "db": "oracle_sam",
+      "login_host": "172.16.43.24",
+      "login_port": 5432,
+      "login_user": "sam_user",
+      "login_password": "VALUE_SPECIFIED_IN_NO_LOG_PARAMETER",
+      "query": "INSERT INTO client_megantest.discovery_errors\n  (run_id, hostname, oracle_sid, error_type, error_detail)\nVALUES (%(run_id)s, %(hostname)s, %(sid)s, %(error_type)s, %(detail)s)\n",
+      "named_args": {
+        "run_id": "20260914143508-11c000",
+        "hostname": "172.16.34.130",
+        "sid": "ORCLCDB",
+        "error_type": "no_output",
+        "detail": "sqlplus exited 0 with no output; instance may be down, not mounted, or the query was blocked"
+      },
+      "port": 5432,
+      "login_unix_socket": "",
+      "ssl_mode": "prefer",
+      "connect_params": {},
+      "autocommit": false,
+      "trust_input": true,
+      "ca_cert": null,
+      "ssl_cert": null,
+      "ssl_key": null,
+      "positional_args": null,
+      "session_role": null,
+      "encoding": null,
+      "search_path": null
+    }
+  },
+  "_ansible_no_log": null,
+  "item": {
+    "changed": false,
+    "stdout": "",
+    "stderr": "",
+    "rc": 0,
+    "cmd": "export ORACLE_HOME=\"/opt/oracle/product/26ai/dbhome_1\"\nexport ORACLE_SID=\"ORCLCDB\"\nexport PATH=\"$ORACLE_HOME/bin:$PATH\"\nsqlplus -s / as sysdba << 'EOF'\nSET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF\nSET LINESIZE 32767\nSELECT\n  '{\"version\":\"'       || SUBSTR(i.version,1,20)                         || '\",'  ||\n  '\"edition\":\"'        || SUBSTR(CASE\n                           WHEN UPPER(v.banner) LIKE '%ENTERPRISE%'          THEN 'Enterprise Edition'\n                           WHEN UPPER(v.banner) LIKE '%STANDARD EDITION 2%'  THEN 'Standard Edition 2'\n                           WHEN UPPER(v.banner) LIKE '%STANDARD%'            THEN 'Standard Edition'\n                           WHEN UPPER(v.banner) LIKE '%EXPRESS%'             THEN 'Express Edition'\n                           ELSE 'Unknown' END, 1, 60)                   || '\",'  ||\n  '\"sid\":\"'            || 'ORCLCDB'                               || '\",'  ||\n  '\"db_name\":\"'        || SUBSTR(d.name,1,30)                            || '\",'  ||\n  '\"db_unique_name\":\"' || SUBSTR(d.db_unique_name,1,64)                  || '\",'  ||\n  '\"is_cdb\":\"'         || d.cdb                                          || '\",'  ||\n  '\"log_mode\":\"'       || d.log_mode                                     || '\",'  ||\n  '\"created\":\"'        || TO_CHAR(d.created,'YYYY-MM-DD')                || '\"}'\nFROM   v$instance i\nCROSS  JOIN v$database d\nCROSS  JOIN (SELECT banner FROM v$version\n             WHERE  UPPER(banner) LIKE '%ORACLE DATABASE%'\n             AND    ROWNUM = 1) v;\nEXIT;\nEOF\n",
+    "start": "2026-09-14 10:35:04.979888",
+    "end": "2026-09-14 10:35:05.027725",
+    "delta": "0:00:00.047837",
+    "msg": "",
+    "invocation": {
+      "module_args": {
+        "_raw_params": "export ORACLE_HOME=\"/opt/oracle/product/26ai/dbhome_1\"\nexport ORACLE_SID=\"ORCLCDB\"\nexport PATH=\"$ORACLE_HOME/bin:$PATH\"\nsqlplus -s / as sysdba << 'EOF'\nSET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF\nSET LINESIZE 32767\nSELECT\n  '{\"version\":\"'       || SUBSTR(i.version,1,20)                         || '\",'  ||\n  '\"edition\":\"'        || SUBSTR(CASE\n                           WHEN UPPER(v.banner) LIKE '%ENTERPRISE%'          THEN 'Enterprise Edition'\n                           WHEN UPPER(v.banner) LIKE '%STANDARD EDITION 2%'  THEN 'Standard Edition 2'\n                           WHEN UPPER(v.banner) LIKE '%STANDARD%'            THEN 'Standard Edition'\n                           WHEN UPPER(v.banner) LIKE '%EXPRESS%'             THEN 'Express Edition'\n                           ELSE 'Unknown' END, 1, 60)                   || '\",'  ||\n  '\"sid\":\"'            || 'ORCLCDB'                               || '\",'  ||\n  '\"db_name\":\"'        || SUBSTR(d.name,1,30)                            || '\",'  ||\n  '\"db_unique_name\":\"' || SUBSTR(d.db_unique_name,1,64)                  || '\",'  ||\n  '\"is_cdb\":\"'         || d.cdb                                          || '\",'  ||\n  '\"log_mode\":\"'       || d.log_mode                                     || '\",'  ||\n  '\"created\":\"'        || TO_CHAR(d.created,'YYYY-MM-DD')                || '\"}'\nFROM   v$instance i\nCROSS  JOIN v$database d\nCROSS  JOIN (SELECT banner FROM v$version\n             WHERE  UPPER(banner) LIKE '%ORACLE DATABASE%'\n             AND    ROWNUM = 1) v;\nEXIT;\nEOF\n",
+        "_uses_shell": true,
+        "stdin_add_newline": true,
+        "strip_empty_ends": true,
+        "argv": null,
+        "chdir": null,
+        "executable": null,
+        "creates": null,
+        "removes": null,
+        "stdin": null
+      }
+    },
+    "stdout_lines": [],
+    "stderr_lines": [],
+    "failed": false,
+    "item": {
+      "sid": "ORCLCDB",
+      "oracle_home": "/opt/oracle/product/26ai/dbhome_1",
+      "autostart": "N"
+    },
+    "ansible_loop_var": "item"
+  },
+  "ansible_loop_var": "item",
+  "_ansible_item_label": "ORCLCDB/rc=0",
+  "_ansible_delegated_vars": {
+    "ansible_host": "localhost",
+    "ansible_port": null,
+    "ansible_user": "oracle",
+    "ansible_connection": "local"
+  }
 }
