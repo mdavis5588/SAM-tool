@@ -1,66 +1,93 @@
--- Finds where an instance discovered by Ansible is being lost before the app.
+-- Lists every Oracle instance recorded in every client schema, so you can see
+-- what discovery actually wrote without needing to know a hostname or schema.
 --
--- EDIT THE TWO PLACEHOLDERS: the hostname below, and replace client_megantest
--- with your client schema throughout (a plain query cannot parameterise a schema).
+-- Nothing to edit. Plain SQL with no psql backslash commands, so it runs in
+-- pgAdmin and DBeaver too. Output arrives as notices: in pgAdmin look at the
+-- Messages tab, not the Data Output grid.
 --
--- Plain SQL, no psql backslash commands, so it runs in pgAdmin or DBeaver too.
--- Run each numbered query separately if your client only shows the last result.
+-- Use it when Ansible clearly collected an instance but the app does not show
+-- it: if the SID is listed here the write worked and the problem is display;
+-- if it is absent the problem is the write.
 
--- 1. Every instance row recorded for the host, active or not.
---    If the 26ai SID is absent here, the write is the problem.
---    If present but is_active = false, something deactivated it.
-SELECT i.oracle_sid,
-       i.edition,
-       i.db_version,
-       i.is_active,
-       i.db_name,
-       i.last_seen,
-       i.discovery_run_id
-FROM   client_megantest.oracle_instances i
-JOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id
-WHERE  s.hostname = '<HOSTNAME>'
-ORDER  BY i.oracle_sid;
+DO $DIAG$
+DECLARE
+  v_schema TEXT;
+  v_row    RECORD;
+  v_n      INTEGER;
+BEGIN
+  FOR v_schema IN SELECT schema_name FROM sam_admin.clients ORDER BY schema_name
+  LOOP
+    RAISE NOTICE '';
+    RAISE NOTICE '=== schema % ===', v_schema;
 
+    -- A half-provisioned schema must not abort the whole report.
+    IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+                   WHERE table_schema = v_schema AND table_name = 'oracle_instances') THEN
+      RAISE NOTICE '  no oracle_instances table — schema not provisioned; skipping';
+      CONTINUE;
+    END IF;
 
--- 2. Anything the discovery run recorded as a failure for this host.
---    no_output or unparsable_output here means sqlplus returned nothing usable.
-SELECT e.oracle_sid, e.error_type, e.error_detail, e.recorded_at
-FROM   client_megantest.discovery_errors e
-WHERE  e.hostname = '<HOSTNAME>'
-  AND  e.recorded_at >= NOW() - INTERVAL '2 days'
-ORDER  BY e.recorded_at DESC;
+    -- Instances, active or not, with the host they belong to.
+    EXECUTE format(
+      'SELECT COUNT(*) FROM %I.oracle_instances', v_schema) INTO v_n;
+    RAISE NOTICE '  % instance row(s) total', v_n;
 
+    FOR v_row IN EXECUTE format(
+      'SELECT s.hostname, i.oracle_sid, COALESCE(i.edition,''(null)'') AS edition,
+              COALESCE(i.db_version,''(null)'') AS db_version, i.is_active,
+              COALESCE(to_char(i.last_seen,''YYYY-MM-DD HH24:MI''),''never'') AS last_seen
+         FROM %I.oracle_instances i
+         JOIN %I.oracle_servers   s ON s.server_id = i.server_id
+        ORDER BY s.hostname, i.oracle_sid', v_schema, v_schema)
+    LOOP
+      RAISE NOTICE '  % | % | % | % | active=% | seen %',
+        v_row.hostname, v_row.oracle_sid, v_row.edition,
+        v_row.db_version, v_row.is_active, v_row.last_seen;
+    END LOOP;
 
--- 3. What the licence position view shows for the host.
---    Expect FEWER rows than instances: the view is DISTINCT ON (server, edition),
---    deliberately one row per edition because the licence is per server. Two
---    instances both on Enterprise Edition therefore collapse into one row, and
---    db_version is not part of that key, so the surviving version is arbitrary.
-SELECT product_family, product_detail, licence_metric, licences_required
-FROM   client_megantest.license_position
-WHERE  hostname = '<HOSTNAME>'
-ORDER  BY product_family, product_detail;
+    -- Servers with no instance rows at all.
+    FOR v_row IN EXECUTE format(
+      'SELECT s.hostname
+         FROM %I.oracle_servers s
+        WHERE NOT EXISTS (SELECT 1 FROM %I.oracle_instances i
+                          WHERE i.server_id = s.server_id)
+        ORDER BY s.hostname', v_schema, v_schema)
+    LOOP
+      RAISE NOTICE '  %  <- server row exists but has NO instances', v_row.hostname;
+    END LOOP;
 
+    -- Recent discovery failures, if the table is present.
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+               WHERE table_schema = v_schema AND table_name = 'discovery_errors') THEN
+      FOR v_row IN EXECUTE format(
+        'SELECT hostname, COALESCE(oracle_sid,''-'') AS oracle_sid, error_type,
+                LEFT(COALESCE(error_detail,''''),90) AS detail
+           FROM %I.discovery_errors
+          WHERE recorded_at >= NOW() - INTERVAL ''2 days''
+          ORDER BY recorded_at DESC LIMIT 25', v_schema)
+      LOOP
+        RAISE NOTICE '  ERROR % / % : % — %',
+          v_row.hostname, v_row.oracle_sid, v_row.error_type, v_row.detail;
+      END LOOP;
+    ELSE
+      RAISE NOTICE '  (no discovery_errors table — run migration 40)';
+    END IF;
 
--- 4. Instances per edition next to what the licence view kept, side by side.
-SELECT i.edition,
-       COUNT(*)                                        AS instances,
-       STRING_AGG(i.oracle_sid || ' (' || COALESCE(i.db_version,'?') || ')',
-                  ', ' ORDER BY i.oracle_sid)          AS sids_and_versions
-FROM   client_megantest.oracle_instances i
-JOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id
-WHERE  s.hostname = '<HOSTNAME>'
-  AND  i.is_active
-GROUP  BY i.edition
-ORDER  BY i.edition;
-
-
--- 5. Per-SID options, the Oracle Instances table's source.
-SELECT i.oracle_sid, STRING_AGG(o.option_name, ', ' ORDER BY o.option_name) AS options
-FROM   client_megantest.oracle_instances i
-JOIN   client_megantest.oracle_servers   s ON s.server_id = i.server_id
-LEFT   JOIN client_megantest.oracle_options o ON o.instance_id = i.instance_id
-WHERE  s.hostname = '<HOSTNAME>'
-  AND  i.is_active
-GROUP  BY i.oracle_sid
-ORDER  BY i.oracle_sid;
+    -- What the licence view kept. Fewer rows than instances is expected: it is
+    -- DISTINCT ON (server, edition) because the licence is per server, so two
+    -- instances on the same edition collapse into one row.
+    IF EXISTS (SELECT 1 FROM information_schema.views
+               WHERE table_schema = v_schema AND table_name = 'license_position') THEN
+      FOR v_row IN EXECUTE format(
+        'SELECT hostname, product_family, COALESCE(product_detail,''(null)'') AS product_detail
+           FROM %I.license_position
+          WHERE product_family = ''oracle_database''
+          ORDER BY hostname', v_schema)
+      LOOP
+        RAISE NOTICE '  licence row: % | % | %',
+          v_row.hostname, v_row.product_family, v_row.product_detail;
+      END LOOP;
+    END IF;
+  END LOOP;
+END
+$DIAG$;
