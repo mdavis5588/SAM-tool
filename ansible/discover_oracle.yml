@@ -978,17 +978,17 @@
       vars:
         _i: "{{ ansible_loop.index0 | int }}"
         _prod_rows: >-
-          {{ product_usage_results.results[_i | int].stdout
-             | default('') | string | split('\n')
-             | select('match', '^\\{\"') | map('from_json') | list }}
+          {{ product_usage_results.results[_i | int].stdout_lines | default([])
+             | map('trim') | select('match', '^[{]')
+             | map('from_json') | list }}
         _vopt_rows: >-
-          {{ voption_results.results[_i | int].stdout
-             | default('') | string | split('\n')
-             | select('match', '^\\{\"') | map('from_json') | list }}
+          {{ voption_results.results[_i | int].stdout_lines | default([])
+             | map('trim') | select('match', '^[{]')
+             | map('from_json') | list }}
         _mgmt_rows: >-
-          {{ mgmt_pack_results.results[_i | int].stdout
-             | default('') | string | split('\n')
-             | select('match', '^\\{\"') | map('from_json')
+          {{ mgmt_pack_results.results[_i | int].stdout_lines | default([])
+             | map('trim') | select('match', '^[{]')
+             | map('from_json')
              | selectattr('name', 'equalto', 'control_management_pack_access')
              | map(attribute='value') | map('upper') | list }}
         _pdb_ct: >-
