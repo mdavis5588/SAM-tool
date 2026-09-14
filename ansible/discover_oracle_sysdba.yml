@@ -914,12 +914,16 @@
           is_exadata:     "{{ sam_is_exadata | bool }}"
           total_ram_mb:   "{{ ansible_memtotal_mb | default(0) }}"
           discovered_at:  "{{ ansible_date_time.iso8601 }}"
+          # rc 0 only means sqlplus exited cleanly: an instance that is down, or
+          # whose error WHENEVER SQLERROR CONTINUE swallowed, still exits 0 with
+          # empty stdout, and from_json fails on it. Keep only JSON-shaped output.
           instances: >-
             {{
-              sqlplus_results.results
+              sqlplus_results.results | default([])
               | selectattr('rc', 'equalto', 0)
               | map(attribute='stdout')
               | map('trim')
+              | select('match', '^[{]')
               | map('from_json')
               | list
             }}
