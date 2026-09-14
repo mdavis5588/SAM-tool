@@ -994,7 +994,11 @@
           {{ _prod_rows
              | selectattr('usage_status', 'in',
                           ['CURRENT_USAGE', 'PAST_OR_CURRENT_USAGE', 'PAST_USAGE'])
-             | map(attribute='product') | map('lower') | list }}
+             | map(attribute='product') | map('trim') | map('lower') | list }}
+        # Joined so a map key matches as a substring of any product name, the way
+        # the CSV path does it (prod_key in product_raw). "|" never occurs in a
+        # key, so no key can match across the boundary between two names.
+        _cur_prods_blob: "{{ _cur_prods | join('|') }}"
         # No multitenant key: PDB count governs Multitenant, not a usage signal.
         _prod_map:
           partitioning:                "Partitioning"
@@ -1012,7 +1016,7 @@
           advanced analytics:          "Advanced Analytics"
         _from_prod: >-
           {{ _prod_map | dict2items
-             | selectattr('key', 'in', _cur_prods)
+             | selectattr('key', 'in', _cur_prods_blob)
              | map(attribute='value') | list }}
         _entry:
           sid: "{{ item.sid }}"
@@ -1020,7 +1024,7 @@
             {{
               (
                 _from_prod
-                + ((_mgmt_rows | select('search', 'DIAGNOSTIC') | list | length > 0) | ternary(['Diagnostics Pack'], []))
+                + ((_mgmt_rows | select('in', ['DIAGNOSTIC', 'DIAGNOSTIC+TUNING']) | list | length > 0) | ternary(['Diagnostics Pack'], []))
                 + ((_mgmt_rows | select('equalto', 'DIAGNOSTIC+TUNING') | list | length > 0) | ternary(['Tuning Pack'], []))
                 + (((_pdb_ct | int) > 3) | ternary(['Multitenant'], []))
               ) | unique | list
