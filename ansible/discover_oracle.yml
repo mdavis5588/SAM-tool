@@ -989,11 +989,10 @@
              | map(attribute='value') | map('upper') | list }}
         _pdb_ct: >-
           {{ pdb_count_results.results[_i | int].stdout | default('0') | trim | int }}
-        # Past usage still creates a licence obligation, so it counts as in-use.
+        # CURRENT_USAGE only, as the CSV path does (app.py skips any other status).
         _cur_prods: >-
           {{ _prod_rows
-             | selectattr('usage_status', 'in',
-                          ['CURRENT_USAGE', 'PAST_OR_CURRENT_USAGE', 'PAST_USAGE'])
+             | selectattr('usage_status', 'equalto', 'CURRENT_USAGE')
              | map(attribute='product') | map('trim') | map('lower') | list }}
         # Joined so a map key matches as a substring of any product name, the way
         # the CSV path does it (prod_key in product_raw). "|" never occurs in a
@@ -1111,9 +1110,6 @@
           JOIN   {{ sam_client_schema }}.oracle_servers   s ON s.server_id = i.server_id
           WHERE  s.hostname = %(hostname)s
             AND  i.oracle_sid = %(sid)s
-          ON CONFLICT (instance_id, option_name) DO UPDATE SET
-            status           = 'TRUE',
-            discovery_run_id = EXCLUDED.discovery_run_id
         named_args:
           option_name: "{{ item.1 }}"
           run_id:      "{{ sam_run_id }}"
