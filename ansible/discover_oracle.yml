@@ -883,6 +883,62 @@
       ignore_errors: true
       changed_when: false
 
+    # Every per-instance query above sets ignore_errors, so a failure was
+    # invisible. Only rc is examined: those queries run WHENEVER SQLERROR
+    # CONTINUE and empty output is legitimate for most of them (no PDBs, no RAC
+    # nodes, a non-CDB), so treating empty as failure would be noise. A non-zero
+    # rc means sqlplus itself could not run, e.g. a wrong ORACLE_HOME.
+    - name: Record per-instance queries that could not run
+      community.postgresql.postgresql_query:
+        db:             "{{ sam_db_name }}"
+        login_host:     "{{ sam_db_host }}"
+        login_port:     "{{ sam_db_port }}"
+        login_user:     "{{ sam_db_user }}"
+        login_password: "{{ sam_db_password }}"
+        query: |
+          INSERT INTO {{ sam_client_schema }}.discovery_errors
+            (run_id, hostname, oracle_sid, error_type, error_detail)
+          VALUES (%(run_id)s, %(hostname)s, %(sid)s, 'query_failed', %(detail)s)
+        named_args:
+          run_id:   "{{ sam_run_id }}"
+          hostname: "{{ inventory_hostname }}"
+          sid:      "{{ item.1.item.sid | default('') }}"
+          # stderr only, never cmd: the sqlplus command line carries the password.
+          detail: >-
+            {{ (item.0.query ~ ' (rc=' ~ item.1.rc ~ '): '
+                ~ ((item.1.stderr | default('') | trim) or 'no stderr'))
+               | truncate(500, true, '') }}
+      vars:
+        _sam_instance_queries:
+          - query: dba_registry
+            results: "{{ (options_results       | default({'results': []})).results }}"
+          - query: feature_usage
+            results: "{{ (feature_usage_results | default({'results': []})).results }}"
+          - query: nup_users
+            results: "{{ (nup_results           | default({'results': []})).results }}"
+          - query: pdbs
+            results: "{{ (pdb_results           | default({'results': []})).results }}"
+          - query: rac_nodes
+            results: "{{ (rac_results           | default({'results': []})).results }}"
+          - query: mgmt_pack_access
+            results: "{{ (mgmt_pack_results     | default({'results': []})).results }}"
+          - query: product_usage
+            results: "{{ (product_usage_results | default({'results': []})).results }}"
+          - query: pdb_count
+            results: "{{ (pdb_count_results     | default({'results': []})).results }}"
+          - query: v_option
+            results: "{{ (voption_results       | default({'results': []})).results }}"
+          - query: pdb_feature_usage
+            results: "{{ (pdb_feature_results   | default({'results': []})).results }}"
+      loop: "{{ _sam_instance_queries | subelements('results') }}"
+      loop_control:
+        label: "{{ item.0.query }}/{{ item.1.item.sid | default('?') }}"
+      when: item.1.rc | default(0) != 0
+      delegate_to: localhost
+      # Same reason as the task above: a missing discovery_errors table must not
+      # abort discovery. A failure here still shows as a warning in the output.
+      ignore_errors: true
+
     - name: Build extended instance payload list
       ansible.builtin.set_fact:
         sam_instances_extended: "{{ sam_instances_extended | default([]) + [_inst] }}"
