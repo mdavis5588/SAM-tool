@@ -37,6 +37,21 @@ BEGIN
       'sam_admin.install_extended_views is missing. Run database/03_client_template_functions.sql first.';
   END IF;
 
+  -- The installer is what carries the fix, so reinstalling from a stale copy
+  -- would report success and change nothing. Refuse instead of doing that.
+  IF NOT EXISTS (
+    SELECT 1
+    FROM   pg_proc p
+    JOIN   pg_namespace n ON n.oid = p.pronamespace
+    WHERE  n.nspname = 'sam_admin'
+      AND  p.proname = 'install_extended_views'
+      AND  p.prosrc LIKE '%NULLIF(v_inst->''nup_sample_users''%'
+  ) THEN
+    RAISE EXCEPTION
+      'sam_admin.install_extended_views predates the nup_sample_users fix. '
+      'Run database/03_client_template_functions.sql first, then this migration.';
+  END IF;
+
   -- Every client, not just is_active, so a paused client is not left broken.
   FOR v_schema IN SELECT schema_name FROM sam_admin.clients ORDER BY schema_name
   LOOP
