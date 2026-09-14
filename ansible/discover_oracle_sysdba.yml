@@ -255,7 +255,7 @@
       ignore_errors: true
       changed_when: false
 
-    - name: Detect failed sqlplus connections and record errors
+    - name: Record instances that returned no usable output
       community.postgresql.postgresql_query:
         db:             "{{ sam_db_name }}"
         login_host:     "{{ sam_db_host }}"
@@ -265,18 +265,36 @@
         query: |
           INSERT INTO {{ sam_client_schema }}.discovery_errors
             (run_id, hostname, oracle_sid, error_type, error_detail)
-          VALUES (%(run_id)s, %(hostname)s, %(sid)s, 'connection_failed', %(detail)s)
+          VALUES (%(run_id)s, %(hostname)s, %(sid)s, %(error_type)s, %(detail)s)
         named_args:
           run_id:   "{{ sam_run_id }}"
           hostname: "{{ inventory_hostname }}"
           sid:      "{{ item.item.sid }}"
-          detail:   "{{ item.stderr | default('') | truncate(500, true, '') }}"
+          # sqlplus exits 0 even when the instance is down or its error was
+          # swallowed by WHENEVER SQLERROR CONTINUE, so silence and a genuine
+          # connection failure have to be told apart by what came back.
+          error_type: >-
+            {{ 'connection_failed' if item.rc != 0
+               else ('no_output' if item.stdout | default('') | trim == ''
+                     else 'unparsable_output') }}
+          # stderr is empty for an instance that exited 0, so fall back to
+          # whatever stdout held, then to a fixed explanation. Parenthesised
+          # because a filter binds tighter than "or".
+          detail: >-
+            {{ ((item.stderr | default('') | trim)
+                or (item.stdout | default('') | trim)
+                or 'sqlplus exited 0 with no output; instance may be down, not mounted, or the query was blocked')
+               | truncate(500, true, '') }}
       loop: "{{ sqlplus_results.results | default([]) }}"
       loop_control:
-        label: "{{ item.item.sid }}"
+        label: "{{ item.item.sid }}/{{ 'rc=' ~ item.rc }}"
       when:
-        - item.rc != 0 or item.stdout | trim == '' or item.stdout | trim is not match('^\{')
+        - item.rc != 0 or item.stdout | default('') | trim == '' or item.stdout | default('') | trim is not match('^\{')
       delegate_to: localhost
+      # Kept, unlike the data writes: discovery_errors is created by migration 40
+      # and is absent from the base schema, so a client provisioned without it
+      # would otherwise have every discovery run aborted by its own error log.
+      # A failure here still shows as a warning in the run output.
       ignore_errors: true
 
     - name: Query installed options per instance (dba_registry)
