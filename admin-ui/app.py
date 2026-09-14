@@ -2377,7 +2377,7 @@ def _process_csv_upload(schema: str, files) -> dict:
             total_feat_pdb += sum(len(v) for v in pdb_feats.values())
 
         # -- Licensed options detection --
-        # Primary source: _product_usage.csv (usage_status = current_usage).
+        # Primary source: _product_usage.csv (current, past or conditional usage).
         # Fallback for mgmt packs: _mgmt_packs.csv diagnostics/tuning_licensed columns.
         # Multitenant: PDB count governs, not feature/product usage signal.
         pack_options = []
@@ -2399,10 +2399,15 @@ def _process_csv_upload(schema: str, files) -> dict:
             "advanced analytics":            "Advanced Analytics",
         }
 
+        # Past usage still creates a licence obligation, so it counts alongside
+        # current usage. SUPPRESSED_DUE_TO_BUG stays out: it marks a known Oracle
+        # false positive rather than real usage.
+        _licensable_usage = ("current_usage", "past_usage", "past_or_current_usage")
+
         for row in g.get("product_usage", []):
             product_raw = row.get("product", "").strip().strip('"').lower()
             status = row.get("usage_status", "").strip().strip('"').lower()
-            if status != "current_usage":
+            if status not in _licensable_usage:
                 continue
             for prod_key, opt_name in _product_to_option.items():
                 if prod_key in product_raw and opt_name not in pack_options:

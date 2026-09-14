@@ -987,10 +987,13 @@
              | map(attribute='value') | map('upper') | list }}
         _pdb_ct: >-
           {{ pdb_count_results.results[_i | int].stdout | default('0') | trim | int }}
-        # CURRENT_USAGE only, as the CSV path does (app.py skips any other status).
+        # Past usage still creates a licence obligation, so it counts alongside
+        # current usage, matching the CSV path. SUPPRESSED_DUE_TO_BUG stays out:
+        # it marks a known Oracle false positive rather than real usage.
         _cur_prods: >-
           {{ _prod_rows
-             | selectattr('usage_status', 'equalto', 'CURRENT_USAGE')
+             | selectattr('usage_status', 'in',
+                          ['CURRENT_USAGE', 'PAST_USAGE', 'PAST_OR_CURRENT_USAGE'])
              | map(attribute='product') | map('trim') | map('lower') | list }}
         # Joined so a map key matches as a substring of any product name, the way
         # the CSV path does it (prod_key in product_raw). "|" never occurs in a
