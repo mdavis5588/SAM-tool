@@ -996,6 +996,7 @@
              | selectattr('usage_status', 'in',
                           ['CURRENT_USAGE', 'PAST_OR_CURRENT_USAGE', 'PAST_USAGE'])
              | map(attribute='product') | map('lower') | list }}
+        # No multitenant key: PDB count governs Multitenant, not a usage signal.
         _prod_map:
           partitioning:                "Partitioning"
           real application clusters:   "Real Application Clusters (RAC)"
@@ -1010,7 +1011,6 @@
           data masking and subsetting: "Data Masking and Subsetting"
           advanced compression:        "Advanced Compression"
           advanced analytics:          "Advanced Analytics"
-          multitenant:                 "Multitenant"
         _from_prod: >-
           {{ _prod_map | dict2items
              | selectattr('key', 'in', _cur_prods)
