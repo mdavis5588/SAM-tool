@@ -1,3 +1,11 @@
+-- SUPERSEDED BY MIGRATION 45 — DO NOT APPLY.
+--
+-- The function body below predates the is_cdb_root and requires_multitenant_licence
+-- columns written by the canonical template in 03_client_template_functions.sql.
+-- The multitenant view reads both, so applying this migration leaves them
+-- unpopulated and silently breaks multitenant reporting. Migration 45 reinstalls
+-- from the canonical template, which already carries the NULLIF fix.
+--
 -- Migration 44: Directly redeploy upsert_oracle_extended_discovery with NULLIF fix.
 --
 -- Migrations 42 and 43 used nested dollar-quoting inside format() which did
