@@ -954,7 +954,16 @@
           nup_total_users:     "{{ (_nup.nup_total_users  | default(0)) | int }}"
           nup_active_users:    "{{ (_nup.nup_active_users | default(0)) | int }}"
           nup_locked_users:    "{{ (_nup.nup_locked_users | default(0)) | int }}"
-          nup_sample_users:    "{{ _nup.nup_sample_users  | default([]) }}"
+          # default() only substitutes for an undefined value, so a JSON null
+          # from an empty JSON_ARRAYAGG passed straight through as null and hit
+          # the DB function as a scalar. Insist on a real list instead.
+          nup_sample_users: >-
+            {{
+              _nup.nup_sample_users
+              if (_nup.nup_sample_users is sequence
+                  and _nup.nup_sample_users is not string)
+              else []
+            }}
           pdbs:              "{{ (pdb_results            | default({'results': []})).results[_idx | int].stdout | default('') | string | split('\n') | select('match', '^\\{\"') | map('from_json') | list }}"
           rac_nodes:         "{{ (rac_results            | default({'results': []})).results[_idx | int].stdout | default('') | string | split('\n') | select('match', '^\\{\"') | map('from_json') | list }}"
           feature_usage:     "{{ (feature_usage_results  | default({'results': []})).results[_idx | int].stdout | default('') | string | split('\n') | select('match', '^\\{\"') | map('from_json') | list }}"
