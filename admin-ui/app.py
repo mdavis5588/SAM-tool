@@ -52,15 +52,19 @@ _OCI_DB_KEYWORDS = [
 _OCI_OCPU_METRICS = {"ocpu per hour", "ocpu-hour", "ocpu hour"}
 
 
-# Oracle published OCI Database hourly OCPU list prices (USD, as of 2024).
-# Used as fallback when the live API is unreachable.
+# Oracle published OCI Database hourly OCPU list prices (USD).
+# Used as fallback when the live API is unreachable. The Enterprise Edition
+# rates are the ones build_oci_comparison actually selects for the OCI columns,
+# since it requires "enterprise" in a non-ExaCC SKU name; the Standard Edition 2
+# entries below are therefore never chosen by that comparison. Remaining rates
+# date from 2024.
 # Source: https://www.oracle.com/cloud/price-list/
 _OCI_STATIC_SKUS = [
     {
         "name":                 "Oracle Database Enterprise Edition — BYOL",
         "part_number":          "B90453",
         "metric":               "ocpu per hour",
-        "unit_price":           0.4480,
+        "unit_price":           0.10576542,
         "is_byol":              True,
         "is_licence_included":  False,
         "is_exacc":             False,
@@ -69,7 +73,7 @@ _OCI_STATIC_SKUS = [
         "name":                 "Oracle Database Enterprise Edition — Licence Included",
         "part_number":          "B90454",
         "metric":               "ocpu per hour",
-        "unit_price":           2.9008,
+        "unit_price":           0.4403616,
         "is_byol":              False,
         "is_licence_included":  True,
         "is_exacc":             False,
