@@ -432,7 +432,7 @@
                 {% endif %}
                 {% endif %}
                 <td class="py-2 text-end pe-3 text-primary fw-bold">
-                  {% if l.metric in ('processor','processor_perpetual') %}{{ "{:,.0f}".format(l.units_required * 2) }} OCPUs
+                  {% if l.metric in ('processor','processor_perpetual') %}{{ "{:,.0f}".format(l.units_required * 8) }} OCPUs
                   {% else %}<span class="text-muted">N/A</span>{% endif %}
                 </td>
               </tr>
@@ -485,10 +485,9 @@
       {% endif %}
       <div class="card-footer text-muted small py-2">
         <i class="bi bi-info-circle me-1"></i>
-        OCI OCPU mapping: 1 processor licence = 2 OCPUs (x86 core factor 0.5, so
+        OCI OCPU mapping: 4 OCPUs per physical core, so
         {{ "{:,.0f}".format(result.physical_cores) }} cores →
-        {{ "{:,.0f}".format(result.physical_cores // 2) }} proc. licences →
-        {{ "{:,.0f}".format(result.ocpus) }} OCPUs).
+        {{ "{:,.0f}".format(result.ocpus) }} OCPUs.
         NUP licences have no direct OCPU equivalent — shown as N/A.
       </div>
     </div>

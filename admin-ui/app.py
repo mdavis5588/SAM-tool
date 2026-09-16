@@ -6560,11 +6560,11 @@ def licence_analysis():
             # ----------------------------------------------------------
             # OCI comparison
             # ----------------------------------------------------------
-            # Oracle core factor for processor licensing: most x86 = 0.5
-            # 1 physical core licensed = 0.5 processor licences on x86
-            # OCI: 1 processor licence (perpetual) → 2 OCPUs (BYOL)
-            # So total_physical_cores × 0.5 × 2 = total_physical_cores OCPUs
-            ocpus = physical_cores  # net result: 1 physical core = 1 OCPU
+            # OCI sizing is quoted in OCPUs, at 4 OCPUs per physical core,
+            # so 16 physical cores requires 64 OCPUs. This governs the OCI
+            # columns only; the on-premises licence count above still uses
+            # physical cores and the Oracle core factor.
+            ocpus = physical_cores * 4
 
             oci_skus          = get_oci_prices()
             oci_prices_static = (oci_skus is _OCI_STATIC_SKUS)
