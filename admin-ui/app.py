@@ -1762,8 +1762,21 @@ def register_server():
         # DB options (checkboxes — only present in POST when checked)
         selected_options = request.form.getlist("db_options")
 
-        if not hostname:
-            flash("Hostname is required.", "danger")
+        # Validated server-side as well as in the form: without CPU data a server
+        # has no core factor, and without an Enterprise edition its options are
+        # excluded from license_position, so it registers but cannot be licensed.
+        missing = [label for label, value in (
+            ("Hostname",         hostname),
+            ("CPU model",        cpu_model_raw),
+            ("Total RAM (MB)",   ram_mb),
+            ("Physical cores",   cores),
+            ("CPU sockets",      sockets),
+            ("Cores per socket", cps),
+        ) if not value]
+        if server_type == "oracle_database" and not edition:
+            missing.append("Database edition")
+        if missing:
+            flash("Required: " + ", ".join(missing) + ".", "danger")
             return render_template("register_server.html",
                                    environments=environments, schema=schema,
                                    all_clients=all_clients, licensed_options=licensed_options,
