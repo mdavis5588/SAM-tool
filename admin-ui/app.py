@@ -1939,6 +1939,19 @@ def register_server():
                 flash(f"Server '{hostname}' registered successfully.", "success")
             else:
                 flash(f"Server '{hostname}' already existed — record updated.", "info")
+
+            # Licence counts are driven by total physical cores, so a total that
+            # disagrees with sockets x cores per socket will misstate them. Warn
+            # rather than block: an asymmetric or partly populated box is real.
+            if cores and sockets and cps:
+                expected = int(sockets) * int(cps)
+                if int(cores) != expected:
+                    flash(
+                        f"Check CPU figures: {sockets} sockets x {cps} cores per socket "
+                        f"is {expected} cores, but {cores} was entered. Licence counts "
+                        f"use the {cores} total.",
+                        "warning"
+                    )
             return redirect(url_for("edit_server", server_id=server_id))
 
         except Exception as e:
