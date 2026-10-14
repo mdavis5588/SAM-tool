@@ -1940,16 +1940,18 @@ def register_server():
             else:
                 flash(f"Server '{hostname}' already existed — record updated.", "info")
 
-            # Licence counts are driven by total physical cores, so a total that
-            # disagrees with sockets x cores per socket will misstate them. Warn
-            # rather than block: an asymmetric or partly populated box is real.
+            # oracle_processors.total_physical_cores is GENERATED ALWAYS AS
+            # (cpu_sockets * cores_per_socket), so the entered core total is not
+            # stored and licence counts follow the product. Say so plainly when
+            # the two disagree, rather than leaving the figure silently ignored.
             if cores and sockets and cps:
-                expected = int(sockets) * int(cps)
-                if int(cores) != expected:
+                stored = int(sockets) * int(cps)
+                if int(cores) != stored:
                     flash(
-                        f"Check CPU figures: {sockets} sockets x {cps} cores per socket "
-                        f"is {expected} cores, but {cores} was entered. Licence counts "
-                        f"use the {cores} total.",
+                        f"CPU figures disagree: {sockets} sockets x {cps} cores per socket "
+                        f"is {stored} cores, but {cores} was entered. Licence counts use "
+                        f"{stored}, since the stored total is always sockets x cores per "
+                        f"socket. Correct the sockets or cores per socket if {cores} is right.",
                         "warning"
                     )
             return redirect(url_for("edit_server", server_id=server_id))
