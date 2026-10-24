@@ -118,8 +118,8 @@ After provisioning, the new client will appear in the Admin UI client switcher i
 export SAM_DB_HOST=localhost SAM_DB_PASSWORD=yourpassword
 
 # Discover all Oracle servers for a specific client
-ansible-playbook ansible/playbooks/discover_oracle.yml \
-  -i ansible/inventory/hosts.yml \
+ansible-playbook ansible/playbooks/discover_oracle_working.yaml \
+  -i ansible/hosts.yml \
   --limit client_acme_oracle
 ```
 
@@ -134,7 +134,17 @@ sqlplus / as sysdba @scripts/create_sam_discovery_user.sql
 This creates `sam_discovery` with `CREATE SESSION` and `SELECT` on:
 `v$database`, `v$instance`, `v$version`, `v$osstat`, `v$parameter`, `v$option`, `v$pdbs`, `v$cell`, `gv$instance`, `gv$parameter`, `dba_users`, `dba_feature_usage_statistics`.
 
-Change the password in the script before running. After creating the user, connect the discovery scripts as `sam_discovery` rather than `sys/sysdba`.
+Change the password in the script before running. The Oracle playbook defaults to
+OS-authenticated SYSDBA; point it at this account instead by overriding the connection:
+
+```bash
+ansible-playbook ansible/playbooks/discover_oracle_working.yaml \
+  -i ansible/hosts.yml \
+  -e sam_oracle_connect='sam_discovery/yourpassword'
+```
+
+The CSV script takes the same connection as its first argument:
+`./scripts/run_discovery_csv.sh sam_discovery/yourpassword@orcl`
 
 ### Manual (no Ansible — air-gapped or firewalled servers)
 
@@ -198,8 +208,8 @@ the same way as JSON — the upload handler detects the format automatically.
 
 ```cron
 # Oracle DB — nightly at 02:00
-0 2 * * * ansible-playbook /opt/oracle-sam/ansible/playbooks/discover_oracle.yml \
-  -i /opt/oracle-sam/ansible/inventory/hosts.yml >> /var/log/sam/oracle.log 2>&1
+0 2 * * * ansible-playbook /opt/oracle-sam/ansible/playbooks/discover_oracle_working.yaml \
+  -i /opt/oracle-sam/ansible/hosts.yml >> /var/log/sam/oracle.log 2>&1
 ```
 
 ---
@@ -207,8 +217,8 @@ the same way as JSON — the upload handler detects the format automatically.
 ## WebLogic discovery
 
 ```bash
-ansible-playbook ansible/playbooks/discover_weblogic.yml \
-  -i ansible/inventory/hosts.yml \
+ansible-playbook ansible/discover_weblogic.yml \
+  -i ansible/hosts.yml \
   --limit client_acme_weblogic
 ```
 
@@ -216,8 +226,8 @@ WLST offline mode is used — no running AdminServer required.
 
 ```cron
 # WebLogic — nightly at 03:00
-0 3 * * * ansible-playbook /opt/oracle-sam/ansible/playbooks/discover_weblogic.yml \
-  -i /opt/oracle-sam/ansible/inventory/hosts.yml >> /var/log/sam/weblogic.log 2>&1
+0 3 * * * ansible-playbook /opt/oracle-sam/ansible/discover_weblogic.yml \
+  -i /opt/oracle-sam/ansible/hosts.yml >> /var/log/sam/weblogic.log 2>&1
 ```
 
 ---
@@ -639,10 +649,14 @@ psql oracle_sam -f database/migrations/32_patch_upsert_is_exadata.sql
 ```
 SAM-tool/
 ├── ansible/
-│   ├── inventory/hosts.yml
+│   ├── hosts.yml                            Inventory — group your Oracle hosts here
+│   ├── discover_java.yml
+│   ├── discover_mysql.yml
+│   ├── discover_oci.yml
+│   ├── discover_weblogic.yml
 │   └── playbooks/
-│       ├── discover_oracle.yml
-│       └── discover_weblogic.yml
+│       ├── discover_oracle_working.yaml     ★ The Oracle discovery playbook
+│       └── discover_vmware.yml
 ├── database/
 │   ├── 00_full_schema.sql                   ★ FRESH INSTALL — all sam_admin tables + migrations consolidated
 │   ├── 00_init.sql                          Roles, sample clients, seed data
