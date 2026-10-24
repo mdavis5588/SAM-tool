@@ -1,7 +1,10 @@
 ---
 # =============================================================================
-# Oracle SAM - Discovery Playbook (SYSDBA)
-# Use for testing only — connects as SYSDBA instead of sam_discovery user.
+# Oracle SAM - Discovery Playbook
+#
+# The single Oracle discovery playbook. Connects as OS-authenticated SYSDBA by
+# default; override sam_oracle_connect for a different account rather than
+# copying this file.
 # Collects all data needed to calculate Oracle processor licence requirements:
 #   - Server / OS metadata
 #   - Physical CPU topology (sockets, cores per socket, processor model)
@@ -18,8 +21,11 @@
 
   vars:
     sam_run_id: "{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}-{{ inventory_hostname | hash('md5') | truncate(6, true, '') }}"
-    sam_sysdba_connect: "/ as sysdba"
-    # No password needed for SYSDBA OS-authenticated connection
+    # Connection string for every sqlplus call. OS-authenticated SYSDBA needs no
+    # password. To use the least-privilege account from
+    # scripts/create_sam_discovery_user.sql instead:
+    #   ansible-playbook ... -e sam_oracle_connect='sam_discovery/<password>'
+    sam_oracle_connect: "/ as sysdba"
     oracle_base_paths:
       - /u01/app/oracle
       - /oracle
@@ -116,7 +122,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_sysdba_connect }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
@@ -223,7 +229,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_sysdba_connect }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
         SELECT
@@ -305,7 +311,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_sysdba_connect }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
         SELECT '{"option":"' || comp_name || '","version":"' || version || '","status":"' || status || '"}'
@@ -332,7 +338,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_sysdba_connect }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
         SELECT '{"feature_name":"' || REPLACE(REPLACE(name,'\','\\'),'"','\"') ||
@@ -381,7 +387,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_sysdba_connect }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LONG 32767
         SET LINESIZE 32767
@@ -414,7 +420,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_sysdba_connect }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF LONG 4000
         SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
@@ -466,7 +472,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_sysdba_connect }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
@@ -489,7 +495,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_sysdba_connect }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
@@ -521,7 +527,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_sysdba_connect }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF LONG 32767
         SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
@@ -674,7 +680,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_sysdba_connect }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
@@ -696,7 +702,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_sysdba_connect }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
@@ -731,7 +737,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_sysdba_connect }} << 'SQLEOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'SQLEOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF LONG 32767
         SET LINESIZE 32767
         SET DEFINE OFF
@@ -874,7 +880,7 @@
                                              ELSE 'null' END || '}'
         FROM pfus pf
         JOIN v$pdbs p ON p.con_id = pf.con_id
-        WHERE pf.usage IN ('2.NO_CURRENT_USAGE','4.PAST_USAGE','6.CURRENT_USAGE')
+        WHERE pf.usage IN ('2.NO_CURRENT_USAGE','4.PAST_USAGE','5.PAST_OR_CURRENT_USAGE','6.CURRENT_USAGE')
         GROUP BY p.name, pf.product, pf.feature_being_used
         ORDER BY p.name, pf.product, pf.feature_being_used;
         EXIT;
@@ -954,6 +960,9 @@
           nup_total_users:     "{{ (_nup.nup_total_users  | default(0)) | int }}"
           nup_active_users:    "{{ (_nup.nup_active_users | default(0)) | int }}"
           nup_locked_users:    "{{ (_nup.nup_locked_users | default(0)) | int }}"
+          # default() only substitutes for an undefined value, so a JSON null
+          # from an empty JSON_ARRAYAGG passed straight through as null and hit
+          # the DB function as a scalar. Insist on a real list instead.
           nup_sample_users: >-
             {{
               _nup.nup_sample_users
