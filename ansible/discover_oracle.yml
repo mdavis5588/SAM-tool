@@ -1,6 +1,10 @@
 ---
 # =============================================================================
 # Oracle SAM - Discovery Playbook
+#
+# Connects as the least-privilege sam_discovery account by default. For an
+# OS-authenticated SYSDBA run, override the connection rather than copying this
+# file:  ansible-playbook ... -e sam_oracle_connect='/ as sysdba'
 # Collects all data needed to calculate Oracle processor licence requirements:
 #   - Server / OS metadata
 #   - Physical CPU topology (sockets, cores per socket, processor model)
@@ -19,6 +23,13 @@
     sam_run_id: "{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}-{{ inventory_hostname | hash('md5') | truncate(6, true, '') }}"
     sam_discovery_user: "sam_discovery"
     sam_discovery_password: "{{ vault_sam_discovery_password }}"
+    # Connection string for every sqlplus call. Defaults to the least-privilege
+    # sam_discovery account created by scripts/create_sam_discovery_user.sql.
+    # For an OS-authenticated SYSDBA run instead:
+    #   ansible-playbook ... -e sam_oracle_connect='/ as sysdba'
+    # Ansible evaluates vars lazily, so the vault password above is never
+    # dereferenced when this is overridden.
+    sam_oracle_connect: "{{ sam_discovery_user }}/{{ sam_discovery_password }}"
     oracle_base_paths:
       - /u01/app/oracle
       - /oracle
@@ -115,7 +126,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
@@ -222,7 +233,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
         SELECT
@@ -304,7 +315,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
         SELECT '{"option":"' || comp_name || '","version":"' || version || '","status":"' || status || '"}'
@@ -331,7 +342,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
         SELECT '{"feature_name":"' || REPLACE(REPLACE(name,'\','\\'),'"','\"') ||
@@ -380,7 +391,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LONG 32767
         SET LINESIZE 32767
@@ -413,7 +424,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF LONG 4000
         SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
@@ -465,7 +476,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
@@ -488,7 +499,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
@@ -520,7 +531,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF LONG 32767
         SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
@@ -673,7 +684,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
@@ -695,7 +706,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'EOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'EOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
         SET LINESIZE 32767
         WHENEVER SQLERROR CONTINUE
@@ -730,7 +741,7 @@
         export ORACLE_HOME="{{ item.oracle_home }}"
         export ORACLE_SID="{{ item.sid }}"
         export PATH="$ORACLE_HOME/bin:$PATH"
-        sqlplus -s {{ sam_discovery_user }}/{{ sam_discovery_password }} << 'SQLEOF'
+        sqlplus -s {{ sam_oracle_connect }} << 'SQLEOF'
         SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF LONG 32767
         SET LINESIZE 32767
         SET DEFINE OFF
@@ -873,7 +884,7 @@
                                              ELSE 'null' END || '}'
         FROM pfus pf
         JOIN v$pdbs p ON p.con_id = pf.con_id
-        WHERE pf.usage IN ('2.NO_CURRENT_USAGE','4.PAST_USAGE','6.CURRENT_USAGE')
+        WHERE pf.usage IN ('2.NO_CURRENT_USAGE','4.PAST_USAGE','5.PAST_OR_CURRENT_USAGE','6.CURRENT_USAGE')
         GROUP BY p.name, pf.product, pf.feature_being_used
         ORDER BY p.name, pf.product, pf.feature_being_used;
         EXIT;
