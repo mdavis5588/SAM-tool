@@ -1771,3 +1771,302 @@ CREATE TABLE IF NOT EXISTS shared.client_contacts (
 
 CREATE INDEX IF NOT EXISTS idx_client_contacts_client
   ON shared.client_contacts (client_id, sort_order);
+
+-- ===========================================================================
+-- LINUX OS LICENSING
+-- ===========================================================================
+-- Deliberately standalone from the Oracle licensing tables above. Nothing here
+-- references csi_contracts, license_entitlement_lines, product_family or
+-- license_metric, and nothing above references these. Linux subscriptions are
+-- not counted like Oracle licences — there is no core factor, no NUP minimum,
+-- and the unit is a socket pair or a server rather than a processor — so
+-- sharing the Oracle enums would mean widening them with values that are
+-- meaningless on the Oracle side. The duplication of status and sharing_policy
+-- is the price of keeping each product family able to change on its own.
+--
+-- Supported vendors: Red Hat, Oracle Linux, SUSE. Each vendor's own SKUs live
+-- in os_entitlement_lines; how a SKU converts hardware into a subscription
+-- count lives in os_license_rules.
+-- ---------------------------------------------------------------------------
+
+CREATE TYPE shared.os_vendor AS ENUM
+  ('redhat', 'oracle_linux', 'suse', 'other');
+
+CREATE TYPE shared.os_contract_status AS ENUM
+  ('active', 'expired', 'pending', 'terminated');
+
+CREATE TYPE shared.os_sharing_policy AS ENUM
+  ('client_locked', 'shareable', 'unassigned');
+
+-- How a subscription SKU turns hardware into a subscription count:
+--   socket_pair        one subscription per N sockets (RHEL Server: N = 2)
+--   physical_server    one per server, up to a socket ceiling
+--   virtual_guest      one per running guest OS
+--   virtual_datacenter one per hypervisor host, unlimited guests on that host
+--   vcpu               one per N vCPUs (cloud and per-VM SKUs)
+--   unlimited          site or unlimited agreement, no per-host count
+CREATE TYPE shared.os_license_metric AS ENUM
+  ('socket_pair', 'physical_server', 'virtual_guest',
+   'virtual_datacenter', 'vcpu', 'unlimited');
+
+CREATE TYPE shared.os_support_level AS ENUM
+  ('self_support', 'standard', 'premium', 'basic', 'premier', 'priority', 'none');
+
+-- ---------------------------------------------------------------------------
+-- OS CONTRACTS
+-- Contract header — one row per Red Hat / Oracle Linux / SUSE agreement.
+-- The vendor's own identifier goes in agreement_number: a Red Hat contract
+-- number, an Oracle CSI used for Linux support, a SUSE subscription ID.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS shared.os_contracts (
+  os_contract_id    SERIAL PRIMARY KEY,
+  vendor            shared.os_vendor NOT NULL,
+  agreement_number  TEXT,
+  contract_name     TEXT NOT NULL,
+  vendor_reference  TEXT,
+  purchase_date     DATE,
+  support_start     DATE,
+  support_expiry    DATE,
+  auto_renew        BOOLEAN NOT NULL DEFAULT FALSE,
+  currency          CHAR(3) NOT NULL DEFAULT 'USD',
+
+  sharing_policy    shared.os_sharing_policy NOT NULL DEFAULT 'unassigned',
+  owning_client_id  INTEGER REFERENCES sam_admin.clients (client_id),
+
+  po_number         TEXT,
+  notes             TEXT,
+  status            shared.os_contract_status NOT NULL DEFAULT 'active',
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT chk_os_locked_owner CHECK (
+    sharing_policy <> 'client_locked' OR owning_client_id IS NOT NULL
+  ),
+  CONSTRAINT chk_os_currency CHECK (currency ~ '^[A-Z]{3}$'),
+  CONSTRAINT chk_os_dates CHECK (
+    support_expiry IS NULL OR support_start IS NULL OR support_expiry >= support_start
+  ),
+  UNIQUE (vendor, agreement_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_os_contract_vendor ON shared.os_contracts (vendor);
+CREATE INDEX IF NOT EXISTS idx_os_contract_status ON shared.os_contracts (status);
+CREATE INDEX IF NOT EXISTS idx_os_contract_expiry ON shared.os_contracts (support_expiry);
+CREATE INDEX IF NOT EXISTS idx_os_contract_owner  ON shared.os_contracts (owning_client_id);
+
+DROP TRIGGER IF EXISTS trg_os_contract_updated ON shared.os_contracts;
+CREATE TRIGGER trg_os_contract_updated
+  BEFORE UPDATE ON shared.os_contracts
+  FOR EACH ROW EXECUTE FUNCTION shared.touch_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- OS ENTITLEMENT LINES
+-- One row per subscription SKU within a contract. Examples:
+--   RH00003  Red Hat Enterprise Linux Server, Standard (1-2 sockets)  socket_pair  40
+--   RH00284  RHEL Virtual Datacenter, Premium                   virtual_datacenter  6
+--   B88301   Oracle Linux Premier Limited (1-2 sockets)            physical_server  25
+--   874-0057 SUSE Linux Enterprise Server, 1-2 Sockets, Priority    physical_server  12
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS shared.os_entitlement_lines (
+  os_line_id          SERIAL PRIMARY KEY,
+  os_contract_id      INTEGER NOT NULL
+                        REFERENCES shared.os_contracts (os_contract_id) ON DELETE CASCADE,
+  line_number         INTEGER NOT NULL DEFAULT 1,
+  sku                 TEXT,
+  product_name        TEXT NOT NULL,
+  license_metric      shared.os_license_metric NOT NULL,
+  support_level       shared.os_support_level NOT NULL DEFAULT 'standard',
+  quantity            NUMERIC(10,2) NOT NULL,
+
+  -- Which os_license_rules row governs the count. NULL means fall back to
+  -- matching on vendor + metric, which is enough for the common SKUs.
+  rule_id             INTEGER,
+
+  unit_price          NUMERIC(14,4),
+  total_price         NUMERIC(14,2)
+                        GENERATED ALWAYS AS (
+                          CASE WHEN unit_price IS NOT NULL
+                               THEN ROUND(quantity * unit_price, 2)
+                               ELSE NULL END
+                        ) STORED,
+  annual_cost         NUMERIC(14,2),
+
+  term_start          DATE,
+  term_end            DATE,
+  notes               TEXT,
+  is_active           BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT chk_os_line_qty   CHECK (quantity >= 0),
+  CONSTRAINT chk_os_line_price CHECK (unit_price IS NULL OR unit_price >= 0),
+  UNIQUE (os_contract_id, line_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_os_lines_contract ON shared.os_entitlement_lines (os_contract_id);
+CREATE INDEX IF NOT EXISTS idx_os_lines_sku      ON shared.os_entitlement_lines (sku);
+CREATE INDEX IF NOT EXISTS idx_os_lines_metric   ON shared.os_entitlement_lines (license_metric);
+
+DROP TRIGGER IF EXISTS trg_os_line_updated ON shared.os_entitlement_lines;
+CREATE TRIGGER trg_os_line_updated
+  BEFORE UPDATE ON shared.os_entitlement_lines
+  FOR EACH ROW EXECUTE FUNCTION shared.touch_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- OS CONTRACT → CLIENT MAP
+-- Mirrors the Oracle csi_client_map: which clients may draw on a contract.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS shared.os_contract_client_map (
+  os_map_id          SERIAL PRIMARY KEY,
+  os_contract_id     INTEGER NOT NULL
+                       REFERENCES shared.os_contracts (os_contract_id) ON DELETE CASCADE,
+  client_id          INTEGER NOT NULL
+                       REFERENCES sam_admin.clients (client_id) ON DELETE CASCADE,
+  allocated_quantity NUMERIC(10,2),
+  allocation_notes   TEXT,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (os_contract_id, client_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_osccm_contract ON shared.os_contract_client_map (os_contract_id);
+CREATE INDEX IF NOT EXISTS idx_osccm_client   ON shared.os_contract_client_map (client_id);
+
+CREATE OR REPLACE FUNCTION shared.enforce_os_sharing_policy()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+  v_policy   shared.os_sharing_policy;
+  v_owner    INTEGER;
+  v_existing INTEGER;
+BEGIN
+  SELECT sharing_policy, owning_client_id
+  INTO   v_policy, v_owner
+  FROM   shared.os_contracts
+  WHERE  os_contract_id = NEW.os_contract_id;
+
+  IF v_policy = 'unassigned' THEN
+    RAISE EXCEPTION
+      'OS contract % has sharing_policy = unassigned. '
+      'Set policy to client_locked or shareable before assigning to a client.',
+      NEW.os_contract_id;
+  END IF;
+
+  IF v_policy = 'client_locked' THEN
+    IF NEW.client_id <> v_owner THEN
+      RAISE EXCEPTION
+        'OS contract % is client_locked to client_id %. '
+        'It cannot be assigned to client_id %.',
+        NEW.os_contract_id, v_owner, NEW.client_id;
+    END IF;
+
+    SELECT COUNT(*) INTO v_existing
+    FROM   shared.os_contract_client_map
+    WHERE  os_contract_id = NEW.os_contract_id
+      AND  os_map_id     <> COALESCE(NEW.os_map_id, -1);
+
+    IF v_existing > 0 THEN
+      RAISE EXCEPTION
+        'OS contract % is client_locked and already has a client assignment.',
+        NEW.os_contract_id;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_enforce_os_sharing ON shared.os_contract_client_map;
+CREATE TRIGGER trg_enforce_os_sharing
+  BEFORE INSERT OR UPDATE ON shared.os_contract_client_map
+  FOR EACH ROW EXECUTE FUNCTION shared.enforce_os_sharing_policy();
+
+-- ---------------------------------------------------------------------------
+-- OS LICENSE RULES
+-- The counting logic, kept as data rather than code so a vendor changing its
+-- packaging is a row edit, not a view rewrite. os_license_position reads this.
+--
+--   sockets_per_unit   socket_pair: sockets covered by one subscription
+--   max_sockets        physical_server: socket ceiling before a second
+--                      subscription is needed
+--   vcpus_per_unit     vcpu: vCPUs covered by one subscription
+--   covers_guests      TRUE when the host subscription covers its guests, so
+--                      the guests themselves require nothing
+--   counts_guests      TRUE when each guest needs its own subscription
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS shared.os_license_rules (
+  rule_id           SERIAL PRIMARY KEY,
+  vendor            shared.os_vendor NOT NULL,
+  product_pattern   TEXT NOT NULL,
+                      -- Matched case-insensitively against os_installations
+                      -- distribution/product text; '*' matches any.
+  license_metric    shared.os_license_metric NOT NULL,
+  sockets_per_unit  INTEGER,
+  max_sockets       INTEGER,
+  vcpus_per_unit    INTEGER,
+  covers_guests     BOOLEAN NOT NULL DEFAULT FALSE,
+  counts_guests     BOOLEAN NOT NULL DEFAULT FALSE,
+  effective_from    DATE NOT NULL DEFAULT '2000-01-01',
+  effective_to      DATE,
+  source_reference  TEXT,
+  notes             TEXT,
+  is_active         BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT chk_os_rule_sockets CHECK (sockets_per_unit IS NULL OR sockets_per_unit > 0),
+  CONSTRAINT chk_os_rule_max     CHECK (max_sockets      IS NULL OR max_sockets      > 0),
+  CONSTRAINT chk_os_rule_vcpus   CHECK (vcpus_per_unit   IS NULL OR vcpus_per_unit   > 0),
+  CONSTRAINT chk_os_rule_guests  CHECK (NOT (covers_guests AND counts_guests)),
+  CONSTRAINT chk_os_rule_shape   CHECK (
+    CASE license_metric
+      WHEN 'socket_pair'     THEN sockets_per_unit IS NOT NULL
+      WHEN 'physical_server' THEN max_sockets      IS NOT NULL
+      WHEN 'vcpu'            THEN vcpus_per_unit   IS NOT NULL
+      ELSE TRUE
+    END
+  ),
+  UNIQUE (vendor, product_pattern, license_metric, effective_from)
+);
+
+CREATE INDEX IF NOT EXISTS idx_os_rules_vendor ON shared.os_license_rules (vendor, is_active);
+
+-- Baseline rules for the three supported vendors. These reflect each vendor's
+-- published packaging at the time of writing; confirm against the current
+-- price list before relying on a count for a true-up.
+INSERT INTO shared.os_license_rules
+  (vendor, product_pattern, license_metric, sockets_per_unit, max_sockets,
+   vcpus_per_unit, covers_guests, counts_guests, source_reference, notes)
+VALUES
+  ('redhat', 'Red Hat Enterprise Linux Server', 'socket_pair', 2, NULL, NULL,
+   FALSE, FALSE, 'Red Hat subscription guide',
+   'One subscription per pair of populated sockets on a physical system.'),
+  ('redhat', 'Red Hat Enterprise Linux Virtual Datacenter', 'virtual_datacenter', NULL, NULL, NULL,
+   TRUE, FALSE, 'Red Hat subscription guide',
+   'Per socket pair of the hypervisor host; covers unlimited RHEL guests on that host.'),
+  ('redhat', 'Red Hat Enterprise Linux for Virtual Guest', 'virtual_guest', NULL, NULL, NULL,
+   FALSE, TRUE, 'Red Hat subscription guide',
+   'One subscription per running RHEL guest where the host is not covered.'),
+
+  ('oracle_linux', 'Oracle Linux Premier', 'physical_server', NULL, 2, NULL,
+   FALSE, FALSE, 'Oracle Linux and Virtualization price list',
+   'Per server; the 1-2 socket SKU covers up to two sockets, above which the '
+   'unlimited-socket SKU applies.'),
+  ('oracle_linux', 'Oracle Linux Basic', 'physical_server', NULL, 2, NULL,
+   FALSE, FALSE, 'Oracle Linux and Virtualization price list',
+   'Per server, up to two sockets.'),
+
+  ('suse', 'SUSE Linux Enterprise Server', 'physical_server', NULL, 2, NULL,
+   FALSE, FALSE, 'SUSE subscription terms',
+   'Per physical server of one or two sockets; a larger server needs the '
+   'higher socket-band SKU.'),
+  ('suse', 'SUSE Linux Enterprise Server for Virtual Machine', 'virtual_guest', NULL, NULL, NULL,
+   FALSE, TRUE, 'SUSE subscription terms',
+   'One subscription per virtual machine.'),
+  ('suse', 'SUSE Linux Enterprise Server Unlimited Virtual Machines', 'virtual_datacenter', NULL, NULL, NULL,
+   TRUE, FALSE, 'SUSE subscription terms',
+   'Per physical host; covers unlimited SLES guests on that host.')
+ON CONFLICT (vendor, product_pattern, license_metric, effective_from) DO NOTHING;
+
+ALTER TABLE shared.os_entitlement_lines
+  DROP CONSTRAINT IF EXISTS fk_os_line_rule;
+ALTER TABLE shared.os_entitlement_lines
+  ADD CONSTRAINT fk_os_line_rule
+  FOREIGN KEY (rule_id) REFERENCES shared.os_license_rules (rule_id);

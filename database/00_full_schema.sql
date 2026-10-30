@@ -1065,6 +1065,10 @@ BEGIN
   PERFORM sam_admin.install_changelog_objects(p_schema);
   PERFORM sam_admin.install_upsert_functions(p_schema);
   PERFORM sam_admin.install_extended_views(p_schema);
+  PERFORM sam_admin.install_feature_usage_table(p_schema);
+  PERFORM sam_admin.install_feature_usage_upsert(p_schema);
+  PERFORM sam_admin.install_os_tables(p_schema);
+  PERFORM sam_admin.install_os_license_position_view(p_schema);
 
 END; $$;
 
@@ -1124,3 +1128,376 @@ BEGIN
     RAISE NOTICE 'shared.csi_contracts not found — skipping ula_covered_products. Run 02_shared_schema.sql first, then re-run this file or migration 04.';
   END IF;
 END; $$;
+
+-- ---------------------------------------------------------------------------
+-- INSTALL OS TABLES
+-- Per-client Linux OS inventory and subscription assignment. Standalone from
+-- the Oracle tables: the only thing shared is servers(server_id), because a
+-- host is a host whatever runs on it.
+--
+-- Hardware columns are duplicated here rather than read from oracle_processors
+-- on purpose. A RHEL box with no Oracle on it has no oracle_processors row at
+-- all, so an OS count that depended on that table would silently return zero
+-- for exactly the hosts this is meant to cover. OS discovery fills these from
+-- the OS itself (lscpu, dmidecode).
+--
+-- Status and support level are TEXT with a CHECK rather than per-schema enums.
+-- The existing environment_type and virt_type enums have to be schema-
+-- qualified at every cast site, which has been a recurring source of breakage;
+-- a CHECK constraint behaves the same and cannot be mis-qualified.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION sam_admin.install_os_tables(p_schema TEXT)
+RETURNS VOID LANGUAGE plpgsql AS $$
+BEGIN
+
+  -- os_installations: one row per server, describing the OS it runs.
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.os_installations (
+      os_install_id        SERIAL PRIMARY KEY,
+      server_id            INTEGER NOT NULL UNIQUE
+                             REFERENCES %I.servers (server_id) ON DELETE CASCADE,
+
+      vendor               TEXT NOT NULL DEFAULT 'other'
+                             CHECK (vendor IN ('redhat','oracle_linux','suse','other')),
+      distribution         TEXT,
+                             -- As reported, e.g. 'Red Hat Enterprise Linux Server'.
+                             -- Matched against shared.os_license_rules.product_pattern.
+      os_version           TEXT,
+      kernel_version       TEXT,
+      architecture         TEXT,
+
+      -- Virtualisation. hypervisor_server_id links a guest to its host when the
+      -- host is itself inventoried, which is what a virtual_datacenter or
+      -- unlimited-guest subscription is counted against.
+      is_virtual_guest     BOOLEAN NOT NULL DEFAULT FALSE,
+      hypervisor_type      TEXT,
+      hypervisor_hostname  TEXT,
+      hypervisor_server_id INTEGER
+                             REFERENCES %I.servers (server_id) ON DELETE SET NULL,
+
+      -- Hardware as the OS sees it.
+      cpu_sockets          INTEGER NOT NULL DEFAULT 1,
+      cores_per_socket     INTEGER NOT NULL DEFAULT 1,
+      total_physical_cores INTEGER GENERATED ALWAYS AS (cpu_sockets * cores_per_socket) STORED,
+      vcpu_count           INTEGER,
+      total_ram_mb         INTEGER,
+
+      -- Vendor registration state, as reported by subscription-manager / SCC /
+      -- the Oracle Linux yum repo the host is pointed at.
+      subscription_state   TEXT NOT NULL DEFAULT 'unknown'
+                             CHECK (subscription_state IN
+                               ('subscribed','unsubscribed','self_support','unknown')),
+      support_level        TEXT
+                             CHECK (support_level IS NULL OR support_level IN
+                               ('self_support','standard','premium','basic',
+                                'premier','priority','none')),
+      vendor_system_id     TEXT,
+                             -- RHSM system UUID, SUSE SCC registration, ULN CSI.
+      is_exempt            BOOLEAN NOT NULL DEFAULT FALSE,
+      exempt_reason        TEXT,
+                             -- e.g. a developer workstation under a no-cost
+                             -- developer subscription, or a CentOS rebuild.
+
+      is_active            BOOLEAN NOT NULL DEFAULT TRUE,
+      first_seen           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_discovery_run   TEXT,
+      notes                TEXT,
+
+      CONSTRAINT chk_%s_os_sockets CHECK (cpu_sockets > 0 AND cores_per_socket > 0),
+      CONSTRAINT chk_%s_os_guest   CHECK (
+        NOT is_virtual_guest OR hypervisor_server_id IS DISTINCT FROM server_id
+      )
+    )
+  $sql$, p_schema, p_schema, p_schema, p_schema, p_schema);
+
+  -- os_subscription_map: which OS contract line covers which server.
+  -- subscriptions_consumed NULL means the position view computes it from the
+  -- governing rule, the same way server_csi_map does for Oracle.
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.os_subscription_map (
+      os_assign_id          SERIAL PRIMARY KEY,
+      server_id             INTEGER NOT NULL
+                              REFERENCES %I.servers (server_id) ON DELETE CASCADE,
+      os_contract_id        INTEGER NOT NULL
+                              REFERENCES shared.os_contracts (os_contract_id),
+      os_line_id            INTEGER
+                              REFERENCES shared.os_entitlement_lines (os_line_id),
+      subscriptions_consumed NUMERIC(10,2),
+      effective_date        DATE NOT NULL DEFAULT CURRENT_DATE,
+      end_date              DATE,
+      notes                 TEXT,
+      assigned_by           TEXT,
+      created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+      CONSTRAINT chk_%s_os_assign_dates CHECK (
+        end_date IS NULL OR end_date >= effective_date
+      )
+    )
+  $sql$, p_schema, p_schema, p_schema);
+
+  EXECUTE format($sql$
+    CREATE UNIQUE INDEX IF NOT EXISTS uix_%s_os_assign
+      ON %I.os_subscription_map (server_id, os_contract_id, COALESCE(os_line_id, -1))
+  $sql$, p_schema, p_schema);
+
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_osi_server ON %I.os_installations    (server_id)',      p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_osi_vendor ON %I.os_installations    (vendor, is_active)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_osi_hyperv ON %I.os_installations    (hypervisor_server_id)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_osa_server ON %I.os_subscription_map (server_id)',      p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_osa_con    ON %I.os_subscription_map (os_contract_id)', p_schema, p_schema);
+
+  EXECUTE format($sql$
+    DROP TRIGGER IF EXISTS trg_%s_os_assign_updated ON %I.os_subscription_map
+  $sql$, p_schema, p_schema);
+  EXECUTE format($sql$
+    CREATE TRIGGER trg_%s_os_assign_updated
+      BEFORE UPDATE ON %I.os_subscription_map
+      FOR EACH ROW EXECUTE FUNCTION shared.touch_updated_at()
+  $sql$, p_schema, p_schema);
+
+END;
+$$;
+
+-- Placeholder stub, same pattern as the ones above: the real
+-- install_os_license_position_view lives in 03_client_template_functions.sql.
+-- This lets install_client_tables() run on a fresh database where 03 has not
+-- yet been loaded, and must not overwrite the real implementation.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_os_license_position_view'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_os_license_position_view(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- FEATURE USAGE INSTALLERS
+-- install_extended_views() in 03_client_template_functions.sql calls
+-- install_feature_usage_table(), so this file has to define it: without it
+-- provision_client() fails on a fresh install done through this file.
+-- ---------------------------------------------------------------------------
+-- install_feature_usage_table(): creates the oracle_feature_usage table in a
+-- client schema to persist DBA_FEATURE_USAGE_STATISTICS data.
+CREATE OR REPLACE FUNCTION sam_admin.install_feature_usage_table(p_schema TEXT)
+RETURNS VOID LANGUAGE plpgsql AS $$
+BEGIN
+  EXECUTE format($ddl$
+    CREATE TABLE IF NOT EXISTS %I.oracle_feature_usage (
+      feature_id        SERIAL PRIMARY KEY,
+      instance_id       INTEGER NOT NULL
+                          REFERENCES %I.oracle_instances(instance_id) ON DELETE CASCADE,
+      feature_name      TEXT    NOT NULL,
+      db_version        TEXT,
+      detected_usages   INTEGER NOT NULL DEFAULT 0,
+      total_samples     INTEGER NOT NULL DEFAULT 0,
+      currently_used    BOOLEAN NOT NULL DEFAULT FALSE,
+      first_usage_date  DATE,
+      last_usage_date   DATE,
+      last_sample_date  DATE,
+      discovery_run_id  TEXT,
+      UNIQUE (instance_id, feature_name)
+    )
+  $ddl$, p_schema, p_schema);
+
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS idx_%s_feat_usage_inst ON %I.oracle_feature_usage (instance_id)',
+    p_schema, p_schema
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS idx_%s_feat_usage_last ON %I.oracle_feature_usage (last_usage_date)',
+    p_schema, p_schema
+  );
+END;
+$$;
+
+-- install_feature_usage_upsert(): stub referenced by install_extended_views.
+-- The real implementation is in 03_client_template_functions.sql.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_feature_usage_upsert'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_feature_usage_upsert(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- ALERT CHANNELS
+-- Stores email / Slack / Teams webhook destinations for compliance alerts.
+-- Dispatch is triggered by calling GET /api/dispatch-alerts from cron.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sam_admin.alert_channels (
+  channel_id    SERIAL PRIMARY KEY,
+  channel_type  TEXT NOT NULL CHECK (channel_type IN ('email', 'slack', 'teams')),
+  channel_name  TEXT NOT NULL,
+  config        JSONB NOT NULL DEFAULT '{}',
+  -- email config keys: smtp_host, smtp_port, smtp_user, smtp_password,
+  --                    from_addr, to_addrs (array)
+  -- slack config keys: webhook_url
+  -- teams config keys: webhook_url
+  enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+  min_severity  TEXT NOT NULL DEFAULT 'MEDIUM'
+                  CHECK (min_severity IN ('LOW', 'MEDIUM', 'HIGH')),
+  last_sent_at  TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ---------------------------------------------------------------------------
+-- INSTALL OS TABLES
+-- Per-client Linux OS inventory and subscription assignment. Standalone from
+-- the Oracle tables: the only thing shared is servers(server_id), because a
+-- host is a host whatever runs on it.
+--
+-- Hardware columns are duplicated here rather than read from oracle_processors
+-- on purpose. A RHEL box with no Oracle on it has no oracle_processors row at
+-- all, so an OS count that depended on that table would silently return zero
+-- for exactly the hosts this is meant to cover. OS discovery fills these from
+-- the OS itself (lscpu, dmidecode).
+--
+-- Status and support level are TEXT with a CHECK rather than per-schema enums.
+-- The existing environment_type and virt_type enums have to be schema-
+-- qualified at every cast site, which has been a recurring source of breakage;
+-- a CHECK constraint behaves the same and cannot be mis-qualified.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION sam_admin.install_os_tables(p_schema TEXT)
+RETURNS VOID LANGUAGE plpgsql AS $$
+BEGIN
+
+  -- os_installations: one row per server, describing the OS it runs.
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.os_installations (
+      os_install_id        SERIAL PRIMARY KEY,
+      server_id            INTEGER NOT NULL UNIQUE
+                             REFERENCES %I.servers (server_id) ON DELETE CASCADE,
+
+      vendor               TEXT NOT NULL DEFAULT 'other'
+                             CHECK (vendor IN ('redhat','oracle_linux','suse','other')),
+      distribution         TEXT,
+                             -- As reported, e.g. 'Red Hat Enterprise Linux Server'.
+                             -- Matched against shared.os_license_rules.product_pattern.
+      os_version           TEXT,
+      kernel_version       TEXT,
+      architecture         TEXT,
+
+      -- Virtualisation. hypervisor_server_id links a guest to its host when the
+      -- host is itself inventoried, which is what a virtual_datacenter or
+      -- unlimited-guest subscription is counted against.
+      is_virtual_guest     BOOLEAN NOT NULL DEFAULT FALSE,
+      hypervisor_type      TEXT,
+      hypervisor_hostname  TEXT,
+      hypervisor_server_id INTEGER
+                             REFERENCES %I.servers (server_id) ON DELETE SET NULL,
+
+      -- Hardware as the OS sees it.
+      cpu_sockets          INTEGER NOT NULL DEFAULT 1,
+      cores_per_socket     INTEGER NOT NULL DEFAULT 1,
+      total_physical_cores INTEGER GENERATED ALWAYS AS (cpu_sockets * cores_per_socket) STORED,
+      vcpu_count           INTEGER,
+      total_ram_mb         INTEGER,
+
+      -- Vendor registration state, as reported by subscription-manager / SCC /
+      -- the Oracle Linux yum repo the host is pointed at.
+      subscription_state   TEXT NOT NULL DEFAULT 'unknown'
+                             CHECK (subscription_state IN
+                               ('subscribed','unsubscribed','self_support','unknown')),
+      support_level        TEXT
+                             CHECK (support_level IS NULL OR support_level IN
+                               ('self_support','standard','premium','basic',
+                                'premier','priority','none')),
+      vendor_system_id     TEXT,
+                             -- RHSM system UUID, SUSE SCC registration, ULN CSI.
+      is_exempt            BOOLEAN NOT NULL DEFAULT FALSE,
+      exempt_reason        TEXT,
+                             -- e.g. a developer workstation under a no-cost
+                             -- developer subscription, or a CentOS rebuild.
+
+      is_active            BOOLEAN NOT NULL DEFAULT TRUE,
+      first_seen           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_discovery_run   TEXT,
+      notes                TEXT,
+
+      CONSTRAINT chk_%s_os_sockets CHECK (cpu_sockets > 0 AND cores_per_socket > 0),
+      CONSTRAINT chk_%s_os_guest   CHECK (
+        NOT is_virtual_guest OR hypervisor_server_id IS DISTINCT FROM server_id
+      )
+    )
+  $sql$, p_schema, p_schema, p_schema, p_schema, p_schema);
+
+  -- os_subscription_map: which OS contract line covers which server.
+  -- subscriptions_consumed NULL means the position view computes it from the
+  -- governing rule, the same way server_csi_map does for Oracle.
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.os_subscription_map (
+      os_assign_id          SERIAL PRIMARY KEY,
+      server_id             INTEGER NOT NULL
+                              REFERENCES %I.servers (server_id) ON DELETE CASCADE,
+      os_contract_id        INTEGER NOT NULL
+                              REFERENCES shared.os_contracts (os_contract_id),
+      os_line_id            INTEGER
+                              REFERENCES shared.os_entitlement_lines (os_line_id),
+      subscriptions_consumed NUMERIC(10,2),
+      effective_date        DATE NOT NULL DEFAULT CURRENT_DATE,
+      end_date              DATE,
+      notes                 TEXT,
+      assigned_by           TEXT,
+      created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+      CONSTRAINT chk_%s_os_assign_dates CHECK (
+        end_date IS NULL OR end_date >= effective_date
+      )
+    )
+  $sql$, p_schema, p_schema, p_schema);
+
+  EXECUTE format($sql$
+    CREATE UNIQUE INDEX IF NOT EXISTS uix_%s_os_assign
+      ON %I.os_subscription_map (server_id, os_contract_id, COALESCE(os_line_id, -1))
+  $sql$, p_schema, p_schema);
+
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_osi_server ON %I.os_installations    (server_id)',      p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_osi_vendor ON %I.os_installations    (vendor, is_active)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_osi_hyperv ON %I.os_installations    (hypervisor_server_id)', p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_osa_server ON %I.os_subscription_map (server_id)',      p_schema, p_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_osa_con    ON %I.os_subscription_map (os_contract_id)', p_schema, p_schema);
+
+  EXECUTE format($sql$
+    DROP TRIGGER IF EXISTS trg_%s_os_assign_updated ON %I.os_subscription_map
+  $sql$, p_schema, p_schema);
+  EXECUTE format($sql$
+    CREATE TRIGGER trg_%s_os_assign_updated
+      BEFORE UPDATE ON %I.os_subscription_map
+      FOR EACH ROW EXECUTE FUNCTION shared.touch_updated_at()
+  $sql$, p_schema, p_schema);
+
+END;
+$$;
+
+-- Placeholder stub, same pattern as the ones above: the real
+-- install_os_license_position_view lives in 03_client_template_functions.sql.
+-- This lets install_client_tables() run on a fresh database where 03 has not
+-- yet been loaded, and must not overwrite the real implementation.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'sam_admin' AND p.proname = 'install_os_license_position_view'
+  ) THEN
+    EXECUTE $f$
+      CREATE FUNCTION sam_admin.install_os_license_position_view(p_schema TEXT)
+      RETURNS VOID LANGUAGE plpgsql AS $b$ BEGIN NULL; END; $b$
+    $f$;
+  END IF;
+END $$;

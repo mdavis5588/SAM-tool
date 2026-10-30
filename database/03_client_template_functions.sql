@@ -2119,26 +2119,195 @@ END;
 $$;
 
 
+-- ---------------------------------------------------------------------------
+-- OS LICENSE POSITION VIEW
+-- One row per inventoried OS installation: what it needs, what it has been
+-- assigned, and whether that leaves a gap. Standalone from license_position —
+-- no Oracle table is read here, and a host with no Oracle on it appears
+-- normally.
+--
+-- Rule selection is explicit rather than left to whichever row happens to
+-- match first:
+--   1. An exempt installation requires nothing.
+--   2. A guest whose hypervisor holds a guest-covering subscription
+--      (virtual_datacenter or an unlimited-guest SKU) requires nothing — that
+--      is the whole point of buying one.
+--   3. Any other guest takes the vendor's per-guest rule.
+--   4. A physical host takes the vendor's socket_pair or physical_server rule.
+-- A vendor or distribution with no matching rule reports a NULL metric and a
+-- coverage_status of 'no_rule' rather than a silent zero.
+--
+-- Every reference is schema-qualified through positional %1$I, so the format()
+-- argument list is a single value and cannot drift out of step.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION sam_admin.install_os_license_position_view(p_schema TEXT)
+RETURNS VOID LANGUAGE plpgsql AS $$
+BEGIN
+  EXECUTE format($sql$
+    CREATE OR REPLACE VIEW %1$I.os_license_position AS
+    WITH guest_covering_hosts AS (
+      -- Hosts that hold a subscription covering their guests.
+      SELECT DISTINCT m.server_id
+      FROM   %1$I.os_subscription_map m
+      JOIN   shared.os_entitlement_lines l ON l.os_line_id = m.os_line_id
+      WHERE  l.license_metric = 'virtual_datacenter'
+        AND  l.is_active
+        AND  (m.end_date IS NULL OR m.end_date >= CURRENT_DATE)
+    ),
+    assigned AS (
+      SELECT m.server_id,
+             COUNT(*)                                     AS assignment_count,
+             SUM(COALESCE(m.subscriptions_consumed, 0))    AS subscriptions_assigned,
+             STRING_AGG(DISTINCT c.contract_name, ', ' ORDER BY c.contract_name)
+                                                           AS contracts,
+             BOOL_OR(c.status = 'active'
+                     AND (c.support_expiry IS NULL
+                          OR c.support_expiry >= CURRENT_DATE)) AS has_live_contract,
+             -- The metric of the line assigned to this server, which is what
+             -- the customer actually bought. MIN over the enum's own order so
+             -- a server with more than one line resolves deterministically.
+             MIN(l.license_metric::TEXT)                   AS assigned_metric
+      FROM   %1$I.os_subscription_map m
+      JOIN   shared.os_contracts c ON c.os_contract_id = m.os_contract_id
+      LEFT   JOIN shared.os_entitlement_lines l
+                  ON l.os_line_id = m.os_line_id AND l.is_active
+      WHERE  m.end_date IS NULL OR m.end_date >= CURRENT_DATE
+      GROUP  BY m.server_id
+    )
+    SELECT
+      i.os_install_id,
+      i.server_id,
+      s.hostname,
+      s.environment::TEXT                       AS environment,
+      i.vendor,
+      i.distribution,
+      i.os_version,
+      i.is_virtual_guest,
+      i.hypervisor_hostname,
+      i.cpu_sockets,
+      i.cores_per_socket,
+      i.total_physical_cores,
+      i.vcpu_count,
+      i.subscription_state,
+      i.support_level,
+      i.is_exempt,
+      r.rule_id,
+      r.license_metric::TEXT                    AS license_metric,
+
+      -- Subscriptions required
+      CASE
+        WHEN i.is_exempt THEN 0
+        WHEN i.is_virtual_guest AND i.hypervisor_server_id IN
+               (SELECT server_id FROM guest_covering_hosts) THEN 0
+        WHEN r.rule_id IS NULL THEN NULL
+        ELSE CASE r.license_metric
+          WHEN 'socket_pair' THEN
+            CEIL(i.cpu_sockets::NUMERIC / r.sockets_per_unit)
+          WHEN 'physical_server' THEN
+            GREATEST(1, CEIL(i.cpu_sockets::NUMERIC / r.max_sockets))
+          WHEN 'virtual_guest' THEN 1
+          WHEN 'virtual_datacenter' THEN
+            CEIL(i.cpu_sockets::NUMERIC / COALESCE(r.sockets_per_unit, 2))
+          WHEN 'vcpu' THEN
+            CEIL(COALESCE(i.vcpu_count, i.total_physical_cores)::NUMERIC / r.vcpus_per_unit)
+          WHEN 'unlimited' THEN 0
+          ELSE NULL
+        END
+      END::NUMERIC(10,2)                        AS subscriptions_required,
+
+      COALESCE(a.subscriptions_assigned, 0)     AS subscriptions_assigned,
+      COALESCE(a.assignment_count, 0)           AS assignment_count,
+      a.contracts                               AS assigned_contracts,
+
+      CASE
+        WHEN i.is_exempt THEN 'exempt'
+        WHEN i.is_virtual_guest AND i.hypervisor_server_id IN
+               (SELECT server_id FROM guest_covering_hosts) THEN 'covered_by_host'
+        WHEN r.rule_id IS NULL THEN 'no_rule'
+        WHEN a.server_id IS NULL THEN 'unassigned'
+        WHEN NOT a.has_live_contract THEN 'contract_expired'
+        ELSE 'assigned'
+      END                                       AS coverage_status,
+
+      i.last_seen
+    FROM   %1$I.os_installations i
+    JOIN   %1$I.servers s ON s.server_id = i.server_id
+    LEFT   JOIN assigned a ON a.server_id = i.server_id
+    LEFT   JOIN LATERAL (
+      SELECT ru.*
+      FROM   shared.os_license_rules ru
+      WHERE  ru.is_active
+        AND  ru.vendor::TEXT = i.vendor
+        AND  ru.effective_from <= CURRENT_DATE
+        AND  (ru.effective_to IS NULL OR ru.effective_to >= CURRENT_DATE)
+        AND  (
+               -- 1. What was actually bought for this server wins outright.
+               -- Virtual Datacenter and unlimited-guest SKUs are a purchasing
+               -- decision that discovery cannot see: such a host reports its
+               -- distribution as plain 'Red Hat Enterprise Linux Server' like
+               -- any other, so without this it would be counted per socket
+               -- pair instead of once for the host.
+               ru.license_metric::TEXT = a.assigned_metric
+
+               -- 2. A guest is identified by is_virtual_guest, never by its
+               -- distribution: a RHEL guest reports the same distribution
+               -- string as a RHEL physical host, so matching it against the
+               -- per-guest SKU name would never hit.
+               OR (i.is_virtual_guest AND ru.counts_guests)
+
+               -- 3. Otherwise match the reported distribution against the
+               -- rule's pattern. One direction only: testing whether the
+               -- pattern contains the distribution instead would let a short
+               -- distribution name match every longer SKU, so a plain SLES
+               -- host would pick up the unlimited-virtual-machines rule.
+               OR (NOT i.is_virtual_guest
+                   AND (ru.product_pattern = '*'
+                        OR COALESCE(i.distribution, '') ILIKE '%%' || ru.product_pattern || '%%')
+                   AND ru.license_metric IN ('socket_pair', 'physical_server',
+                                             'virtual_datacenter', 'unlimited'))
+             )
+      ORDER BY
+        -- The assigned metric first, then a rule naming the distribution over
+        -- a wildcard, then the longer (more specific) pattern.
+        (ru.license_metric::TEXT IS NOT DISTINCT FROM a.assigned_metric) DESC,
+        (ru.product_pattern = '*'),
+        LENGTH(ru.product_pattern) DESC,
+        ru.effective_from DESC,
+        ru.rule_id
+      LIMIT 1
+    ) r ON TRUE
+    WHERE  i.is_active
+  $sql$, p_schema);
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION sam_admin.migrate_all_clients()
 RETURNS TABLE (client_code TEXT, result TEXT) LANGUAGE plpgsql AS $$
 DECLARE
   v_client RECORD;
 BEGIN
+  -- Aliased because the OUT column client_code shadows sam_admin.clients
+  -- .client_code, which made this FOR loop fail with "it could refer to either
+  -- a PL/pgSQL variable or a table column" before any client was migrated.
   FOR v_client IN
-    SELECT client_code, schema_name FROM sam_admin.clients WHERE is_active = TRUE
+    SELECT c.client_code AS code, c.schema_name
+    FROM   sam_admin.clients c
+    WHERE  c.is_active = TRUE
   LOOP
     BEGIN
+      PERFORM sam_admin.install_os_tables(v_client.schema_name);
+      PERFORM sam_admin.install_os_license_position_view(v_client.schema_name);
       PERFORM sam_admin.install_license_position_view(v_client.schema_name);
       PERFORM sam_admin.install_license_options_view(v_client.schema_name);
       PERFORM sam_admin.install_server_coverage_view(v_client.schema_name);
       PERFORM sam_admin.install_changelog_objects(v_client.schema_name);
       PERFORM sam_admin.install_upsert_functions(v_client.schema_name);
       PERFORM sam_admin.install_extended_views(v_client.schema_name);
-      client_code := v_client.client_code;
+      client_code := v_client.code;
       result      := 'ok';
       RETURN NEXT;
     EXCEPTION WHEN OTHERS THEN
-      client_code := v_client.client_code;
+      client_code := v_client.code;
       result      := 'ERROR: ' || SQLERRM;
       RETURN NEXT;
     END;
