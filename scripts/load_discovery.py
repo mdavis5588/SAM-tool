@@ -143,7 +143,7 @@ SELECT s.server_id,
        END,
        LOWER(%(value)s) NOT IN ('none','false','0','','no'),
        %(run_id)s
-FROM   {schema}.oracle_servers s
+FROM   {schema}.servers s
 WHERE  s.hostname = %(hostname)s
 ON CONFLICT (server_id, option_name) DO UPDATE SET
     is_active        = EXCLUDED.is_active,

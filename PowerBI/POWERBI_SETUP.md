@@ -37,7 +37,7 @@ REVOKE USAGE ON SCHEMA sam_admin FROM sam_reader_acme;
 
 | Object | Type | Description |
 |--------|------|-------------|
-| `oracle_servers` | Table | Server inventory |
+| `servers` | Table | Server inventory |
 | `oracle_processors` | Table | CPU snapshots |
 | `oracle_instances` | Table | Oracle DB instances |
 | `oracle_options` | Table | Installed DB options |
@@ -68,12 +68,12 @@ REVOKE USAGE ON SCHEMA sam_admin FROM sam_reader_acme;
 
 **Client schema:**
 ```
-oracle_processors.server_id      → oracle_servers.server_id
-oracle_instances.server_id       → oracle_servers.server_id
+oracle_processors.server_id      → servers.server_id
+oracle_instances.server_id       → servers.server_id
 oracle_options.instance_id       → oracle_instances.instance_id
-wls_domains.server_id            → oracle_servers.server_id
+wls_domains.server_id            → servers.server_id
 wls_managed_servers.domain_id    → wls_domains.domain_id
-wls_managed_servers.server_id    → oracle_servers.server_id
+wls_managed_servers.server_id    → servers.server_id
 wls_installed_products.domain_id → wls_domains.domain_id
 ```
 
@@ -356,12 +356,12 @@ SUMX(server_csi_coverage, COALESCE(server_csi_coverage[assigned_support_cost], 0
 
 ```dax
 Days Since Discovery =
-DATEDIFF(MAX(oracle_servers[last_seen]), TODAY(), DAY)
+DATEDIFF(MAX(servers[last_seen]), TODAY(), DAY)
 
 Stale Servers =
-CALCULATE(COUNTROWS(oracle_servers),
-          DATEDIFF(oracle_servers[last_seen], TODAY(), DAY) > 30,
-          oracle_servers[is_active] = TRUE())
+CALCULATE(COUNTROWS(servers),
+          DATEDIFF(servers[last_seen], TODAY(), DAY) > 30,
+          servers[is_active] = TRUE())
 ```
 
 ---
@@ -376,7 +376,7 @@ CALCULATE(COUNTROWS(oracle_servers),
 - **Slicer**: environment · client (admin report only)
 
 ### Page 2 — Oracle Database detail
-Source: `license_position` + `oracle_servers` + `oracle_processors`
+Source: `license_position` + `servers` + `oracle_processors`
 
 - **Matrix**: hostname, environment, edition, cpu_sockets, total_physical_cores, core_factor, licences_required, compliance_status
 - **Bar chart**: top 10 servers by licences_required
@@ -639,10 +639,10 @@ Source: `cross_client_summary` + `csi_contract_summary`
 ## Row-level security (multi-tenant single report)
 
 ```dax
--- RLS filter on oracle_servers
+-- RLS filter on servers
 [hostname] IN
 CALCULATETABLE(
-    VALUES(oracle_servers[hostname]),
+    VALUES(servers[hostname]),
     RELATED(client_lookup[client_code]) = LOOKUPVALUE(
         client_lookup[client_code],
         client_lookup[user_email], USERPRINCIPALNAME()

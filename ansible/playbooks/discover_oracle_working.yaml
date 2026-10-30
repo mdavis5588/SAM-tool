@@ -14,7 +14,7 @@
 # =============================================================================
 
 - name: Oracle SAM discovery
-  hosts: oracle_servers
+  hosts: servers
   gather_facts: true        # populates ansible_processor_*, ansible_virtualization_*
   become: false             # run as oracle_discovery user; sudo only where needed
   serial: 10                # limit parallel connections
@@ -1189,7 +1189,7 @@
           WHERE instance_id IN (
             SELECT i.instance_id
             FROM   {{ sam_client_schema }}.oracle_instances i
-            JOIN   {{ sam_client_schema }}.oracle_servers   s ON s.server_id = i.server_id
+            JOIN   {{ sam_client_schema }}.servers   s ON s.server_id = i.server_id
             WHERE  s.hostname = %(hostname)s
           )
         named_args:
@@ -1212,7 +1212,7 @@
                  'TRUE',
                  %(run_id)s
           FROM   {{ sam_client_schema }}.oracle_instances i
-          JOIN   {{ sam_client_schema }}.oracle_servers   s ON s.server_id = i.server_id
+          JOIN   {{ sam_client_schema }}.servers   s ON s.server_id = i.server_id
           WHERE  s.hostname = %(hostname)s
             AND  i.oracle_sid = %(sid)s
         named_args:

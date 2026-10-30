@@ -10,7 +10,7 @@
 DELETE FROM client_acme.oracle_options
   WHERE instance_id IN (
     SELECT i.instance_id FROM client_acme.oracle_instances i
-    JOIN client_acme.oracle_servers s ON s.server_id = i.server_id
+    JOIN client_acme.servers s ON s.server_id = i.server_id
     WHERE s.hostname IN (
       'db-prod-01','db-prod-02','db-prod-03','db-prod-04',
       'db-dr-01','db-dr-02',
@@ -22,7 +22,7 @@ DELETE FROM client_acme.oracle_options
   );
 DELETE FROM client_acme.oracle_instances
   WHERE server_id IN (
-    SELECT server_id FROM client_acme.oracle_servers
+    SELECT server_id FROM client_acme.servers
     WHERE hostname IN (
       'db-prod-01','db-prod-02','db-prod-03','db-prod-04',
       'db-dr-01','db-dr-02',
@@ -34,7 +34,7 @@ DELETE FROM client_acme.oracle_instances
   );
 DELETE FROM client_acme.oracle_processors
   WHERE server_id IN (
-    SELECT server_id FROM client_acme.oracle_servers
+    SELECT server_id FROM client_acme.servers
     WHERE hostname IN (
       'db-prod-01','db-prod-02','db-prod-03','db-prod-04',
       'db-dr-01','db-dr-02',
@@ -44,7 +44,7 @@ DELETE FROM client_acme.oracle_processors
       'db-multi-01','db-multi-02','db-multi-03','db-multi-04','db-multi-05'
     )
   );
-DELETE FROM client_acme.oracle_servers
+DELETE FROM client_acme.servers
   WHERE hostname IN (
     'db-prod-01','db-prod-02','db-prod-03','db-prod-04',
     'db-dr-01','db-dr-02',
@@ -56,7 +56,7 @@ DELETE FROM client_acme.oracle_servers
 -- ---------------------------------------------------------------------------
 -- 1. Servers
 -- ---------------------------------------------------------------------------
-INSERT INTO client_acme.oracle_servers
+INSERT INTO client_acme.servers
   (hostname, fqdn, ip_address, os_family, os_distribution, os_version,
    environment, criticality, total_ram_mb, datacenter, is_active, last_seen)
 VALUES
@@ -122,7 +122,7 @@ FROM (VALUES
   ('db-multi-04',    'Intel Xeon Gold 6338',   2, 32, 'physical', FALSE, NULL),
   ('db-multi-05',    'Intel Xeon Silver 4314', 2, 16, 'vmware',   TRUE,  16)
 ) AS v(hostname, cpu_model, cpu_sockets, cores_per_socket, virt_type, is_vmware, vcpu_count)
-JOIN client_acme.oracle_servers s USING (hostname);
+JOIN client_acme.servers s USING (hostname);
 
 -- ---------------------------------------------------------------------------
 -- 3. Oracle Instances
@@ -158,7 +158,7 @@ FROM (VALUES
   ('db-multi-04',    'WHDB',     'WHDB',     '/u01/app/oracle/product/19.0.0/dbhome_1', 'Oracle Database 19c Enterprise Edition', '19.3.0.0.0'),
   ('db-multi-05',    'CUSTDB',   'CUSTDB',   '/u01/app/oracle/product/19.0.0/dbhome_1', 'Oracle Database 19c Enterprise Edition', '19.3.0.0.0')
 ) AS v(hostname, oracle_sid, db_name, oracle_home, edition, db_version)
-JOIN client_acme.oracle_servers s USING (hostname)
+JOIN client_acme.servers s USING (hostname)
 ON CONFLICT (server_id, oracle_sid) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
@@ -297,6 +297,6 @@ FROM (VALUES
   ('db-multi-05','CUSTDB','Advanced Compression',   '19.0.0.0.0', 'FALSE')
 
 ) AS v(hostname, oracle_sid, option_name, option_version, status)
-JOIN client_acme.oracle_servers   s ON s.hostname    = v.hostname
+JOIN client_acme.servers   s ON s.hostname    = v.hostname
 JOIN client_acme.oracle_instances i ON i.server_id   = s.server_id
                                    AND i.oracle_sid  = v.oracle_sid;

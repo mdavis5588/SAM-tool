@@ -10,7 +10,7 @@
 DELETE FROM client_globex.oracle_options
   WHERE instance_id IN (
     SELECT i.instance_id FROM client_globex.oracle_instances i
-    JOIN client_globex.oracle_servers s ON s.server_id = i.server_id
+    JOIN client_globex.servers s ON s.server_id = i.server_id
     WHERE s.hostname IN (
       'gbx-prod-01','gbx-prod-02','gbx-prod-03',
       'gbx-dr-01',
@@ -21,7 +21,7 @@ DELETE FROM client_globex.oracle_options
   );
 DELETE FROM client_globex.oracle_instances
   WHERE server_id IN (
-    SELECT server_id FROM client_globex.oracle_servers
+    SELECT server_id FROM client_globex.servers
     WHERE hostname IN (
       'gbx-prod-01','gbx-prod-02','gbx-prod-03',
       'gbx-dr-01',
@@ -32,7 +32,7 @@ DELETE FROM client_globex.oracle_instances
   );
 DELETE FROM client_globex.oracle_processors
   WHERE server_id IN (
-    SELECT server_id FROM client_globex.oracle_servers
+    SELECT server_id FROM client_globex.servers
     WHERE hostname IN (
       'gbx-prod-01','gbx-prod-02','gbx-prod-03',
       'gbx-dr-01',
@@ -41,7 +41,7 @@ DELETE FROM client_globex.oracle_processors
       'gbx-analytics-01','gbx-security-01'
     )
   );
-DELETE FROM client_globex.oracle_servers
+DELETE FROM client_globex.servers
   WHERE hostname IN (
     'gbx-prod-01','gbx-prod-02','gbx-prod-03',
     'gbx-dr-01',
@@ -53,7 +53,7 @@ DELETE FROM client_globex.oracle_servers
 -- ---------------------------------------------------------------------------
 -- 1. Servers
 -- ---------------------------------------------------------------------------
-INSERT INTO client_globex.oracle_servers
+INSERT INTO client_globex.servers
   (hostname, fqdn, ip_address, os_family, os_distribution, os_version,
    environment, criticality, total_ram_mb, datacenter, is_active, last_seen)
 VALUES
@@ -94,7 +94,7 @@ FROM (VALUES
   ('gbx-analytics-01','Intel Xeon Gold 6338',   2, 32, 'physical', FALSE, NULL),
   ('gbx-security-01', 'Intel Xeon Gold 6338',   2, 16, 'physical', FALSE, NULL)
 ) AS v(hostname, cpu_model, cpu_sockets, cores_per_socket, virt_type, is_vmware, vcpu_count)
-JOIN client_globex.oracle_servers s USING (hostname);
+JOIN client_globex.servers s USING (hostname);
 
 -- ---------------------------------------------------------------------------
 -- 3. Oracle Instances
@@ -115,7 +115,7 @@ FROM (VALUES
   ('gbx-analytics-01','GBXDWH',   'GBXDWH',   '/u01/app/oracle/product/19.0.0/dbhome_1', 'Oracle Database 19c Enterprise Edition',   '19.3.0.0.0'),
   ('gbx-security-01', 'GBXSEC',   'GBXSEC',   '/u01/app/oracle/product/19.0.0/dbhome_1', 'Oracle Database 19c Enterprise Edition',   '19.3.0.0.0')
 ) AS v(hostname, oracle_sid, db_name, oracle_home, edition, db_version)
-JOIN client_globex.oracle_servers s USING (hostname);
+JOIN client_globex.servers s USING (hostname);
 
 -- ---------------------------------------------------------------------------
 -- 4. Oracle Options
@@ -180,7 +180,7 @@ FROM (VALUES
   ('gbx-security-01','GBXSEC', 'Tuning Pack',       '19.0.0.0.0', 'FALSE')
 
 ) AS v(hostname, oracle_sid, option_name, option_version, status)
-JOIN client_globex.oracle_servers   s ON s.hostname   = v.hostname
+JOIN client_globex.servers   s ON s.hostname   = v.hostname
 JOIN client_globex.oracle_instances i ON i.server_id  = s.server_id
                                      AND i.oracle_sid = v.oracle_sid;
 

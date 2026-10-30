@@ -1134,7 +1134,7 @@ def admin_snapshot_take():
                    m.product_family::TEXT, m.product_detail,
                    cs.csi_number, cs.contract_name
             FROM {schema}.server_csi_map m
-            JOIN {schema}.oracle_servers sv ON sv.server_id = m.server_id
+            JOIN {schema}.servers sv ON sv.server_id = m.server_id
             JOIN shared.csi_contracts cs    ON cs.csi_id   = m.csi_id
         """)
         assign_map = {}
@@ -1447,7 +1447,7 @@ def assignment_propose():
 
     # Fetch server hostname/environment for display
     srv_row = query(
-        f"SELECT hostname, environment FROM {schema}.oracle_servers WHERE server_id = %s",
+        f"SELECT hostname, environment FROM {schema}.servers WHERE server_id = %s",
         (server_id,), fetchall=False
     )
     if not srv_row:
@@ -1692,7 +1692,7 @@ def discovery_conflicts():
 def resolve_conflict(schema, server_id):
     try:
         sql = psycopg2.sql.SQL(
-            "UPDATE {}.oracle_servers SET discovery_conflict = FALSE, conflict_detail = NULL WHERE server_id = %s"
+            "UPDATE {}.servers SET discovery_conflict = FALSE, conflict_detail = NULL WHERE server_id = %s"
         ).format(psycopg2.sql.Identifier(schema))
         execute(sql, (server_id,))
         hostname = request.form.get("hostname") or str(server_id)
@@ -2135,7 +2135,7 @@ def _process_json_upload(schema: str, file_obj) -> dict:
                         cur.execute(
                             f"""SELECT i.instance_id
                                 FROM {schema}.oracle_instances i
-                                JOIN {schema}.oracle_servers   s ON s.server_id = i.server_id
+                                JOIN {schema}.servers   s ON s.server_id = i.server_id
                                 WHERE s.hostname = %s AND i.oracle_sid = %s
                                 LIMIT 1""",
                             (hostname, sid)
@@ -2483,7 +2483,7 @@ def _process_csv_upload(schema: str, files) -> dict:
                             cur.execute(
                                 f"""SELECT i.instance_id
                                     FROM {schema}.oracle_instances i
-                                    JOIN {schema}.oracle_servers   s ON s.server_id = i.server_id
+                                    JOIN {schema}.servers   s ON s.server_id = i.server_id
                                     WHERE s.hostname = %s AND i.oracle_sid = %s
                                     LIMIT 1""",
                                 (hostname, sid)
@@ -2774,7 +2774,7 @@ def discovery_history():
                        discovery_source, last_discovery_run,
                        first_seen, last_seen,
                        discovery_conflict
-                FROM {schema}.oracle_servers
+                FROM {schema}.servers
                 ORDER BY last_seen DESC NULLS LAST
             """)
         except Exception:
@@ -2924,7 +2924,7 @@ def weblogic_servers():
                 lp.total_licensed,
                 lp.compliance_status,
                 (ula_servers.server_id IS NOT NULL)          AS has_ula
-            FROM {s}.oracle_servers sv
+            FROM {s}.servers sv
             JOIN {s}.wls_domains d ON d.server_id = sv.server_id AND d.is_active
             LEFT JOIN {s}.wls_managed_servers ms ON ms.domain_id = d.domain_id
             LEFT JOIN {s}.license_position lp
@@ -3029,7 +3029,7 @@ def servers():
                         COALESCE(cpu_issues.factor_unknown,FALSE) AS cpu_unvalidated,
                         (ula_servers.server_id IS NOT NULL)    AS has_ula,
                         (exadata.server_id IS NOT NULL)        AS is_exadata
-                    FROM {s}.oracle_servers s
+                    FROM {s}.servers s
                     JOIN {s}.oracle_instances i ON i.server_id = s.server_id AND i.is_active
                     LEFT JOIN {s}.server_csi_map m ON m.server_id = s.server_id
                     LEFT JOIN lp                   ON lp.server_id = s.server_id
@@ -3115,7 +3115,7 @@ def servers():
             COALESCE(cpu_issues.factor_unknown, FALSE)         AS cpu_unvalidated,
             (ula_servers.server_id IS NOT NULL)                AS has_ula,
             (exadata.server_id IS NOT NULL)                    AS is_exadata
-        FROM {schema}.oracle_servers s
+        FROM {schema}.servers s
         JOIN {schema}.oracle_instances i       ON i.server_id = s.server_id AND i.is_active
         LEFT JOIN {schema}.server_csi_map m    ON m.server_id = s.server_id
         LEFT JOIN lp                           ON lp.server_id = s.server_id
@@ -3177,7 +3177,7 @@ def stale_servers():
                     s.last_seen::DATE   AS last_seen,
                     (CURRENT_DATE - s.last_seen::DATE) AS days_missing,
                     s.discovery_source
-                FROM {s}.oracle_servers s
+                FROM {s}.servers s
                 WHERE s.is_active
                   AND s.last_seen < NOW() - INTERVAL '{STALE_THRESHOLD_DAYS} days'
                 ORDER BY s.last_seen ASC
@@ -3313,7 +3313,7 @@ def stale_decommission():
 
     # Fetch server metadata
     server = query(
-        f"SELECT * FROM {client_schema}.oracle_servers WHERE server_id = %s",
+        f"SELECT * FROM {client_schema}.servers WHERE server_id = %s",
         (server_id,), fetchall=False
     )
     if not server:
@@ -3364,7 +3364,7 @@ def stale_decommission():
 
     # Deactivate the server (removes it from the servers page)
     execute(
-        f"UPDATE {client_schema}.oracle_servers SET is_active = FALSE WHERE server_id = %s",
+        f"UPDATE {client_schema}.servers SET is_active = FALSE WHERE server_id = %s",
         (server_id,)
     )
 
@@ -3426,7 +3426,7 @@ def edit_server(server_id):
         for c in active_clients:
             s = c["schema_name"]
             row = query(
-                f"SELECT 1 FROM {s}.oracle_servers WHERE server_id = %s",
+                f"SELECT 1 FROM {s}.servers WHERE server_id = %s",
                 (server_id,), fetchall=False
             )
             if row:
@@ -3443,18 +3443,18 @@ def edit_server(server_id):
             metric = request.form.get("metric")
             old_metric_row = query(
                 f"SELECT COALESCE(licence_metric_override,'processor_perpetual') AS m "
-                f"FROM {schema}.oracle_servers WHERE server_id = %s",
+                f"FROM {schema}.servers WHERE server_id = %s",
                 (server_id,), fetchall=False
             )
             if metric == "processor_perpetual":
                 execute(
-                    f"UPDATE {schema}.oracle_servers "
+                    f"UPDATE {schema}.servers "
                     f"SET licence_metric_override = NULL WHERE server_id = %s",
                     (server_id,)
                 )
             else:
                 execute(
-                    f"UPDATE {schema}.oracle_servers "
+                    f"UPDATE {schema}.servers "
                     f"SET licence_metric_override = %s WHERE server_id = %s",
                     (metric, server_id)
                 )
@@ -3491,7 +3491,7 @@ def edit_server(server_id):
             # Fetch server metric to validate CSI metric compatibility
             _sv_row = query(
                 f"SELECT COALESCE(licence_metric_override,'processor_perpetual') AS licence_metric "
-                f"FROM {schema}.oracle_servers WHERE server_id = %s",
+                f"FROM {schema}.servers WHERE server_id = %s",
                 (server_id,), fetchall=False
             )
             _sv_metric = (_sv_row or {}).get("licence_metric", "processor_perpetual")
@@ -3785,11 +3785,11 @@ def edit_server(server_id):
 
             old_server = query(
                 f"SELECT environment::TEXT, datacenter, ip_address::TEXT "
-                f"FROM {schema}.oracle_servers WHERE server_id = %s",
+                f"FROM {schema}.servers WHERE server_id = %s",
                 (server_id,), fetchall=False
             )
             execute(
-                f"""UPDATE {schema}.oracle_servers
+                f"""UPDATE {schema}.servers
                     SET environment = COALESCE(%s::environment_type, environment),
                         datacenter  = %s,
                         ip_address  = COALESCE(%s::INET, ip_address)
@@ -3807,7 +3807,7 @@ def edit_server(server_id):
             if not can_write_licences():
                 abort(403)
             execute(
-                f"UPDATE {schema}.oracle_servers SET is_active = FALSE WHERE server_id = %s",
+                f"UPDATE {schema}.servers SET is_active = FALSE WHERE server_id = %s",
                 (server_id,)
             )
             _audit("server.deactivate", entity_type="server", entity_id=server_id,
@@ -3819,7 +3819,7 @@ def edit_server(server_id):
             if not can_write_licences():
                 abort(403)
             execute(
-                f"UPDATE {schema}.oracle_servers SET is_active = TRUE WHERE server_id = %s",
+                f"UPDATE {schema}.servers SET is_active = TRUE WHERE server_id = %s",
                 (server_id,)
             )
             _audit("server.reactivate", entity_type="server", entity_id=server_id,
@@ -3835,7 +3835,7 @@ def edit_server(server_id):
                    s.is_active,
                    COALESCE(s.licence_metric_override, 'processor_perpetual') AS licence_metric,
                    s.licence_metric_override IS NOT NULL AS metric_overridden
-            FROM {schema}.oracle_servers s WHERE s.server_id = %s""",
+            FROM {schema}.servers s WHERE s.server_id = %s""",
         (server_id,), fetchall=False
     )
     if not server:
@@ -4259,7 +4259,7 @@ def edit_server(server_id):
 def server_history(server_id):
     schema = get_schema()
     server = query(
-        f"SELECT server_id, hostname FROM {schema}.oracle_servers WHERE server_id = %s",
+        f"SELECT server_id, hostname FROM {schema}.servers WHERE server_id = %s",
         (server_id,), fetchall=False
     )
     if not server:
@@ -4408,7 +4408,7 @@ def licence_summary_server_costs():
                     l.quantity       AS line_quantity,
                     l.annual_support_cost
                 FROM {s}.server_csi_map scm
-                JOIN {s}.oracle_servers sv ON sv.server_id = scm.server_id
+                JOIN {s}.servers sv ON sv.server_id = scm.server_id
                 JOIN shared.csi_contracts cs ON cs.csi_id = scm.csi_id
                 LEFT JOIN shared.license_entitlement_lines l ON l.line_id = scm.line_id
                 ORDER BY sv.hostname, scm.product_family, l.product_name
@@ -4488,7 +4488,7 @@ def _build_licence_detail(entitlement_rows):
             f"SELECT m.csi_id, COALESCE(m.product_detail,'') AS product_detail, "
             f"s.hostname, COALESCE(m.licences_consumed, 0) AS consumed "
             f"FROM {s}.server_csi_map m "
-            f"JOIN {s}.oracle_servers s ON s.server_id = m.server_id"
+            f"JOIN {s}.servers s ON s.server_id = m.server_id"
             for s in active_schemas
         )
         for r in query(f"SELECT csi_id, product_detail, hostname, SUM(consumed) AS consumed "
@@ -5293,7 +5293,7 @@ def finops_ulas():
                     lp.licences_required
                 FROM {s}.server_csi_map m
                 JOIN shared.csi_contracts cs ON cs.csi_id = m.csi_id AND cs.is_ula
-                JOIN {s}.oracle_servers sv ON sv.server_id = m.server_id AND sv.is_active
+                JOIN {s}.servers sv ON sv.server_id = m.server_id AND sv.is_active
                 LEFT JOIN {s}.license_position lp ON lp.server_id = sv.server_id
             """)
             seen_servers = set()
@@ -5751,7 +5751,7 @@ def licence_analysis_servers_api():
                COALESCE(op.cores_per_socket, 1)       AS cores_per_socket,
                COALESCE(op.total_physical_cores,
                         op.cpu_sockets * op.cores_per_socket, 1) AS total_physical_cores
-        FROM   {schema}.oracle_servers sv
+        FROM   {schema}.servers sv
         LEFT JOIN {schema}.oracle_processors op ON op.server_id = sv.server_id
         WHERE  sv.is_active IS NOT FALSE
         ORDER  BY sv.hostname
@@ -6176,7 +6176,7 @@ def licence_analysis():
                            COALESCE(op.cores_per_socket, 1)            AS cores_per_socket,
                            COALESCE(op.total_physical_cores,
                                     op.cpu_sockets * op.cores_per_socket, 1) AS total_physical_cores
-                    FROM   {schema}.oracle_servers sv
+                    FROM   {schema}.servers sv
                     LEFT JOIN {schema}.oracle_processors op ON op.server_id = sv.server_id
                     WHERE  sv.is_active IS NOT FALSE
                     ORDER  BY sv.hostname
@@ -6234,7 +6234,7 @@ def licence_analysis():
                            COALESCE(op.total_physical_cores,
                                     op.cpu_sockets * op.cores_per_socket, 1) AS total_physical_cores,
                            COALESCE(sv.total_ram_mb, 0)          AS ram_mb
-                    FROM   {schema}.oracle_servers sv
+                    FROM   {schema}.servers sv
                     LEFT JOIN {schema}.oracle_processors op ON op.server_id = sv.server_id
                     WHERE  sv.server_id = %s
                 """, (server_id_int,), fetchall=False)
@@ -6803,7 +6803,7 @@ def contract_detail(csi_id):
                        m.licences_consumed, m.notes, m.effective_date, m.map_id,
                        %s AS client_name, %s AS schema_name
                 FROM {s}.server_csi_map m
-                JOIN {s}.oracle_servers s ON s.server_id = m.server_id
+                JOIN {s}.servers s ON s.server_id = m.server_id
                 WHERE m.csi_id = %s
                 ORDER BY s.hostname
             """, (c["client_name"], s, csi_id))
@@ -6886,7 +6886,7 @@ def contract_detail(csi_id):
             s = owner["schema_name"]
             ula_available_servers = query(
                 f"SELECT server_id, hostname, environment::TEXT AS environment "
-                f"FROM {s}.oracle_servers WHERE is_active ORDER BY hostname"
+                f"FROM {s}.servers WHERE is_active ORDER BY hostname"
             )
             already = query(
                 f"SELECT DISTINCT server_id FROM {s}.server_csi_map WHERE csi_id = %s",
@@ -7434,7 +7434,7 @@ def visibility_versions():
             db_rows = query(f"""
                 SELECT COALESCE(i.db_version, 'Unknown') AS db_version,
                        COUNT(DISTINCT srv.server_id) AS server_count
-                FROM {s}.oracle_servers srv
+                FROM {s}.servers srv
                 JOIN {s}.oracle_instances i ON i.server_id = srv.server_id AND i.is_active
                 WHERE srv.is_active
                 GROUP BY i.db_version
@@ -7455,7 +7455,7 @@ def visibility_versions():
             wls_rows = query(f"""
                 SELECT COALESCE(d.wls_version, 'Unknown') AS wls_version,
                        COUNT(DISTINCT srv.server_id) AS server_count
-                FROM {s}.oracle_servers srv
+                FROM {s}.servers srv
                 JOIN {s}.wls_domains d ON d.server_id = srv.server_id AND d.is_active
                 WHERE srv.is_active
                 GROUP BY d.wls_version
@@ -7506,7 +7506,7 @@ def visibility_versions_client(client_code):
                COALESCE(srv.environment::TEXT, '') AS environment,
                COALESCE(srv.datacenter, '')         AS datacenter,
                COALESCE(i.db_version, 'Unknown')    AS db_version
-        FROM {s}.oracle_servers srv
+        FROM {s}.servers srv
         LEFT JOIN {s}.oracle_instances i
                ON i.server_id = srv.server_id AND i.is_active
         WHERE srv.is_active
@@ -7534,7 +7534,7 @@ def visibility_versions_client(client_code):
                    COALESCE(srv.datacenter, '')         AS datacenter,
                    COALESCE(d.wls_version, 'Unknown')   AS wls_version,
                    d.wls_edition
-            FROM {s}.oracle_servers srv
+            FROM {s}.servers srv
             JOIN {s}.wls_domains d ON d.server_id = srv.server_id AND d.is_active
             WHERE srv.is_active
             ORDER BY srv.server_id, d.domain_name
@@ -7713,7 +7713,7 @@ def visibility_wls_versions():
                     d.wls_version,
                     d.wls_edition,
                     d.last_seen::DATE     AS last_seen
-                FROM {s}.oracle_servers sv
+                FROM {s}.servers sv
                 JOIN {s}.wls_domains d ON d.server_id = sv.server_id AND d.is_active
                 WHERE sv.is_active
                 ORDER BY sv.hostname, d.domain_name
@@ -7813,7 +7813,7 @@ def executive_summary():
             """, fetchall=False)
 
             ua = query(f"""
-                SELECT COUNT(*) AS cnt FROM {s}.oracle_servers sv
+                SELECT COUNT(*) AS cnt FROM {s}.servers sv
                 WHERE sv.is_active
                   AND NOT EXISTS (
                     SELECT 1 FROM {s}.server_csi_map m WHERE m.server_id = sv.server_id
@@ -7946,7 +7946,7 @@ def audit_readiness():
                            SELECT 1 FROM {s}.wls_domains d
                            WHERE d.server_id = sv.server_id AND d.is_active
                        ) THEN 'middleware' ELSE 'database' END AS server_type
-                FROM {s}.oracle_servers sv
+                FROM {s}.servers sv
                 WHERE sv.is_active
                   AND NOT EXISTS (
                       SELECT 1 FROM {s}.server_csi_map m WHERE m.server_id = sv.server_id
@@ -8016,7 +8016,7 @@ def audit_readiness():
             assigned = query(f"""
                 SELECT DISTINCT sv.hostname, lp.product_detail
                 FROM {s}.server_csi_map m
-                JOIN {s}.oracle_servers sv ON sv.server_id = m.server_id
+                JOIN {s}.servers sv ON sv.server_id = m.server_id
                 JOIN {s}.license_position lp ON lp.server_id = m.server_id
                 WHERE m.csi_id = %s
             """, (ula["csi_id"],))
@@ -8106,7 +8106,7 @@ def compliance():
                         COALESCE(SUM(lp.licences_required), 0) AS licences_required,
                         COALESCE(SUM(lp.total_licensed), 0)    AS licences_assigned,
                         COALESCE(SUM(GREATEST(lp.licences_required - lp.total_licensed, 0)), 0) AS licences_short
-                    FROM {s}.oracle_servers srv
+                    FROM {s}.servers srv
                     LEFT JOIN {s}.license_position lp ON lp.server_id = srv.server_id
                     GROUP BY srv.server_id
                 )
@@ -8204,7 +8204,7 @@ def compliance_client(client_code):
                     {_nup_issue_fields}
                 ) ORDER BY lp.product_family)
                     FILTER (WHERE lp.compliance_status = 'under_licensed') AS issues
-            FROM {s}.oracle_servers srv
+            FROM {s}.servers srv
             LEFT JOIN {s}.license_position lp ON lp.server_id = srv.server_id
             GROUP BY srv.server_id, srv.hostname, srv.environment
             ORDER BY is_non_compliant DESC NULLS LAST, srv.hostname
@@ -8385,7 +8385,7 @@ def export_lms():
                s.ip_address::TEXT AS ip_address, s.os_family, s.os_distribution,
                s.os_version, s.total_ram_mb, s.last_seen::DATE AS last_seen,
                COALESCE(s.licence_metric_override, 'processor_perpetual') AS licence_metric
-        FROM {schema}.oracle_servers s WHERE s.is_active ORDER BY s.hostname
+        FROM {schema}.servers s WHERE s.is_active ORDER BY s.hostname
     """)
     ws2 = wb.create_sheet("Server Inventory")
     cols2 = ["Hostname", "Environment", "Datacenter", "IP Address", "OS Family",
@@ -8408,7 +8408,7 @@ def export_lms():
                p.is_vmware, p.is_exadata, p.vcpu_count,
                shared.cpu_core_factor_lookup(p.cpu_model) AS oracle_core_factor,
                p.recorded_at::DATE AS snapshot_date
-        FROM {schema}.oracle_servers s
+        FROM {schema}.servers s
         JOIN LATERAL (
           SELECT * FROM {schema}.oracle_processors
           WHERE server_id = s.server_id ORDER BY recorded_at DESC LIMIT 1
@@ -8438,7 +8438,7 @@ def export_lms():
         SELECT s.hostname, i.oracle_sid, i.db_name, i.edition,
                i.db_version, i.platform_name, i.last_seen::DATE AS last_seen
         FROM {schema}.oracle_instances i
-        JOIN {schema}.oracle_servers s ON s.server_id = i.server_id
+        JOIN {schema}.servers s ON s.server_id = i.server_id
         WHERE i.is_active ORDER BY s.hostname, i.oracle_sid
     """)
     ws4 = wb.create_sheet("Oracle Instances")
@@ -8458,7 +8458,7 @@ def export_lms():
             SELECT s.hostname, i.oracle_sid, o.option_name, o.is_active::TEXT AS installed
             FROM {schema}.oracle_options o
             JOIN {schema}.oracle_instances i ON i.instance_id = o.instance_id
-            JOIN {schema}.oracle_servers   s ON s.server_id   = i.server_id
+            JOIN {schema}.servers   s ON s.server_id   = i.server_id
             WHERE o.is_active = TRUE
             ORDER BY s.hostname, i.oracle_sid, o.option_name
         """)
@@ -8479,7 +8479,7 @@ def export_lms():
                lp.licences_required, lp.total_licensed,
                lp.licence_surplus_deficit, lp.compliance_status
         FROM {schema}.license_position lp
-        JOIN {schema}.oracle_servers s ON s.server_id = lp.server_id
+        JOIN {schema}.servers s ON s.server_id = lp.server_id
         ORDER BY s.hostname, lp.product_family
     """)
     ws6 = wb.create_sheet("Licence Position")
@@ -8514,7 +8514,7 @@ def export_lms():
                     cs.contract_name,
                     COALESCE(m.licences_consumed, 0) AS licences_from_csi
                 FROM {s}.server_csi_map m
-                JOIN {s}.oracle_servers sv  ON sv.server_id  = m.server_id  AND sv.is_active
+                JOIN {s}.servers sv  ON sv.server_id  = m.server_id  AND sv.is_active
                 JOIN shared.csi_contracts cs ON cs.csi_id    = m.csi_id
                 LEFT JOIN {s}.license_position lp
                        ON lp.server_id      = m.server_id
@@ -8932,7 +8932,7 @@ def inject_globals():
                 s = c["schema_name"]
                 try:
                     result = query(f"""
-                        SELECT COUNT(*) AS n FROM {s}.oracle_servers
+                        SELECT COUNT(*) AS n FROM {s}.servers
                         WHERE is_active AND last_seen < NOW() - INTERVAL '{STALE_THRESHOLD_DAYS} days'
                     """, fetchall=False)
                     stale_count += result["n"] if result else 0

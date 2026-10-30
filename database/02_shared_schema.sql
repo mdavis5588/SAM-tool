@@ -664,7 +664,7 @@ BEGIN
     BEGIN
       v_sql := format(
         $q$SELECT s.hostname, p.cpu_model
-           FROM   %I.oracle_servers s
+           FROM   %I.servers s
            JOIN   LATERAL (
              SELECT cpu_model FROM %I.oracle_processors
              WHERE  server_id = s.server_id
@@ -693,7 +693,7 @@ BEGIN
     -- New server detected in the last 7 days
     BEGIN
       v_sql := format(
-        $q$SELECT hostname, first_seen FROM %I.oracle_servers
+        $q$SELECT hostname, first_seen FROM %I.servers
            WHERE is_active AND first_seen >= NOW() - INTERVAL '7 days'$q$,
         v_client.schema_name
       );
@@ -715,7 +715,7 @@ BEGIN
     BEGIN
       v_sql := format(
         $q$SELECT s.hostname
-           FROM   %I.oracle_servers s
+           FROM   %I.servers s
            WHERE  s.is_active
              AND  (s.virtualization_type ILIKE '%%vmware%%'
                    OR s.virtualization_type ILIKE '%%vsphere%%'
@@ -746,7 +746,7 @@ BEGIN
       v_sql := format(
         $q$SELECT cl.server_id, s.hostname, cl.field_changed, cl.old_value, cl.new_value, cl.detected_at
            FROM   %I.discovery_changelog cl
-           JOIN   %I.oracle_servers s ON s.server_id = cl.server_id
+           JOIN   %I.servers s ON s.server_id = cl.server_id
            WHERE  cl.change_category = 'hardware'
              AND  cl.field_changed IN ('cpu_cores','total_cores','cpu_sockets','physical_cores')
              AND  cl.new_value::NUMERIC > cl.old_value::NUMERIC
@@ -775,7 +775,7 @@ BEGIN
       v_sql := format(
         $q$SELECT cl.server_id, s.hostname, cl.field_changed, cl.old_value, cl.new_value, cl.detected_at
            FROM   %I.discovery_changelog cl
-           JOIN   %I.oracle_servers s ON s.server_id = cl.server_id
+           JOIN   %I.servers s ON s.server_id = cl.server_id
            WHERE  cl.change_category = 'hardware'
              AND  cl.field_changed IN ('cpu_cores','total_cores','cpu_sockets','physical_cores')
              AND  cl.new_value::NUMERIC < cl.old_value::NUMERIC
@@ -804,7 +804,7 @@ BEGIN
       v_sql := format(
         $q$SELECT cl.server_id, s.hostname, cl.object_name AS feature_name, cl.new_value, cl.detected_at
            FROM   %I.discovery_changelog cl
-           JOIN   %I.oracle_servers s ON s.server_id = cl.server_id
+           JOIN   %I.servers s ON s.server_id = cl.server_id
            WHERE  cl.change_category IN ('option','feature','oracle_option')
              AND  cl.change_type IN ('NEW','ADDED','ENABLED')
              AND  COALESCE(cl.acknowledged, FALSE) = FALSE
@@ -839,7 +839,7 @@ BEGIN
                   (CURRENT_DATE - f.last_usage_date) AS days_since_use
            FROM   %I.oracle_feature_usage f
            JOIN   %I.oracle_instances i ON i.instance_id = f.instance_id
-           JOIN   %I.oracle_servers   s ON s.server_id   = i.server_id
+           JOIN   %I.servers   s ON s.server_id   = i.server_id
            WHERE  f.detected_usages > 0
              AND  f.last_usage_date IS NOT NULL
              AND  f.last_usage_date < CURRENT_DATE - INTERVAL '6 months'
@@ -902,7 +902,7 @@ BEGIN
           p.cpu_sockets, p.total_physical_cores, p.cpu_model, p.virt_type::TEXT,
           COUNT(DISTINCT i.instance_id) AS oracle_instance_count,
           COUNT(DISTINCT d.domain_id)   AS wls_domain_count
-         FROM %I.oracle_servers s
+         FROM %I.servers s
          LEFT JOIN LATERAL (SELECT * FROM %I.oracle_processors op
            WHERE op.server_id = s.server_id ORDER BY op.recorded_at DESC LIMIT 1) p ON TRUE
          LEFT JOIN %I.oracle_instances i ON i.server_id = s.server_id AND i.is_active
@@ -1472,7 +1472,7 @@ BEGIN
     BEGIN
       v_sql := format(
         $q$SELECT s.hostname, i.oracle_sid, p.cpu_sockets
-           FROM   %I.oracle_servers s
+           FROM   %I.servers s
            JOIN   %I.oracle_instances i ON i.server_id = s.server_id AND i.is_active
            JOIN   LATERAL (
              SELECT cpu_sockets FROM %I.oracle_processors
@@ -1531,7 +1531,7 @@ BEGIN
     BEGIN
       v_sql := format(
         $q$SELECT DISTINCT s.hostname, p.cpu_model
-           FROM   %I.oracle_servers s
+           FROM   %I.servers s
            JOIN   LATERAL (
              SELECT cpu_model FROM %I.oracle_processors
              WHERE  server_id = s.server_id
@@ -1609,7 +1609,7 @@ BEGIN
   FOR v_client IN SELECT schema_name, client_code, client_name FROM sam_admin.clients WHERE is_active LOOP
     BEGIN
       v_sql := format(
-        $q$SELECT hostname, first_seen FROM %I.oracle_servers
+        $q$SELECT hostname, first_seen FROM %I.servers
            WHERE is_active AND first_seen >= NOW() - INTERVAL '7 days'$q$,
         v_client.schema_name
       );
@@ -1633,7 +1633,7 @@ BEGIN
     BEGIN
       v_sql := format(
         $q$SELECT s.server_id, s.hostname
-           FROM   %I.oracle_servers s
+           FROM   %I.servers s
            WHERE  s.is_active
              AND  (s.virtualization_type ILIKE '%%vmware%%' OR s.virtualization_type ILIKE '%%vsphere%%'
                    OR s.virtualization_type ILIKE '%%esxi%%')
@@ -1665,7 +1665,7 @@ BEGIN
       v_sql := format(
         $q$SELECT cl.server_id, s.hostname, cl.field_changed, cl.old_value, cl.new_value, cl.detected_at
            FROM   %I.discovery_changelog cl
-           JOIN   %I.oracle_servers s ON s.server_id = cl.server_id
+           JOIN   %I.servers s ON s.server_id = cl.server_id
            WHERE  cl.change_category = 'hardware'
              AND  cl.field_changed IN ('cpu_cores','total_cores','cpu_sockets','physical_cores')
              AND  cl.new_value::NUMERIC > cl.old_value::NUMERIC
@@ -1695,7 +1695,7 @@ BEGIN
       v_sql := format(
         $q$SELECT cl.server_id, s.hostname, cl.field_changed, cl.old_value, cl.new_value, cl.detected_at
            FROM   %I.discovery_changelog cl
-           JOIN   %I.oracle_servers s ON s.server_id = cl.server_id
+           JOIN   %I.servers s ON s.server_id = cl.server_id
            WHERE  cl.change_category = 'hardware'
              AND  cl.field_changed IN ('cpu_cores','total_cores','cpu_sockets','physical_cores')
              AND  cl.new_value::NUMERIC < cl.old_value::NUMERIC
@@ -1725,7 +1725,7 @@ BEGIN
       v_sql := format(
         $q$SELECT cl.server_id, s.hostname, cl.field_changed, cl.new_value, cl.detected_at
            FROM   %I.discovery_changelog cl
-           JOIN   %I.oracle_servers s ON s.server_id = cl.server_id
+           JOIN   %I.servers s ON s.server_id = cl.server_id
            WHERE  cl.change_category IN ('option','feature','oracle_option')
              AND  cl.change_type IN ('NEW','ADDED','ENABLED')
              AND  COALESCE(cl.acknowledged, FALSE) = FALSE

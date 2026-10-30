@@ -333,7 +333,7 @@ FROM shared.unassigned_licences;
 
 -- ---------------------------------------------------------------------------
 -- 7. EXAMPLE: ASSIGN CSIs TO SPECIFIC SERVERS
--- Run after Ansible discovery has populated oracle_servers.
+-- Run after Ansible discovery has populated servers.
 -- Replace hostnames with real values from your environment.
 -- ---------------------------------------------------------------------------
 
@@ -342,7 +342,7 @@ FROM shared.unassigned_licences;
 --   (server_id, csi_id, product_family, notes, assigned_by)
 -- SELECT s.server_id, 1, 'oracle_database',
 --        'EE base covered by group pool CSI 11111111', 'sam_admin'
--- FROM   client_acme.oracle_servers s
+-- FROM   client_acme.servers s
 -- WHERE  s.hostname = 'acme-db-prod-01.acme.example.com';
 
 -- Pattern: same server, second CSI for a separate options contract
@@ -350,7 +350,7 @@ FROM shared.unassigned_licences;
 --   (server_id, csi_id, line_id, product_family, notes, assigned_by)
 -- SELECT s.server_id, 4, 1, 'oracle_database',
 --        'Advanced Security option from CSI 55555555 line 1', 'sam_admin'
--- FROM   client_acme.oracle_servers s
+-- FROM   client_acme.servers s
 -- WHERE  s.hostname = 'acme-db-prod-01.acme.example.com';
 
 -- Pattern: server covered by a CSI for WLS
@@ -358,7 +358,7 @@ FROM shared.unassigned_licences;
 --   (server_id, csi_id, product_family, notes, assigned_by)
 -- SELECT s.server_id, 2, 'oracle_weblogic',
 --        'WLS EE covered by group pool CSI 22222222', 'sam_admin'
--- FROM   client_acme.oracle_servers s
+-- FROM   client_acme.servers s
 -- WHERE  s.hostname = 'acme-wls-prod-01.acme.example.com';
 
 -- Check coverage status after assigning:

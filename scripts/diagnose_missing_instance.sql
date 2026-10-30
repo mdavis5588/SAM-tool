@@ -37,7 +37,7 @@ BEGIN
               COALESCE(i.db_version,''(null)'') AS db_version, i.is_active,
               COALESCE(to_char(i.last_seen,''YYYY-MM-DD HH24:MI''),''never'') AS last_seen
          FROM %I.oracle_instances i
-         JOIN %I.oracle_servers   s ON s.server_id = i.server_id
+         JOIN %I.servers   s ON s.server_id = i.server_id
         ORDER BY s.hostname, i.oracle_sid', v_schema, v_schema)
     LOOP
       RAISE NOTICE '  % | % | % | % | active=% | seen %',
@@ -48,7 +48,7 @@ BEGIN
     -- Servers with no instance rows at all.
     FOR v_row IN EXECUTE format(
       'SELECT s.hostname
-         FROM %I.oracle_servers s
+         FROM %I.servers s
         WHERE NOT EXISTS (SELECT 1 FROM %I.oracle_instances i
                           WHERE i.server_id = s.server_id)
         ORDER BY s.hostname', v_schema, v_schema)

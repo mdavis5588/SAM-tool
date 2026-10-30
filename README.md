@@ -38,7 +38,7 @@ Each client schema contains identical tables and views:
 
 | Object | Description |
 |---|---|
-| `oracle_servers` | Server inventory (hostname, IP, environment, etc.) |
+| `servers` | Server inventory (hostname, IP, environment, etc.) |
 | `oracle_processors` | CPU details — model, sockets, cores per socket, Exadata flag |
 | `oracle_instances` | Oracle DB instances (SID, edition, version) |
 | `oracle_options` | Active `v$option` flags (Partitioning, RAC, Diagnostics Pack, etc.) |

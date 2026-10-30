@@ -525,35 +525,35 @@ BEGIN
         END;
     END IF;
 
-    EXECUTE format('ALTER TABLE %I.oracle_servers ADD COLUMN IF NOT EXISTS discovery_source    TEXT', p_schema);
-    EXECUTE format('ALTER TABLE %I.oracle_servers ADD COLUMN IF NOT EXISTS discovery_conflict  BOOLEAN NOT NULL DEFAULT FALSE', p_schema);
-    EXECUTE format('ALTER TABLE %I.oracle_servers ADD COLUMN IF NOT EXISTS conflict_detail     TEXT', p_schema);
+    EXECUTE format('ALTER TABLE %I.servers ADD COLUMN IF NOT EXISTS discovery_source    TEXT', p_schema);
+    EXECUTE format('ALTER TABLE %I.servers ADD COLUMN IF NOT EXISTS discovery_conflict  BOOLEAN NOT NULL DEFAULT FALSE', p_schema);
+    EXECUTE format('ALTER TABLE %I.servers ADD COLUMN IF NOT EXISTS conflict_detail     TEXT', p_schema);
 
-    EXECUTE format('SELECT server_id FROM %I.oracle_servers WHERE hostname = $1 LIMIT 1', p_schema)
+    EXECUTE format('SELECT server_id FROM %I.servers WHERE hostname = $1 LIMIT 1', p_schema)
     INTO v_match_id USING p_hostname;
     IF v_match_id IS NOT NULL THEN v_match_how := 'hostname_exact'; END IF;
 
     IF v_match_id IS NULL THEN
-        EXECUTE format('SELECT server_id FROM %I.oracle_servers WHERE SPLIT_PART(hostname,''.'',1) = $1 OR SPLIT_PART(COALESCE(fqdn,''''),''.'',1) = $1 LIMIT 1', p_schema)
+        EXECUTE format('SELECT server_id FROM %I.servers WHERE SPLIT_PART(hostname,''.'',1) = $1 OR SPLIT_PART(COALESCE(fqdn,''''),''.'',1) = $1 LIMIT 1', p_schema)
         INTO v_match_id USING v_short;
         IF v_match_id IS NOT NULL THEN v_match_how := 'short_name'; END IF;
     END IF;
 
     IF v_match_id IS NULL AND v_fqdn_norm IS NOT NULL THEN
-        EXECUTE format('SELECT server_id FROM %I.oracle_servers WHERE fqdn = $1 OR hostname = $1 LIMIT 1', p_schema)
+        EXECUTE format('SELECT server_id FROM %I.servers WHERE fqdn = $1 OR hostname = $1 LIMIT 1', p_schema)
         INTO v_match_id USING v_fqdn_norm;
         IF v_match_id IS NOT NULL THEN v_match_how := 'fqdn'; END IF;
     END IF;
 
     IF v_match_id IS NULL AND v_ip IS NOT NULL THEN
-        EXECUTE format('SELECT server_id FROM %I.oracle_servers WHERE ip_address = $1 LIMIT 1', p_schema)
+        EXECUTE format('SELECT server_id FROM %I.servers WHERE ip_address = $1 LIMIT 1', p_schema)
         INTO v_match_id USING v_ip;
         IF v_match_id IS NOT NULL THEN v_match_how := 'ip_address'; END IF;
     END IF;
 
     IF v_match_id IS NOT NULL AND v_match_how <> 'hostname_exact' THEN
         DECLARE v_other INTEGER; BEGIN
-            EXECUTE format('SELECT server_id FROM %I.oracle_servers WHERE hostname = $1 AND server_id <> $2 LIMIT 1', p_schema)
+            EXECUTE format('SELECT server_id FROM %I.servers WHERE hostname = $1 AND server_id <> $2 LIMIT 1', p_schema)
             INTO v_other USING p_hostname, v_match_id;
             IF v_other IS NOT NULL THEN
                 v_conflict := TRUE;
@@ -565,7 +565,7 @@ BEGIN
 
     IF v_match_id IS NULL THEN
         EXECUTE format($q$
-            INSERT INTO %I.oracle_servers
+            INSERT INTO %I.servers
               (hostname, fqdn, ip_address, os_family, os_distribution, os_version,
                environment, total_ram_mb, datacenter, last_discovery_run, discovery_source, first_seen, last_seen)
             VALUES ($1,$2,$3,$4,$5,$6, COALESCE($7,'unknown')::%I.environment_type, $8,$9,$10,$11,NOW(),NOW())
@@ -577,7 +577,7 @@ BEGIN
         v_result := 'inserted:' || v_server_id;
     ELSE
         EXECUTE format($q$
-            UPDATE %I.oracle_servers SET
+            UPDATE %I.servers SET
               fqdn             = COALESCE($2, fqdn),
               ip_address       = COALESCE($3, ip_address),
               os_family        = COALESCE($4, os_family),
@@ -634,7 +634,7 @@ DECLARE r RECORD; BEGIN
             RETURN QUERY EXECUTE format(
                 'SELECT %L::TEXT, %L::TEXT, server_id, hostname, fqdn, ip_address::TEXT,
                         discovery_source, last_seen, conflict_detail
-                 FROM %I.oracle_servers WHERE discovery_conflict = TRUE',
+                 FROM %I.servers WHERE discovery_conflict = TRUE',
                 r.client_name, r.schema_name, r.schema_name);
         EXCEPTION WHEN OTHERS THEN NULL;
         END;
@@ -695,9 +695,9 @@ BEGIN
       p_schema);
   EXCEPTION WHEN duplicate_object THEN NULL; END;
 
-  -- oracle_servers (includes discovery_source columns from migration 09)
+  -- servers (includes discovery_source columns from migration 09)
   EXECUTE format($sql$
-    CREATE TABLE IF NOT EXISTS %I.oracle_servers (
+    CREATE TABLE IF NOT EXISTS %I.servers (
       server_id                SERIAL PRIMARY KEY,
       hostname                 TEXT NOT NULL UNIQUE,
       fqdn                     TEXT,
@@ -727,7 +727,7 @@ BEGIN
     CREATE TABLE IF NOT EXISTS %I.oracle_processors (
       proc_id               SERIAL PRIMARY KEY,
       server_id             INTEGER NOT NULL
-                              REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+                              REFERENCES %I.servers (server_id) ON DELETE CASCADE,
       cpu_model             TEXT NOT NULL,
       cpu_architecture      TEXT,
       cpu_sockets           INTEGER NOT NULL DEFAULT 1,
@@ -748,7 +748,7 @@ BEGIN
     CREATE TABLE IF NOT EXISTS %I.oracle_instances (
       instance_id       SERIAL PRIMARY KEY,
       server_id         INTEGER NOT NULL
-                          REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+                          REFERENCES %I.servers (server_id) ON DELETE CASCADE,
       oracle_sid        TEXT NOT NULL,
       db_name           TEXT,
       oracle_home       TEXT,
@@ -784,7 +784,7 @@ BEGIN
     CREATE TABLE IF NOT EXISTS %I.wls_domains (
       domain_id         SERIAL PRIMARY KEY,
       server_id         INTEGER NOT NULL
-                          REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+                          REFERENCES %I.servers (server_id) ON DELETE CASCADE,
       domain_name       TEXT NOT NULL,
       domain_home       TEXT,
       wls_version       TEXT,
@@ -806,7 +806,7 @@ BEGIN
       domain_id           INTEGER NOT NULL
                             REFERENCES %I.wls_domains (domain_id) ON DELETE CASCADE,
       server_id           INTEGER NOT NULL
-                            REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+                            REFERENCES %I.servers (server_id) ON DELETE CASCADE,
       managed_server_name TEXT NOT NULL,
       listen_port         INTEGER,
       ssl_port            INTEGER,
@@ -840,7 +840,7 @@ BEGIN
       detected_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       discovery_run_id  TEXT,
       server_id         INTEGER
-                          REFERENCES %I.oracle_servers (server_id) ON DELETE SET NULL,
+                          REFERENCES %I.servers (server_id) ON DELETE SET NULL,
       hostname          TEXT,
       change_category   TEXT NOT NULL,
       change_type       TEXT NOT NULL,
@@ -868,7 +868,7 @@ BEGIN
     CREATE TABLE IF NOT EXISTS %I.server_csi_map (
       map_id              SERIAL PRIMARY KEY,
       server_id           INTEGER NOT NULL
-                            REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+                            REFERENCES %I.servers (server_id) ON DELETE CASCADE,
       csi_id              INTEGER NOT NULL
                             REFERENCES shared.csi_contracts (csi_id),
       line_id             INTEGER
@@ -896,7 +896,7 @@ BEGIN
       instance_id       INTEGER NOT NULL
                           REFERENCES %I.oracle_instances (instance_id) ON DELETE CASCADE,
       server_id         INTEGER NOT NULL
-                          REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+                          REFERENCES %I.servers (server_id) ON DELETE CASCADE,
       node_name         TEXT NOT NULL,
       node_number       INTEGER,
       instance_name     TEXT,
@@ -946,7 +946,7 @@ BEGIN
     CREATE TABLE IF NOT EXISTS %I.java_installations (
       java_id            SERIAL PRIMARY KEY,
       server_id          INTEGER NOT NULL
-                           REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+                           REFERENCES %I.servers (server_id) ON DELETE CASCADE,
       java_home          TEXT NOT NULL,
       java_vendor        TEXT,
       java_version       TEXT,
@@ -976,7 +976,7 @@ BEGIN
     CREATE TABLE IF NOT EXISTS %I.mysql_installations (
       mysql_id          SERIAL PRIMARY KEY,
       server_id         INTEGER NOT NULL
-                          REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+                          REFERENCES %I.servers (server_id) ON DELETE CASCADE,
       mysql_version     TEXT,
       mysql_edition     TEXT,
       install_path      TEXT,
@@ -999,7 +999,7 @@ BEGIN
     CREATE TABLE IF NOT EXISTS %I.oci_instances (
       oci_id              SERIAL PRIMARY KEY,
       server_id           INTEGER
-                            REFERENCES %I.oracle_servers (server_id) ON DELETE SET NULL,
+                            REFERENCES %I.servers (server_id) ON DELETE SET NULL,
       oci_instance_id     TEXT NOT NULL UNIQUE,
       display_name        TEXT,
       compartment_id      TEXT,

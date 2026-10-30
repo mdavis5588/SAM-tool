@@ -15,7 +15,7 @@ DECLARE v_sid INTEGER;
 BEGIN
   -- Acme WLS servers
   FOR v_sid IN
-    SELECT server_id FROM client_acme.oracle_servers
+    SELECT server_id FROM client_acme.servers
     WHERE hostname IN (
       'wls-prod-01','wls-prod-02','wls-prod-03',
       'wls-dr-01','wls-uat-01','wls-dev-01'
@@ -28,14 +28,14 @@ BEGIN
     DELETE FROM client_acme.wls_domains WHERE server_id = v_sid;
     DELETE FROM client_acme.oracle_processors WHERE server_id = v_sid;
   END LOOP;
-  DELETE FROM client_acme.oracle_servers WHERE hostname IN (
+  DELETE FROM client_acme.servers WHERE hostname IN (
     'wls-prod-01','wls-prod-02','wls-prod-03',
     'wls-dr-01','wls-uat-01','wls-dev-01'
   );
 
   -- Globex WLS servers
   FOR v_sid IN
-    SELECT server_id FROM client_globex.oracle_servers
+    SELECT server_id FROM client_globex.servers
     WHERE hostname IN (
       'gbx-wls-prod-01','gbx-wls-prod-02',
       'gbx-wls-dr-01','gbx-wls-uat-01'
@@ -48,7 +48,7 @@ BEGIN
     DELETE FROM client_globex.wls_domains WHERE server_id = v_sid;
     DELETE FROM client_globex.oracle_processors WHERE server_id = v_sid;
   END LOOP;
-  DELETE FROM client_globex.oracle_servers WHERE hostname IN (
+  DELETE FROM client_globex.servers WHERE hostname IN (
     'gbx-wls-prod-01','gbx-wls-prod-02',
     'gbx-wls-dr-01','gbx-wls-uat-01'
   );
@@ -62,7 +62,7 @@ END $$;
 -- ---------------------------------------------------------------------------
 -- 1. Servers
 -- ---------------------------------------------------------------------------
-INSERT INTO client_acme.oracle_servers
+INSERT INTO client_acme.servers
   (hostname, fqdn, ip_address, os_family, os_distribution, os_version,
    environment, criticality, total_ram_mb, datacenter, is_active, last_seen)
 VALUES
@@ -101,7 +101,7 @@ FROM (VALUES
   ('wls-uat-01',  'Intel Xeon Silver 4314', 2, 8, 'vmware',  TRUE,   8),
   ('wls-dev-01',  'Intel Xeon Silver 4214', 1, 4, 'vmware',  TRUE,   4)
 ) AS v(hostname, cpu_model, cpu_sockets, cores_per_socket, virt_type, is_vmware, vcpu_count)
-JOIN client_acme.oracle_servers s USING (hostname);
+JOIN client_acme.servers s USING (hostname);
 
 -- ---------------------------------------------------------------------------
 -- 3. WLS Domains
@@ -117,7 +117,7 @@ WITH ins AS (
     '/u01/app/oracle/middleware/user_projects/domains/acme_erp_soa_domain',
     '14.1.1.0.0', 'WebLogic Server Enterprise Edition',
     'wls-prod-01.acme.internal', 7001, TRUE, NOW(), 'sample-run-001'
-  FROM client_acme.oracle_servers s WHERE s.hostname = 'wls-prod-01'
+  FROM client_acme.servers s WHERE s.hostname = 'wls-prod-01'
   ON CONFLICT (server_id, domain_name) DO UPDATE SET
     wls_version = EXCLUDED.wls_version, wls_edition = EXCLUDED.wls_edition,
     last_seen = NOW()
@@ -128,7 +128,7 @@ ms AS (
     (domain_id, server_id, managed_server_name, listen_port, ssl_port,
      cluster_name, machine_name, state, last_seen, discovery_run_id)
   SELECT i.domain_id, s.server_id, v.ms_name, v.port, v.ssl, v.cluster, v.machine, 'RUNNING', NOW(), 'sample-run-001'
-  FROM ins i, client_acme.oracle_servers s,
+  FROM ins i, client_acme.servers s,
   (VALUES
     ('soa_server1', 8001, 8002, 'SOA_Cluster', 'machine-wls-prod-01'),
     ('osb_server1', 9001, 9002, 'OSB_Cluster', 'machine-wls-prod-01')
@@ -157,7 +157,7 @@ WITH ins AS (
     '/u01/app/oracle/middleware/user_projects/domains/acme_erp_soa_domain',
     '14.1.1.0.0', 'WebLogic Server Enterprise Edition',
     'wls-prod-01.acme.internal', 7001, TRUE, NOW(), 'sample-run-001'
-  FROM client_acme.oracle_servers s WHERE s.hostname = 'wls-prod-02'
+  FROM client_acme.servers s WHERE s.hostname = 'wls-prod-02'
   ON CONFLICT (server_id, domain_name) DO UPDATE SET
     wls_version = EXCLUDED.wls_version, wls_edition = EXCLUDED.wls_edition,
     last_seen = NOW()
@@ -168,7 +168,7 @@ ms AS (
     (domain_id, server_id, managed_server_name, listen_port, ssl_port,
      cluster_name, machine_name, state, last_seen, discovery_run_id)
   SELECT i.domain_id, s.server_id, v.ms_name, v.port, v.ssl, v.cluster, v.machine, 'RUNNING', NOW(), 'sample-run-001'
-  FROM ins i, client_acme.oracle_servers s,
+  FROM ins i, client_acme.servers s,
   (VALUES
     ('soa_server2', 8001, 8002, 'SOA_Cluster', 'machine-wls-prod-02'),
     ('osb_server2', 9001, 9002, 'OSB_Cluster', 'machine-wls-prod-02')
@@ -197,7 +197,7 @@ WITH ins AS (
     '/u01/app/oracle/middleware/user_projects/domains/acme_osb_gateway_domain',
     '14.1.1.0.0', 'WebLogic Server Standard Edition',
     'wls-prod-03.acme.internal', 7001, TRUE, NOW(), 'sample-run-001'
-  FROM client_acme.oracle_servers s WHERE s.hostname = 'wls-prod-03'
+  FROM client_acme.servers s WHERE s.hostname = 'wls-prod-03'
   ON CONFLICT (server_id, domain_name) DO UPDATE SET
     wls_version = EXCLUDED.wls_version, wls_edition = EXCLUDED.wls_edition,
     last_seen = NOW()
@@ -208,7 +208,7 @@ ms AS (
     (domain_id, server_id, managed_server_name, listen_port, ssl_port,
      cluster_name, machine_name, state, last_seen, discovery_run_id)
   SELECT i.domain_id, s.server_id, v.ms_name, v.port, v.ssl, v.cluster, v.machine, 'RUNNING', NOW(), 'sample-run-001'
-  FROM ins i, client_acme.oracle_servers s,
+  FROM ins i, client_acme.servers s,
   (VALUES
     ('osb_gw_server1', 8001, 8002, NULL, 'machine-wls-prod-03')
   ) AS v(ms_name, port, ssl, cluster, machine)
@@ -235,7 +235,7 @@ WITH ins AS (
     '/u01/app/oracle/middleware/user_projects/domains/acme_erp_soa_domain',
     '14.1.1.0.0', 'WebLogic Server Enterprise Edition',
     'wls-dr-01.acme.internal', 7001, TRUE, NOW(), 'sample-run-001'
-  FROM client_acme.oracle_servers s WHERE s.hostname = 'wls-dr-01'
+  FROM client_acme.servers s WHERE s.hostname = 'wls-dr-01'
   ON CONFLICT (server_id, domain_name) DO UPDATE SET
     wls_version = EXCLUDED.wls_version, wls_edition = EXCLUDED.wls_edition,
     last_seen = NOW()
@@ -246,7 +246,7 @@ ms AS (
     (domain_id, server_id, managed_server_name, listen_port, ssl_port,
      cluster_name, machine_name, state, last_seen, discovery_run_id)
   SELECT i.domain_id, s.server_id, v.ms_name, v.port, v.ssl, v.cluster, v.machine, 'SHUTDOWN', NOW(), 'sample-run-001'
-  FROM ins i, client_acme.oracle_servers s,
+  FROM ins i, client_acme.servers s,
   (VALUES
     ('soa_server_dr', 8001, 8002, 'SOA_Cluster', 'machine-wls-dr-01'),
     ('osb_server_dr', 9001, 9002, 'OSB_Cluster', 'machine-wls-dr-01')
@@ -275,7 +275,7 @@ WITH ins AS (
     '/u01/app/oracle/middleware/user_projects/domains/acme_uat_domain',
     '14.1.1.0.0', 'WebLogic Server Standard Edition',
     'wls-uat-01.acme.internal', 7001, TRUE, NOW(), 'sample-run-001'
-  FROM client_acme.oracle_servers s WHERE s.hostname = 'wls-uat-01'
+  FROM client_acme.servers s WHERE s.hostname = 'wls-uat-01'
   ON CONFLICT (server_id, domain_name) DO UPDATE SET
     wls_version = EXCLUDED.wls_version, wls_edition = EXCLUDED.wls_edition,
     last_seen = NOW()
@@ -286,7 +286,7 @@ ms AS (
     (domain_id, server_id, managed_server_name, listen_port, ssl_port,
      cluster_name, machine_name, state, last_seen, discovery_run_id)
   SELECT i.domain_id, s.server_id, v.ms_name, v.port, v.ssl, v.cluster, v.machine, 'RUNNING', NOW(), 'sample-run-001'
-  FROM ins i, client_acme.oracle_servers s,
+  FROM ins i, client_acme.servers s,
   (VALUES
     ('uat_server1', 8001, 8002, NULL, 'machine-wls-uat-01')
   ) AS v(ms_name, port, ssl, cluster, machine)
@@ -311,7 +311,7 @@ WITH ins AS (
     '/u01/app/oracle/middleware/user_projects/domains/acme_dev_domain',
     '14.1.1.0.0', 'WebLogic Server Standard Edition',
     'wls-dev-01.acme.internal', 7001, TRUE, NOW(), 'sample-run-001'
-  FROM client_acme.oracle_servers s WHERE s.hostname = 'wls-dev-01'
+  FROM client_acme.servers s WHERE s.hostname = 'wls-dev-01'
   ON CONFLICT (server_id, domain_name) DO UPDATE SET
     wls_version = EXCLUDED.wls_version, wls_edition = EXCLUDED.wls_edition,
     last_seen = NOW()
@@ -333,7 +333,7 @@ FROM ins i,
 -- ---------------------------------------------------------------------------
 -- 4. Servers
 -- ---------------------------------------------------------------------------
-INSERT INTO client_globex.oracle_servers
+INSERT INTO client_globex.servers
   (hostname, fqdn, ip_address, os_family, os_distribution, os_version,
    environment, criticality, total_ram_mb, datacenter, is_active, last_seen)
 VALUES
@@ -364,7 +364,7 @@ FROM (VALUES
   ('gbx-wls-dr-01',   'Intel Xeon Gold 6338', 2, 32, 'physical', FALSE, NULL),
   ('gbx-wls-uat-01',  'Intel Xeon Silver 4314', 2, 8, 'vmware',  TRUE,   8)
 ) AS v(hostname, cpu_model, cpu_sockets, cores_per_socket, virt_type, is_vmware, vcpu_count)
-JOIN client_globex.oracle_servers s USING (hostname);
+JOIN client_globex.servers s USING (hostname);
 
 -- ---------------------------------------------------------------------------
 -- 6. WLS Domains
@@ -380,7 +380,7 @@ WITH ins AS (
     '/u01/app/oracle/middleware/user_projects/domains/globex_iam_domain',
     '12.2.1.4.0', 'WebLogic Suite',
     'gbx-wls-prod-01.globex.internal', 7001, TRUE, NOW(), 'sample-run-001'
-  FROM client_globex.oracle_servers s WHERE s.hostname = 'gbx-wls-prod-01'
+  FROM client_globex.servers s WHERE s.hostname = 'gbx-wls-prod-01'
   ON CONFLICT (server_id, domain_name) DO UPDATE SET
     wls_version = EXCLUDED.wls_version, wls_edition = EXCLUDED.wls_edition,
     last_seen = NOW()
@@ -391,7 +391,7 @@ ms AS (
     (domain_id, server_id, managed_server_name, listen_port, ssl_port,
      cluster_name, machine_name, state, last_seen, discovery_run_id)
   SELECT i.domain_id, s.server_id, v.ms_name, v.port, v.ssl, v.cluster, v.machine, 'RUNNING', NOW(), 'sample-run-001'
-  FROM ins i, client_globex.oracle_servers s,
+  FROM ins i, client_globex.servers s,
   (VALUES
     ('oam_server1',  14100, 14101, 'oam_cluster',  'machine-gbx-wls-prod-01'),
     ('oud_server1',  3060,  3131,  'oud_cluster',  'machine-gbx-wls-prod-01'),
@@ -423,7 +423,7 @@ WITH ins AS (
     '/u01/app/oracle/middleware/user_projects/domains/globex_iam_domain',
     '12.2.1.4.0', 'WebLogic Suite',
     'gbx-wls-prod-01.globex.internal', 7001, TRUE, NOW(), 'sample-run-001'
-  FROM client_globex.oracle_servers s WHERE s.hostname = 'gbx-wls-prod-02'
+  FROM client_globex.servers s WHERE s.hostname = 'gbx-wls-prod-02'
   ON CONFLICT (server_id, domain_name) DO UPDATE SET
     wls_version = EXCLUDED.wls_version, wls_edition = EXCLUDED.wls_edition,
     last_seen = NOW()
@@ -434,7 +434,7 @@ ms AS (
     (domain_id, server_id, managed_server_name, listen_port, ssl_port,
      cluster_name, machine_name, state, last_seen, discovery_run_id)
   SELECT i.domain_id, s.server_id, v.ms_name, v.port, v.ssl, v.cluster, v.machine, 'RUNNING', NOW(), 'sample-run-001'
-  FROM ins i, client_globex.oracle_servers s,
+  FROM ins i, client_globex.servers s,
   (VALUES
     ('oam_server2',  14100, 14101, 'oam_cluster', 'machine-gbx-wls-prod-02'),
     ('oud_server2',  3060,  3131,  'oud_cluster', 'machine-gbx-wls-prod-02'),
@@ -466,7 +466,7 @@ WITH ins AS (
     '/u01/app/oracle/middleware/user_projects/domains/globex_iam_domain',
     '12.2.1.4.0', 'WebLogic Suite',
     'gbx-wls-dr-01.globex.internal', 7001, TRUE, NOW(), 'sample-run-001'
-  FROM client_globex.oracle_servers s WHERE s.hostname = 'gbx-wls-dr-01'
+  FROM client_globex.servers s WHERE s.hostname = 'gbx-wls-dr-01'
   ON CONFLICT (server_id, domain_name) DO UPDATE SET
     wls_version = EXCLUDED.wls_version, wls_edition = EXCLUDED.wls_edition,
     last_seen = NOW()
@@ -477,7 +477,7 @@ ms AS (
     (domain_id, server_id, managed_server_name, listen_port, ssl_port,
      cluster_name, machine_name, state, last_seen, discovery_run_id)
   SELECT i.domain_id, s.server_id, v.ms_name, v.port, v.ssl, v.cluster, v.machine, 'SHUTDOWN', NOW(), 'sample-run-001'
-  FROM ins i, client_globex.oracle_servers s,
+  FROM ins i, client_globex.servers s,
   (VALUES
     ('oam_server_dr', 14100, 14101, 'oam_cluster', 'machine-gbx-wls-dr-01'),
     ('oig_server_dr', 14000, 14001, 'oig_cluster', 'machine-gbx-wls-dr-01')
@@ -507,7 +507,7 @@ WITH ins AS (
     '/u01/app/oracle/middleware/user_projects/domains/globex_uat_domain',
     '12.2.1.4.0', 'WebLogic Server Enterprise Edition',
     'gbx-wls-uat-01.globex.internal', 7001, TRUE, NOW(), 'sample-run-001'
-  FROM client_globex.oracle_servers s WHERE s.hostname = 'gbx-wls-uat-01'
+  FROM client_globex.servers s WHERE s.hostname = 'gbx-wls-uat-01'
   ON CONFLICT (server_id, domain_name) DO UPDATE SET
     wls_version = EXCLUDED.wls_version, wls_edition = EXCLUDED.wls_edition,
     last_seen = NOW()
@@ -774,7 +774,7 @@ END $$;
 -- CSI F (ORD-2024-ACM-WLS-01): Acme prod WLS cluster + OSB gateway
 INSERT INTO client_acme.server_csi_map (server_id, csi_id, product_family)
 SELECT s.server_id, c.csi_id, 'oracle_weblogic'
-FROM client_acme.oracle_servers s
+FROM client_acme.servers s
 CROSS JOIN shared.csi_contracts c
 WHERE s.hostname IN ('wls-prod-01', 'wls-prod-02', 'wls-prod-03', 'wls-dr-01')
   AND c.vendor_reference = 'ORD-2024-ACM-WLS-01'
@@ -786,7 +786,7 @@ WHERE s.hostname IN ('wls-prod-01', 'wls-prod-02', 'wls-prod-03', 'wls-dr-01')
 -- CSI G (ORD-2024-GBX-WLS-01): Globex prod WLS servers
 INSERT INTO client_globex.server_csi_map (server_id, csi_id, product_family)
 SELECT s.server_id, c.csi_id, 'oracle_weblogic'
-FROM client_globex.oracle_servers s
+FROM client_globex.servers s
 CROSS JOIN shared.csi_contracts c
 WHERE s.hostname IN ('gbx-wls-prod-01', 'gbx-wls-prod-02', 'gbx-wls-dr-01')
   AND c.vendor_reference = 'ORD-2024-GBX-WLS-01'
@@ -798,7 +798,7 @@ WHERE s.hostname IN ('gbx-wls-prod-01', 'gbx-wls-prod-02', 'gbx-wls-dr-01')
 -- CSI H (ORD-2023-SHARED-WLS-01): Shared non-prod pool → acme + globex UAT
 INSERT INTO client_acme.server_csi_map (server_id, csi_id, product_family)
 SELECT s.server_id, c.csi_id, 'oracle_weblogic'
-FROM client_acme.oracle_servers s
+FROM client_acme.servers s
 CROSS JOIN shared.csi_contracts c
 WHERE s.hostname = 'wls-uat-01'
   AND c.vendor_reference = 'ORD-2023-SHARED-WLS-01'
@@ -809,7 +809,7 @@ WHERE s.hostname = 'wls-uat-01'
 
 INSERT INTO client_globex.server_csi_map (server_id, csi_id, product_family)
 SELECT s.server_id, c.csi_id, 'oracle_weblogic'
-FROM client_globex.oracle_servers s
+FROM client_globex.servers s
 CROSS JOIN shared.csi_contracts c
 WHERE s.hostname = 'gbx-wls-uat-01'
   AND c.vendor_reference = 'ORD-2023-SHARED-WLS-01'
@@ -821,7 +821,7 @@ WHERE s.hostname = 'gbx-wls-uat-01'
 -- CSI I (ORD-2024-SHARED-WLS-02): Shared prod overflow → acme + globex prod nodes
 INSERT INTO client_acme.server_csi_map (server_id, csi_id, product_family)
 SELECT s.server_id, c.csi_id, 'oracle_weblogic'
-FROM client_acme.oracle_servers s
+FROM client_acme.servers s
 CROSS JOIN shared.csi_contracts c
 WHERE s.hostname IN ('wls-prod-01', 'wls-prod-02')
   AND c.vendor_reference = 'ORD-2024-SHARED-WLS-02'
@@ -832,7 +832,7 @@ WHERE s.hostname IN ('wls-prod-01', 'wls-prod-02')
 
 INSERT INTO client_globex.server_csi_map (server_id, csi_id, product_family)
 SELECT s.server_id, c.csi_id, 'oracle_weblogic'
-FROM client_globex.oracle_servers s
+FROM client_globex.servers s
 CROSS JOIN shared.csi_contracts c
 WHERE s.hostname IN ('gbx-wls-prod-01', 'gbx-wls-prod-02')
   AND c.vendor_reference = 'ORD-2024-SHARED-WLS-02'

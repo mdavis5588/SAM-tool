@@ -152,9 +152,9 @@ BEGIN
   EXCEPTION WHEN duplicate_object THEN NULL;
   END;
 
-  -- oracle_servers
+  -- servers
   EXECUTE format($sql$
-    CREATE TABLE IF NOT EXISTS %I.oracle_servers (
+    CREATE TABLE IF NOT EXISTS %I.servers (
       server_id           SERIAL PRIMARY KEY,
       hostname            TEXT NOT NULL UNIQUE,
       fqdn                TEXT,
@@ -181,7 +181,7 @@ BEGIN
     CREATE TABLE IF NOT EXISTS %I.oracle_processors (
       proc_id               SERIAL PRIMARY KEY,
       server_id             INTEGER NOT NULL
-                              REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+                              REFERENCES %I.servers (server_id) ON DELETE CASCADE,
       cpu_model             TEXT NOT NULL,
       cpu_architecture      TEXT,
       cpu_sockets           INTEGER NOT NULL DEFAULT 1,
@@ -202,7 +202,7 @@ BEGIN
     CREATE TABLE IF NOT EXISTS %I.oracle_instances (
       instance_id       SERIAL PRIMARY KEY,
       server_id         INTEGER NOT NULL
-                          REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+                          REFERENCES %I.servers (server_id) ON DELETE CASCADE,
       oracle_sid        TEXT NOT NULL,
       db_name           TEXT,
       oracle_home       TEXT,
@@ -238,7 +238,7 @@ BEGIN
     CREATE TABLE IF NOT EXISTS %I.wls_domains (
       domain_id         SERIAL PRIMARY KEY,
       server_id         INTEGER NOT NULL
-                          REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+                          REFERENCES %I.servers (server_id) ON DELETE CASCADE,
       domain_name       TEXT NOT NULL,
       domain_home       TEXT,
       wls_version       TEXT,
@@ -260,7 +260,7 @@ BEGIN
       domain_id         INTEGER NOT NULL
                           REFERENCES %I.wls_domains (domain_id) ON DELETE CASCADE,
       server_id         INTEGER NOT NULL
-                          REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+                          REFERENCES %I.servers (server_id) ON DELETE CASCADE,
       managed_server_name TEXT NOT NULL,
       listen_port       INTEGER,
       ssl_port          INTEGER,
@@ -299,7 +299,7 @@ BEGIN
       detected_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       discovery_run_id  TEXT,               -- run that first detected this change
       server_id         INTEGER
-                          REFERENCES %I.oracle_servers (server_id) ON DELETE SET NULL,
+                          REFERENCES %I.servers (server_id) ON DELETE SET NULL,
       hostname          TEXT,               -- denormalised for readability after server delete
       change_category   TEXT NOT NULL,      -- 'oracle_option', 'oracle_instance',
                                             -- 'processor', 'wls_domain', 'wls_product'
@@ -336,7 +336,7 @@ BEGIN
     CREATE TABLE IF NOT EXISTS %I.server_csi_map (
       map_id              SERIAL PRIMARY KEY,
       server_id           INTEGER NOT NULL
-                            REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+                            REFERENCES %I.servers (server_id) ON DELETE CASCADE,
       csi_id              INTEGER NOT NULL
                             REFERENCES shared.csi_contracts (csi_id),
       line_id             INTEGER
@@ -372,7 +372,7 @@ BEGIN
       instance_id       INTEGER NOT NULL
                           REFERENCES %I.oracle_instances (instance_id) ON DELETE CASCADE,
       server_id         INTEGER NOT NULL
-                          REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+                          REFERENCES %I.servers (server_id) ON DELETE CASCADE,
       node_name         TEXT NOT NULL,
       node_number       INTEGER,
       instance_name     TEXT,
@@ -423,7 +423,7 @@ BEGIN
     CREATE TABLE IF NOT EXISTS %I.java_installations (
       java_id            SERIAL PRIMARY KEY,
       server_id          INTEGER NOT NULL
-                           REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+                           REFERENCES %I.servers (server_id) ON DELETE CASCADE,
       java_home          TEXT NOT NULL,
       java_vendor        TEXT,
       java_version       TEXT,
@@ -454,7 +454,7 @@ BEGIN
     CREATE TABLE IF NOT EXISTS %I.mysql_installations (
       mysql_id          SERIAL PRIMARY KEY,
       server_id         INTEGER NOT NULL
-                          REFERENCES %I.oracle_servers (server_id) ON DELETE CASCADE,
+                          REFERENCES %I.servers (server_id) ON DELETE CASCADE,
       mysql_version     TEXT,
       mysql_edition     TEXT,
       install_path      TEXT,
@@ -477,7 +477,7 @@ BEGIN
     CREATE TABLE IF NOT EXISTS %I.oci_instances (
       oci_id              SERIAL PRIMARY KEY,
       server_id           INTEGER
-                            REFERENCES %I.oracle_servers (server_id) ON DELETE SET NULL,
+                            REFERENCES %I.servers (server_id) ON DELETE SET NULL,
       oci_instance_id     TEXT NOT NULL UNIQUE,
       display_name        TEXT,
       compartment_id      TEXT,
@@ -678,7 +678,7 @@ CREATE TABLE IF NOT EXISTS sam_admin.vmware_vms (
                             REFERENCES sam_admin.vmware_hosts (host_id) ON DELETE SET NULL,
   vm_name                 TEXT NOT NULL,
   vm_uuid                 TEXT UNIQUE,
-  guest_hostname          TEXT,    -- matches oracle_servers.hostname when populated
+  guest_hostname          TEXT,    -- matches servers.hostname when populated
   guest_ip                TEXT,
   power_state             TEXT,
   vcpu_count              INTEGER,

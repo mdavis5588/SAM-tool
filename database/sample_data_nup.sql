@@ -22,7 +22,7 @@
 -- ---------------------------------------------------------------------------
 -- 1.  NUP servers
 -- ---------------------------------------------------------------------------
-INSERT INTO client_acme.oracle_servers
+INSERT INTO client_acme.servers
   (hostname, fqdn, ip_address, os_family, os_distribution, os_version,
    environment, criticality, total_ram_mb, datacenter, is_active, last_seen,
    licence_metric_override)
@@ -56,7 +56,7 @@ FROM (VALUES
   ('db-nup-ee-02',  'Intel Xeon Gold 6338', 2, 8, 'physical'),
   ('db-nup-se2-01', 'Intel Xeon Silver 4214', 1, 4, 'physical')
 ) AS v(hostname, cpu_model, cpu_sockets, cores_per_socket, virt_type)
-JOIN client_acme.oracle_servers s USING (hostname);
+JOIN client_acme.servers s USING (hostname);
 
 
 -- ---------------------------------------------------------------------------
@@ -80,7 +80,7 @@ FROM (VALUES
    '/u01/app/oracle/product/19.0.0/dbhome_1',
    'Oracle Database 19c Standard Edition 2')
 ) AS v(hostname, oracle_sid, db_name, oracle_home, edition)
-JOIN client_acme.oracle_servers s USING (hostname)
+JOIN client_acme.servers s USING (hostname)
 ON CONFLICT (server_id, oracle_sid) DO NOTHING;
 
 
@@ -110,7 +110,7 @@ FROM (VALUES
    ARRAY['alice','bob','carol','dave','eve','frank','grace','henry'],
    'sample-nup-run-001')
 ) AS v(hostname, oracle_sid, snap_date, active, total, locked, users, run_id)
-JOIN client_acme.oracle_servers s USING (hostname)
+JOIN client_acme.servers s USING (hostname)
 JOIN client_acme.oracle_instances i
   ON i.server_id = s.server_id AND i.oracle_sid = v.oracle_sid;
 
@@ -194,7 +194,7 @@ FROM (VALUES
   ('db-nup-se2-01', 'Oracle Database Standard Edition 2',
    10::NUMERIC, 'NUP floor — min(1 socket,2) × 10 = 10')
 ) AS v(hostname, product_detail, licences_consumed, notes)
-JOIN client_acme.oracle_servers s USING (hostname)
+JOIN client_acme.servers s USING (hostname)
 JOIN shared.csi_contracts c ON c.vendor_reference = 'ORD-2025-ACME-NUP'
 JOIN shared.license_entitlement_lines l
   ON l.csi_id = c.csi_id

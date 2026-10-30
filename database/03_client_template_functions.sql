@@ -50,7 +50,7 @@ BEGIN
       SELECT
         s.server_id,
         SUM(COALESCE(n.active_user_count, 0)) AS total_nup_users
-      FROM %I.oracle_servers s
+      FROM %I.servers s
       JOIN %I.oracle_instances i ON i.server_id = s.server_id AND i.is_active
       LEFT JOIN LATERAL (
         SELECT active_user_count
@@ -102,7 +102,7 @@ BEGIN
           WHEN i.edition ILIKE '%%Standard%%'           THEN cf.cpu_sockets::NUMERIC
           ELSE ROUND(cf.total_physical_cores * cf.core_factor, 2)
         END AS licences_required
-      FROM %I.oracle_servers s
+      FROM %I.servers s
       JOIN %I.oracle_instances i ON i.server_id = s.server_id AND i.is_active
       JOIN core_factor cf        ON cf.server_id = s.server_id
       LEFT JOIN nup_totals nt    ON nt.server_id = s.server_id
@@ -124,7 +124,7 @@ BEGIN
           WHEN lr.uses_core_factor THEN ROUND(cf.total_physical_cores * cf.core_factor, 2)
           ELSE cf.cpu_sockets::NUMERIC
         END AS licences_required
-      FROM %I.oracle_servers s
+      FROM %I.servers s
       JOIN %I.wls_domains d ON d.server_id = s.server_id AND d.is_active
       JOIN core_factor cf   ON cf.server_id = s.server_id
       LEFT JOIN LATERAL (
@@ -148,7 +148,7 @@ BEGIN
         NULL::NUMERIC            AS nup_active_users,
         'processor_perpetual'::TEXT AS licence_metric,
         ROUND(cf.total_physical_cores * cf.core_factor, 2) AS licences_required
-      FROM %I.oracle_servers s
+      FROM %I.servers s
       JOIN %I.oracle_instances  i   ON i.server_id   = s.server_id
                                     AND i.is_active
                                     AND i.edition ILIKE '%%Enterprise%%'
@@ -223,14 +223,14 @@ BEGIN
   $view$,
   p_schema,   -- 1  view schema
   p_schema,   -- 2  oracle_processors
-  p_schema,   -- 3  oracle_servers  (nup_totals)
+  p_schema,   -- 3  servers  (nup_totals)
   p_schema,   -- 4  oracle_instances (nup_totals)
   p_schema,   -- 5  oracle_nup_users (nup_totals)
-  p_schema,   -- 6  oracle_servers  (db_required)
+  p_schema,   -- 6  servers  (db_required)
   p_schema,   -- 7  oracle_instances (db_required)
-  p_schema,   -- 8  oracle_servers  (wls_required)
+  p_schema,   -- 8  servers  (wls_required)
   p_schema,   -- 9  wls_domains
-  p_schema,   -- 10 oracle_servers  (option_required)
+  p_schema,   -- 10 servers  (option_required)
   p_schema,   -- 11 oracle_instances (option_required)
   p_schema,   -- 12 oracle_options
   p_schema    -- 13 server_csi_map
@@ -352,7 +352,7 @@ BEGIN
           ELSE 'SE2 Processor (' || LEAST(cf.cpu_sockets,2) || ' licences)'
         END                                             AS lowest_processor_option
 
-      FROM   %I.oracle_servers     s
+      FROM   %I.servers     s
       JOIN   %I.oracle_instances   i  ON i.server_id = s.server_id AND i.is_active
       JOIN   cf                       ON cf.server_id = s.server_id
       WHERE  s.is_active = TRUE
@@ -391,7 +391,7 @@ BEGIN
         'Processor (' || ROUND(cf.total_physical_cores * cf.core_factor, 2) || ' licences)'
                                                         AS lowest_processor_option
 
-      FROM   %I.oracle_servers  s
+      FROM   %I.servers  s
       JOIN   %I.wls_domains     d   ON d.server_id = s.server_id AND d.is_active
       JOIN   cf                     ON cf.server_id = s.server_id
       WHERE  s.is_active = TRUE
@@ -445,9 +445,9 @@ BEGIN
   $view$,
   p_schema,   -- view schema
   p_schema,   -- oracle_processors
-  p_schema,   -- oracle_servers (db_rows)
+  p_schema,   -- servers (db_rows)
   p_schema,   -- oracle_instances
-  p_schema,   -- oracle_servers (wls_rows)
+  p_schema,   -- servers (wls_rows)
   p_schema    -- wls_domains
   );
 END;
@@ -470,7 +470,7 @@ BEGIN
       v_instance   JSONB;
     BEGIN
       -- Upsert server
-      INSERT INTO %I.oracle_servers
+      INSERT INTO %I.servers
         (hostname, fqdn, ip_address, os_family, os_distribution, os_version,
          environment, criticality, total_ram_mb, datacenter,
          last_seen, last_discovery_run)
@@ -579,7 +579,7 @@ BEGIN
       v_product    JSONB;
     BEGIN
       -- Ensure server record exists (WLS discovery may run separately from DB discovery)
-      INSERT INTO %I.oracle_servers
+      INSERT INTO %I.servers
         (hostname, fqdn, ip_address, os_family, os_distribution, os_version,
          environment, criticality, total_ram_mb, datacenter,
          last_seen, last_discovery_run)
@@ -740,7 +740,7 @@ BEGIN
       SELECT s.server_id, s.hostname, s.environment::TEXT, s.datacenter,
              ''oracle_database''::TEXT AS product_family,
              i.edition               AS product_detail
-      FROM   ' || quote_ident(p_schema) || '.oracle_servers   s
+      FROM   ' || quote_ident(p_schema) || '.servers   s
       JOIN   ' || quote_ident(p_schema) || '.oracle_instances i
              ON i.server_id = s.server_id AND i.is_active
       WHERE  s.is_active = TRUE
@@ -750,7 +750,7 @@ BEGIN
       SELECT s.server_id, s.hostname, s.environment::TEXT, s.datacenter,
              ''oracle_weblogic''::TEXT AS product_family,
              d.wls_edition           AS product_detail
-      FROM   ' || quote_ident(p_schema) || '.oracle_servers s
+      FROM   ' || quote_ident(p_schema) || '.servers s
       JOIN   ' || quote_ident(p_schema) || '.wls_domains    d
              ON d.server_id = s.server_id AND d.is_active
       WHERE  s.is_active = TRUE
@@ -930,7 +930,7 @@ BEGIN
       SELECT s.hostname, i.oracle_sid, s.server_id
       INTO   v_hostname, v_sid, v_server_id
       FROM   %I.oracle_instances i
-      JOIN   %I.oracle_servers   s ON s.server_id = i.server_id
+      JOIN   %I.servers   s ON s.server_id = i.server_id
       WHERE  i.instance_id = NEW.instance_id;
 
       v_run_id := NEW.discovery_run_id;
@@ -1017,7 +1017,7 @@ BEGIN
       v_hostname TEXT;
     BEGIN
       SELECT hostname INTO v_hostname
-      FROM   %I.oracle_servers WHERE server_id = NEW.server_id;
+      FROM   %I.servers WHERE server_id = NEW.server_id;
 
       IF TG_OP = 'INSERT' THEN
         INSERT INTO %I.discovery_changelog
@@ -1088,7 +1088,7 @@ BEGIN
       v_prev     RECORD;
     BEGIN
       SELECT hostname INTO v_hostname
-      FROM   %I.oracle_servers WHERE server_id = NEW.server_id;
+      FROM   %I.servers WHERE server_id = NEW.server_id;
 
       -- Get the most recent PREVIOUS snapshot (exclude the row just inserted)
       SELECT * INTO v_prev
@@ -1187,7 +1187,7 @@ BEGIN
       SELECT s.hostname, s.server_id, d.domain_name
       INTO   v_hostname, v_server_id, v_domain
       FROM   %I.wls_domains  d
-      JOIN   %I.oracle_servers s ON s.server_id = d.server_id
+      JOIN   %I.servers s ON s.server_id = d.server_id
       WHERE  d.domain_id = NEW.domain_id;
 
       v_severity := CASE
@@ -1249,7 +1249,7 @@ BEGIN
       v_hostname TEXT;
     BEGIN
       SELECT hostname INTO v_hostname
-      FROM   %I.oracle_servers WHERE server_id = NEW.server_id;
+      FROM   %I.servers WHERE server_id = NEW.server_id;
 
       IF TG_OP = 'INSERT' THEN
         INSERT INTO %I.discovery_changelog
@@ -1413,7 +1413,7 @@ BEGIN
         ELSE 'no_licence_required'
       END AS licence_status
     FROM   %I.java_installations j
-    JOIN   %I.oracle_servers      s  ON s.server_id = j.server_id AND s.is_active
+    JOIN   %I.servers      s  ON s.server_id = j.server_id AND s.is_active
     LEFT   JOIN shared.java_license_editions je
            ON  je.edition_name = j.java_edition
     ORDER  BY j.licence_exempt ASC, j.requires_licence DESC,
@@ -1444,7 +1444,7 @@ BEGIN
       COALESCE(me.licence_metric, 'server') AS licence_metric,
       COALESCE(me.notes, 'Unknown edition') AS edition_notes
     FROM   %I.mysql_installations m
-    JOIN   %I.oracle_servers       s  ON s.server_id = m.server_id AND s.is_active
+    JOIN   %I.servers       s  ON s.server_id = m.server_id AND s.is_active
     LEFT   JOIN shared.mysql_license_editions me
            ON  me.edition_name = m.mysql_edition
     ORDER  BY m.requires_licence DESC, s.hostname
@@ -1536,7 +1536,7 @@ BEGIN
           ELSE ROUND(cf.total_physical_cores * cf.core_factor * 25, 0)
         END
       )                            AS effective_nup_to_licence
-    FROM   %I.oracle_servers    s
+    FROM   %I.servers    s
     JOIN   %I.oracle_instances  i  ON i.server_id = s.server_id AND i.is_active
     JOIN   core_factor          cf ON cf.server_id = s.server_id
     LEFT   JOIN latest_nup      n  ON n.instance_id = i.instance_id
@@ -1586,7 +1586,7 @@ BEGIN
         ELSE NULL
       END  AS byol_processor_licences_required
     FROM   %I.oci_instances  o
-    LEFT   JOIN %I.oracle_servers s ON s.server_id = o.server_id
+    LEFT   JOIN %I.servers s ON s.server_id = o.server_id
     WHERE  o.lifecycle_state NOT IN ('TERMINATED', 'TERMINATING')
        OR  o.lifecycle_state IS NULL
     ORDER  BY o.region, o.display_name
@@ -1623,7 +1623,7 @@ BEGIN
           THEN 'NON_CDB'
         ELSE 'REVIEW_REQUIRED'
       END                                                   AS multitenant_status
-    FROM   %I.oracle_servers    s
+    FROM   %I.servers    s
     JOIN   %I.oracle_instances  i  ON i.server_id  = s.server_id AND i.is_active
     LEFT   JOIN %I.oracle_pdbs  p  ON p.instance_id = i.instance_id
     WHERE  s.is_active = TRUE
@@ -1651,7 +1651,7 @@ BEGIN
       v_pdb_count   INTEGER;
     BEGIN
       SELECT server_id INTO v_server_id
-      FROM   %I.oracle_servers WHERE hostname = p_payload->>'hostname';
+      FROM   %I.servers WHERE hostname = p_payload->>'hostname';
 
       IF v_server_id IS NULL THEN
         RAISE EXCEPTION 'Extended discovery: server %% not found — run base discovery first.',
@@ -1796,7 +1796,7 @@ BEGIN
       v_metric    TEXT;
     BEGIN
       -- Ensure server record exists
-      INSERT INTO %I.oracle_servers
+      INSERT INTO %I.servers
         (hostname, fqdn, ip_address, os_family, os_distribution, os_version,
          environment, total_ram_mb, last_seen, last_discovery_run)
       VALUES (
@@ -1869,7 +1869,7 @@ BEGIN
       v_install   JSONB;
       v_licensed  BOOLEAN;
     BEGIN
-      INSERT INTO %I.oracle_servers
+      INSERT INTO %I.servers
         (hostname, fqdn, ip_address, os_family, os_distribution, os_version,
          environment, total_ram_mb, last_seen, last_discovery_run)
       VALUES (
@@ -1938,7 +1938,7 @@ BEGIN
       LOOP
         -- Try to match to a known server by private IP
         SELECT server_id INTO v_server_id
-        FROM   %I.oracle_servers
+        FROM   %I.servers
         WHERE  ip_address = (v_instance->>'private_ip')::INET
         LIMIT  1;
 
@@ -2003,7 +2003,7 @@ BEGIN
         i.edition,
         p.cpu_sockets,
         CASE WHEN p.cpu_sockets > 2 THEN TRUE ELSE FALSE END AS socket_violation
-      FROM   %I.oracle_servers s
+      FROM   %I.servers s
       JOIN   %I.oracle_instances i ON i.server_id = s.server_id AND i.is_active
       JOIN   LATERAL (
         SELECT cpu_sockets FROM %I.oracle_processors
@@ -2074,7 +2074,7 @@ BEGIN
         ELSE 'OK (factor = ' || shared.cpu_core_factor_lookup(p.cpu_model) || ')'
       END                                          AS validation_status,
       p.recorded_at                                AS last_processor_snapshot
-    FROM   %I.oracle_servers s
+    FROM   %I.servers s
     JOIN   LATERAL (
       SELECT cpu_model, cpu_sockets, cores_per_socket, recorded_at
       FROM   %I.oracle_processors
