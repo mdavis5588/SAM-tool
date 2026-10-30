@@ -481,7 +481,7 @@ BEGIN
         p_payload->>'os_family',
         p_payload->>'os_distribution',
         p_payload->>'os_version',
-        (p_payload->>'environment')::environment_type,
+        (p_payload->>'environment')::%1$I.environment_type,
         p_payload->>'criticality',
         (p_payload->>'total_ram_mb')::INTEGER,
         p_payload->>'datacenter',
@@ -511,8 +511,8 @@ BEGIN
           cpu_architecture = p_payload->>'cpu_architecture',
           cpu_sockets      = (p_payload->>'cpu_sockets')::INTEGER,
           cores_per_socket = (p_payload->>'cpu_cores_per_socket')::INTEGER,
-          threads_per_core = (p_payload->>'cpu_threads_per_core')::INTEGER,
-          virt_type        = (COALESCE(p_payload->>'virt_type','unknown'))::virt_type,
+          threads_per_core = COALESCE((p_payload->>'cpu_threads_per_core')::INTEGER, 1),
+          virt_type        = (COALESCE(p_payload->>'virt_type','unknown'))::%1$I.virt_type,
           is_vmware        = COALESCE((p_payload->>'is_vmware')::BOOLEAN, FALSE),
           is_exadata       = COALESCE((p_payload->>'is_exadata')::BOOLEAN, FALSE),
           vcpu_count       = (p_payload->>'vcpu_count')::INTEGER,
@@ -529,8 +529,8 @@ BEGIN
           p_payload->>'cpu_architecture',
           (p_payload->>'cpu_sockets')::INTEGER,
           (p_payload->>'cpu_cores_per_socket')::INTEGER,
-          (p_payload->>'cpu_threads_per_core')::INTEGER,
-          (COALESCE(p_payload->>'virt_type','unknown'))::virt_type,
+          COALESCE((p_payload->>'cpu_threads_per_core')::INTEGER, 1),
+          (COALESCE(p_payload->>'virt_type','unknown'))::%1$I.virt_type,
           COALESCE((p_payload->>'is_vmware')::BOOLEAN, FALSE),
           COALESCE((p_payload->>'is_exadata')::BOOLEAN, FALSE),
           (p_payload->>'vcpu_count')::INTEGER,
@@ -541,6 +541,7 @@ BEGIN
       -- Upsert Oracle instances
       FOR v_instance IN SELECT * FROM jsonb_array_elements(p_payload->'instances')
       LOOP
+        CONTINUE WHEN v_instance->>'sid' IS NULL OR TRIM(v_instance->>'sid') = '';
         INSERT INTO %I.oracle_instances
           (server_id, oracle_sid, db_name, edition, db_version,
            platform_name, last_seen, discovery_run_id)
@@ -587,7 +588,7 @@ BEGIN
         p_payload->>'hostname', p_payload->>'fqdn',
         (p_payload->>'ip_address')::INET,
         p_payload->>'os_family', p_payload->>'os_distribution', p_payload->>'os_version',
-        (p_payload->>'environment')::environment_type,
+        (p_payload->>'environment')::%1$I.environment_type,
         p_payload->>'criticality',
         (p_payload->>'total_ram_mb')::INTEGER,
         p_payload->>'datacenter',
@@ -609,8 +610,8 @@ BEGIN
           p_payload->>'cpu_architecture',
           (p_payload->>'cpu_sockets')::INTEGER,
           (p_payload->>'cpu_cores_per_socket')::INTEGER,
-          (p_payload->>'cpu_threads_per_core')::INTEGER,
-          (COALESCE(p_payload->>'virt_type','unknown'))::virt_type,
+          COALESCE((p_payload->>'cpu_threads_per_core')::INTEGER, 1),
+          (COALESCE(p_payload->>'virt_type','unknown'))::%1$I.virt_type,
           COALESCE((p_payload->>'is_vmware')::BOOLEAN, FALSE),
           COALESCE((p_payload->>'is_exadata')::BOOLEAN, FALSE),
           (p_payload->>'vcpu_count')::INTEGER,
@@ -1804,7 +1805,7 @@ BEGIN
         (p_payload->>'ip_address')::INET,
         p_payload->>'os_family', p_payload->>'os_distribution',
         p_payload->>'os_version',
-        (COALESCE(p_payload->>'environment', 'unknown'))::environment_type,
+        (COALESCE(p_payload->>'environment', 'unknown'))::%1$I.environment_type,
         (p_payload->>'total_ram_mb')::INTEGER,
         NOW(), p_payload->>'run_id'
       )
@@ -1877,7 +1878,7 @@ BEGIN
         (p_payload->>'ip_address')::INET,
         p_payload->>'os_family', p_payload->>'os_distribution',
         p_payload->>'os_version',
-        (COALESCE(p_payload->>'environment', 'unknown'))::environment_type,
+        (COALESCE(p_payload->>'environment', 'unknown'))::%1$I.environment_type,
         (p_payload->>'total_ram_mb')::INTEGER,
         NOW(), p_payload->>'run_id'
       )

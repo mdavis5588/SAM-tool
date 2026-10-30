@@ -41,11 +41,11 @@ BEGIN
 
   -- This migration redeploys the client functions from the templates, so any fix a
   -- later migration made to those functions is lost unless the template carries it
-  -- too. Three do not, as of writing: 33 (oracle_processors ON CONFLICT), 38
-  -- (schema-qualified environment_type and virt_type casts) and 39 (skipping an
-  -- instance with a null or empty SID). Running this against a database that has
-  -- those migrations applied would quietly revert them, so refuse until the
-  -- templates are brought current.
+  -- too. 33 (oracle_processors UPDATE-else-INSERT), 38 (schema-qualified
+  -- environment_type and virt_type casts) and 39 (skipping an instance with a null
+  -- or empty SID) are all folded into 03_client_template_functions.sql, so a
+  -- current template is safe. An older one would quietly revert them, hence the
+  -- check below: migration 38's qualified cast is the marker for all three.
   IF NOT EXISTS (
     SELECT 1
     FROM   pg_proc p
