@@ -2034,32 +2034,50 @@ CREATE INDEX IF NOT EXISTS idx_os_rules_vendor ON shared.os_license_rules (vendo
 INSERT INTO shared.os_license_rules
   (vendor, product_pattern, license_metric, sockets_per_unit, max_sockets,
    vcpus_per_unit, covers_guests, counts_guests, source_reference, notes)
+--
+-- product_pattern is matched as: reported distribution ILIKE '%pattern%'. The
+-- pattern therefore has to be a SUBSTRING of what the host actually reports,
+-- not the marketing name of the SKU. A host reports 'Red Hat Enterprise Linux'
+-- or 'Oracle Linux'; patterns naming an edition or tier ('…Server',
+-- '…Premier') are longer than that and would never match, leaving every host
+-- with no rule. Support tier belongs in support_level, not in the pattern.
 VALUES
-  ('redhat', 'Red Hat Enterprise Linux Server', 'socket_pair', 2, NULL, NULL,
+  ('redhat', 'Red Hat Enterprise Linux', 'socket_pair', 2, NULL, NULL,
    FALSE, FALSE, 'Red Hat subscription guide',
    'One subscription per pair of populated sockets on a physical system.'),
   ('redhat', 'Red Hat Enterprise Linux Virtual Datacenter', 'virtual_datacenter', NULL, NULL, NULL,
    TRUE, FALSE, 'Red Hat subscription guide',
-   'Per socket pair of the hypervisor host; covers unlimited RHEL guests on that host.'),
+   'Per socket pair of the hypervisor host; covers unlimited RHEL guests on '
+   'that host. Normally reached through an assigned Virtual Datacenter line '
+   'rather than this pattern, since discovery cannot see the purchase.'),
   ('redhat', 'Red Hat Enterprise Linux for Virtual Guest', 'virtual_guest', NULL, NULL, NULL,
    FALSE, TRUE, 'Red Hat subscription guide',
-   'One subscription per running RHEL guest where the host is not covered.'),
+   'One subscription per running RHEL guest where the host is not covered. '
+   'Selected by the guest flag, not by this pattern.'),
 
-  ('oracle_linux', 'Oracle Linux Premier', 'physical_server', NULL, 2, NULL,
+  ('oracle_linux', 'Oracle Linux', 'physical_server', NULL, 2, NULL,
    FALSE, FALSE, 'Oracle Linux and Virtualization price list',
    'Per server; the 1-2 socket SKU covers up to two sockets, above which the '
-   'unlimited-socket SKU applies.'),
-  ('oracle_linux', 'Oracle Linux Basic', 'physical_server', NULL, 2, NULL,
-   FALSE, FALSE, 'Oracle Linux and Virtualization price list',
-   'Per server, up to two sockets.'),
+   'unlimited-socket SKU applies. Basic and Premier count identically, so the '
+   'tier is recorded as a support level rather than a separate rule.'),
+
+  ('oracle_linux', 'Oracle Linux', 'virtual_guest', NULL, NULL, NULL,
+   FALSE, TRUE, 'Oracle Linux and Virtualization price list',
+   'One subscription per Oracle Linux guest where the physical host it runs on '
+   'is not itself covered. Without this rule an Oracle Linux VM matches no '
+   'rule at all, because the per-server rule is only considered for physical '
+   'hosts.'),
 
   ('suse', 'SUSE Linux Enterprise Server', 'physical_server', NULL, 2, NULL,
    FALSE, FALSE, 'SUSE subscription terms',
    'Per physical server of one or two sockets; a larger server needs the '
    'higher socket-band SKU.'),
+  ('suse', 'SLES', 'physical_server', NULL, 2, NULL,
+   FALSE, FALSE, 'SUSE subscription terms',
+   'Same rule as above, for hosts whose os-release reports the short name.'),
   ('suse', 'SUSE Linux Enterprise Server for Virtual Machine', 'virtual_guest', NULL, NULL, NULL,
    FALSE, TRUE, 'SUSE subscription terms',
-   'One subscription per virtual machine.'),
+   'One subscription per virtual machine. Selected by the guest flag.'),
   ('suse', 'SUSE Linux Enterprise Server Unlimited Virtual Machines', 'virtual_datacenter', NULL, NULL, NULL,
    TRUE, FALSE, 'SUSE subscription terms',
    'Per physical host; covers unlimited SLES guests on that host.')
