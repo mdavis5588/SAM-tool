@@ -77,6 +77,24 @@
     background: var(--card); border: 1px solid var(--border);
     border-radius: 10px; overflow: hidden; margin-bottom: 1.25rem;
   }
+  /* Names the product these headline figures belong to. The executive summary
+     is the one page reachable from both scopes, so it has to say which it is
+     showing rather than leaving the reader to infer it from the sidebar. */
+  .exec-scope-badge {
+    display: inline-flex; align-items: center; gap: .35rem;
+    margin-left: .6rem; padding: .18rem .6rem;
+    border-radius: 999px;
+    background: rgba(255,255,255,.16);
+    font-size: .72rem; font-weight: 600; letter-spacing: .02em;
+    text-transform: uppercase; vertical-align: middle;
+  }
+  .exec-scope-switch {
+    background: none; border: 0; padding: 0;
+    color: inherit; opacity: .75;
+    font-size: inherit; text-decoration: underline;
+  }
+  .exec-scope-switch:hover { opacity: 1; }
+
   .ex-card-header {
     padding: .65rem 1rem;
     font-weight: 700; font-size: .78rem;
@@ -151,8 +169,29 @@
 <!-- ── Page header ──────────────────────────────────────────────────────────── -->
 <div class="exec-header">
   <div>
-    <h4><i class="bi bi-graph-up me-2"></i>{{ t('exec_summary.header') }}</h4>
-    <div class="sub">{{ today.strftime('%d %B %Y') }} &nbsp;·&nbsp; {{ t('exec_summary.all_clients') }}</div>
+    <h4>
+      <i class="bi bi-graph-up me-2"></i>{{ t('exec_summary.header') }}
+      <span class="exec-scope-badge">
+        <i class="bi {{ product_scopes[product_scope].icon }}"></i>
+        {{ product_scopes[product_scope].label }}
+      </span>
+    </h4>
+    <div class="sub">
+      {{ today.strftime('%d %B %Y') }} &nbsp;·&nbsp; {{ t('exec_summary.all_clients') }}
+      &nbsp;·&nbsp;
+      {# The headline figures below are for the active product only; the
+         per-client table further down covers both. #}
+      <span class="no-print">
+        {% for key, meta in product_scopes.items() %}{% if key != product_scope %}
+        <form method="post" action="{{ url_for('switch_product') }}" class="d-inline">
+          <input type="hidden" name="scope" value="{{ key }}">
+          <button type="submit" class="exec-scope-switch">
+            <i class="bi {{ meta.icon }} me-1"></i>switch to {{ meta.label }}
+          </button>
+        </form>
+        {% endif %}{% endfor %}
+      </span>
+    </div>
   </div>
   <div class="d-flex align-items-center gap-2">
     <span class="overall-pill {{ overall_rag }}">
@@ -168,6 +207,53 @@
 </div>
 
 <!-- ── KPI strip ─────────────────────────────────────────────────────────────── -->
+{% if product_scope == 'os' %}
+<div class="kpi-strip">
+  <div class="kpi">
+    <span class="kpi-icon text-primary">📋</span>
+    <span class="kpi-num accent">{{ os_contract_stats.total_contracts if os_contract_stats else 0 }}</span>
+    <span class="kpi-lbl">OS contracts</span>
+    <span class="kpi-sub">
+      {{ os_contract_stats.vendor_count if os_contract_stats else 0 }} vendor{% if not os_contract_stats or os_contract_stats.vendor_count != 1 %}s{% endif %}
+    </span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-icon">🐧</span>
+    <span class="kpi-num {% if os_totals.unassigned > 0 %}red{% else %}green{% endif %}">{{ os_totals.installs }}</span>
+    <span class="kpi-lbl">OS installations</span>
+    <span class="kpi-sub">{{ os_totals.unassigned }} unassigned · {{ os_totals.exempt }} exempt</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-icon">✅</span>
+    <span class="kpi-num {% if os_rag == 'green' %}green{% elif os_rag == 'amber' %}amber{% else %}red{% endif %}">{{ os_score }}%</span>
+    <span class="kpi-lbl">Coverage score</span>
+    <span class="kpi-sub">
+      {{ '{:,.0f}'.format(os_totals.required) }} required · {{ '{:,.0f}'.format(os_entitled_total) }} entitled
+    </span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-icon">💰</span>
+    <span class="kpi-num accent">
+      {% if os_contract_stats and os_contract_stats.total_support_cost %}
+        ${{ '{:,.0f}'.format(os_contract_stats.total_support_cost) }}
+      {% else %}—{% endif %}
+    </span>
+    <span class="kpi-lbl">{{ t('exec_summary.kpi_annual_support') }}</span>
+    <span class="kpi-sub">{{ t('exec_summary.kpi_across_all') }}</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-icon">⚠️</span>
+    {# no_rule is called out here rather than buried: those hosts contribute
+       nothing to the required total, so the position above understates the
+       estate by an unknown amount while any remain. #}
+    <span class="kpi-num {% if os_totals.no_rule > 0 %}amber{% else %}green{% endif %}">{{ os_totals.no_rule }}</span>
+    <span class="kpi-lbl">Hosts with no rule</span>
+    <span class="kpi-sub">
+      {% if os_totals.no_rule %}requirement unknown, not zero{% else %}every host matched a rule{% endif %}
+    </span>
+  </div>
+</div>
+{% else %}
 <div class="kpi-strip">
   <div class="kpi">
     <span class="kpi-icon text-primary">📋</span>
@@ -206,6 +292,7 @@
     <span class="kpi-sub">{{ contract_stats.expired_count }} {{ t('exec_summary.kpi_already_expired') }}</span>
   </div>
 </div>
+{% endif %}
 
 <!-- ── Main two-column body ──────────────────────────────────────────────────── -->
 <div class="row g-3 mb-3">
@@ -215,32 +302,50 @@
 
     <!-- Compliance gauge -->
     <div class="ex-card">
-      <div class="ex-card-header"><i class="bi bi-shield-check"></i>{{ t('exec_summary.compliance_posture') }}</div>
+      <div class="ex-card-header">
+        <i class="bi bi-shield-check"></i>{{ t('exec_summary.compliance_posture') }}
+        <span class="ms-auto text-muted" style="font-size:.7rem;font-weight:500">
+          {{ product_scopes[product_scope].label }}
+        </span>
+      </div>
       <div class="gauge-wrap">
         <div class="gauge-arc">
           <svg viewBox="0 0 160 90" width="160" height="90" style="overflow:visible">
             <path d="M10,80 A70,70 0 0,1 150,80" fill="none" stroke="var(--border)" stroke-width="12" stroke-linecap="round"/>
-            {% set pct = overall_score / 100 %}
+            {% set pct = (os_score if product_scope == 'os' else overall_score) / 100 %}
             {% set arc_len = 220 %}
             {% set filled = (pct * arc_len) | int %}
             <path d="M10,80 A70,70 0 0,1 150,80" fill="none"
-                  stroke="{% if overall_rag == 'green' %}var(--g){% elif overall_rag == 'amber' %}var(--a){% else %}var(--r){% endif %}"
+                  {% set g_rag = os_rag if product_scope == 'os' else overall_rag %}
+                  stroke="{% if g_rag == 'green' %}var(--g){% elif g_rag == 'amber' %}var(--a){% else %}var(--r){% endif %}"
                   stroke-width="12" stroke-linecap="round"
                   stroke-dasharray="{{ filled }} {{ arc_len }}"
                   pathLength="{{ arc_len }}"/>
           </svg>
         </div>
-        <div class="gauge-num {% if overall_rag == 'green' %}text-success{% elif overall_rag == 'amber' %}text-warning{% else %}text-danger{% endif %}">
-          {{ overall_score }}%
+        {% set g_rag = os_rag if product_scope == 'os' else overall_rag %}
+        <div class="gauge-num {% if g_rag == 'green' %}text-success{% elif g_rag == 'amber' %}text-warning{% else %}text-danger{% endif %}">
+          {{ os_score if product_scope == 'os' else overall_score }}%
         </div>
-        <div class="gauge-sub">{{ compliant_servers }} {{ t('exec_summary.compliant_lc') }} · {{ gap_servers }} {{ t('exec_summary.gaps_lc') }} · {{ unassigned_servers }} {{ t('exec_summary.unassigned_lc') }}</div>
+        <div class="gauge-sub">
+          {% if product_scope == 'os' %}
+            {{ os_totals.installs - os_totals.unassigned - os_totals.no_rule - os_totals.expired }} covered
+            · {{ os_totals.unassigned }} {{ t('exec_summary.unassigned_lc') }}
+            · {{ os_totals.expired }} expired
+            {% if os_totals.no_rule %} · {{ os_totals.no_rule }} no rule{% endif %}
+          {% else %}
+            {{ compliant_servers }} {{ t('exec_summary.compliant_lc') }} · {{ gap_servers }} {{ t('exec_summary.gaps_lc') }} · {{ unassigned_servers }} {{ t('exec_summary.unassigned_lc') }}
+          {% endif %}
+        </div>
       </div>
 
       <!-- Licence utilisation bars -->
+      {% set bar_req = os_totals.required    if product_scope == 'os' else total_licences_req %}
+      {% set bar_held = os_entitled_total     if product_scope == 'os' else total_licences_lic %}
       <div class="prog-row">
         <div class="prog-label">
-          <span>{{ t('exec_summary.licences_required') }}</span>
-          <span>{{ '{:,.0f}'.format(total_licences_req) }}</span>
+          <span>{% if product_scope == 'os' %}Subscriptions required{% else %}{{ t('exec_summary.licences_required') }}{% endif %}</span>
+          <span>{{ '{:,.0f}'.format(bar_req) }}</span>
         </div>
         <div class="prog-track">
           <div class="prog-fill" style="width:100%;background:var(--border)"></div>
@@ -248,30 +353,46 @@
       </div>
       <div class="prog-row" style="padding-top:0">
         <div class="prog-label">
-          <span>{{ t('exec_summary.licences_licensed') }}</span>
-          <span>{{ '{:,.0f}'.format(total_licences_lic) }}</span>
+          <span>{% if product_scope == 'os' %}Entitlement held{% else %}{{ t('exec_summary.licences_licensed') }}{% endif %}</span>
+          <span>{{ '{:,.0f}'.format(bar_held) }}</span>
         </div>
         <div class="prog-track">
-          {% set util = [((total_licences_lic / total_licences_req * 100) | int), 100] | min if total_licences_req else 0 %}
+          {% set util = [((bar_held / bar_req * 100) | int), 100] | min if bar_req else 0 %}
           <div class="prog-fill" style="width:{{ util }}%;background:{% if util >= 100 %}var(--g){% elif util >= 80 %}var(--a){% else %}var(--r){% endif %}"></div>
         </div>
       </div>
       <div style="height:.5rem"></div>
     </div>
 
-    <!-- Per-client RAG -->
+    <!-- Per-client RAG, for the product in scope -->
     <div class="ex-card">
-      <div class="ex-card-header"><i class="bi bi-people"></i>{{ t('exec_summary.client_compliance') }}</div>
+      <div class="ex-card-header">
+        <i class="bi bi-people"></i>{{ t('exec_summary.client_compliance') }}
+        <span class="ms-auto text-muted" style="font-size:.7rem;font-weight:500">
+          {{ product_scopes[product_scope].label }}
+        </span>
+      </div>
       {% for cl in client_rows %}
+      {% set sc = cl.os.score if product_scope == 'os' else cl.score %}
+      {% set rg = cl.os.rag   if product_scope == 'os' else cl.rag %}
       <div class="client-row">
-        <span class="rag-dot {{ cl.rag }}"></span>
+        <span class="rag-dot {{ rg }}"></span>
         <span class="client-name">{{ cl.client_name }}</span>
         <div class="score-bar">
-          <div class="score-fill" style="width:{{ cl.score }}%;background:{% if cl.rag == 'green' %}var(--g){% elif cl.rag == 'amber' %}var(--a){% else %}var(--r){% endif %}"></div>
+          <div class="score-fill" style="width:{{ sc }}%;background:{% if rg == 'green' %}var(--g){% elif rg == 'amber' %}var(--a){% else %}var(--r){% endif %}"></div>
         </div>
-        <span class="client-score">{{ cl.score }}%</span>
-        {% if cl.gaps %}<span class="badge" style="background:var(--r-lo);color:var(--r);font-size:.65rem">{{ cl.gaps }} {{ t('exec_summary.gap_one') if cl.gaps == 1 else t('exec_summary.gap_many') }}</span>{% endif %}
-        {% if cl.unassigned %}<span class="badge" style="background:var(--a-lo);color:var(--a);font-size:.65rem">{{ cl.unassigned }} {{ t('exec_summary.unassigned_lc') }}</span>{% endif %}
+        <span class="client-score">{{ sc }}%</span>
+        {% if product_scope == 'os' %}
+          {% if not cl.os.available %}
+          <span class="badge" style="background:var(--a-lo);color:var(--a);font-size:.65rem">no OS tables</span>
+          {% else %}
+            {% if cl.os.unassigned %}<span class="badge" style="background:var(--r-lo);color:var(--r);font-size:.65rem">{{ cl.os.unassigned }} {{ t('exec_summary.unassigned_lc') }}</span>{% endif %}
+            {% if cl.os.no_rule %}<span class="badge" style="background:var(--a-lo);color:var(--a);font-size:.65rem">{{ cl.os.no_rule }} no rule</span>{% endif %}
+          {% endif %}
+        {% else %}
+          {% if cl.gaps %}<span class="badge" style="background:var(--r-lo);color:var(--r);font-size:.65rem">{{ cl.gaps }} {{ t('exec_summary.gap_one') if cl.gaps == 1 else t('exec_summary.gap_many') }}</span>{% endif %}
+          {% if cl.unassigned %}<span class="badge" style="background:var(--a-lo);color:var(--a);font-size:.65rem">{{ cl.unassigned }} {{ t('exec_summary.unassigned_lc') }}</span>{% endif %}
+        {% endif %}
       </div>
       {% else %}
       <div class="p-3 text-muted" style="font-size:.875rem">{{ t('exec_summary.no_clients') }}</div>
@@ -284,6 +405,81 @@
   <div class="col-lg-7">
 
     <!-- Contract portfolio breakdown -->
+    {% if product_scope == 'os' %}
+    <div class="ex-card">
+      <div class="ex-card-header">
+        <i class="bi bi-file-earmark-text"></i>{{ t('exec_summary.portfolio') }}
+        <span class="ms-auto text-muted" style="font-size:.7rem;font-weight:500">Operating Systems</span>
+      </div>
+      {% if os_contract_stats %}
+      <div class="stat-pair">
+        <div class="stat-half">
+          <div class="n">{{ os_contract_stats.active_count }}</div>
+          <div class="l">{{ t('label.active') }}</div>
+        </div>
+        <div class="stat-half">
+          <div class="n" style="color:{% if os_contract_stats.expired_count %}var(--r){% else %}var(--txt){% endif %}">{{ os_contract_stats.expired_count }}</div>
+          <div class="l">{{ t('label.expired') }}</div>
+        </div>
+        <div class="stat-half">
+          <div class="n" style="color:{% if os_contract_stats.expiring_90d %}var(--a){% else %}var(--txt){% endif %}">{{ os_contract_stats.expiring_90d }}</div>
+          <div class="l">{{ t('exec_summary.exp_90d') }}</div>
+        </div>
+        <div class="stat-half">
+          <div class="n" style="color:var(--acc)">{{ os_contract_stats.vendor_count }}</div>
+          <div class="l">Vendors</div>
+        </div>
+      </div>
+      <div class="stat-pair" style="border-top:1px solid var(--border)">
+        <div class="stat-half">
+          <div class="n" style="color:var(--acc)">
+            {% if os_contract_stats.total_licence_value %}
+              ${{ '{:,.0f}'.format(os_contract_stats.total_licence_value) }}
+            {% else %}—{% endif %}
+          </div>
+          <div class="l">{{ t('exec_summary.total_licence_value') }}</div>
+        </div>
+        <div class="stat-half">
+          <div class="n" style="color:var(--acc)">
+            {% if os_contract_stats.total_support_cost %}
+              ${{ '{:,.0f}'.format(os_contract_stats.total_support_cost) }}
+            {% else %}—{% endif %}
+          </div>
+          <div class="l">{{ t('exec_summary.annual_support_cost') }}</div>
+        </div>
+      </div>
+      {% else %}
+      <div class="p-3 text-muted" style="font-size:.875rem">
+        OS contract tables are not installed on this database.
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Entitlement by vendor: the OS counterpart to Top Products -->
+    <div class="ex-card">
+      <div class="ex-card-header"><i class="bi bi-bar-chart"></i>Entitlement by vendor</div>
+      {% if os_entitled_rows %}
+        {% set max_ent = (os_entitled_rows | map(attribute='entitled') | map('float') | max) or 1 %}
+        {% for v in os_entitled_rows %}
+        <div class="prod-row">
+          <span class="prod-name">
+            <i class="bi bi-hdd-stack me-1" style="color:#2563eb;font-size:.8rem"></i>
+            {{ vendor_labels.get(v.vendor, v.vendor) }}
+          </span>
+          <div class="prod-bar">
+            <div class="prod-fill" style="width:{{ ((v.entitled | float) / max_ent * 100) | int }}%"></div>
+          </div>
+          <span class="prod-qty">{{ '{:,.0f}'.format(v.entitled | float) }}</span>
+          <span style="font-size:.75rem;color:var(--txt2);width:110px;text-align:right">entitled</span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="p-3 text-muted" style="font-size:.875rem">
+          No active in-support OS entitlement recorded.
+        </div>
+      {% endif %}
+    </div>
+    {% else %}
     <div class="ex-card">
       <div class="ex-card-header"><i class="bi bi-file-earmark-text"></i>{{ t('exec_summary.portfolio') }}</div>
       <div class="stat-pair">
@@ -329,11 +525,41 @@
         </div>
       </div>
     </div>
+    {% endif %}
 
     <!-- Renewal calendar -->
     <div class="ex-card">
-      <div class="ex-card-header"><i class="bi bi-calendar-event"></i>{{ t('exec_summary.renewals_header') }}</div>
-      {% if upcoming_renewals %}
+      <div class="ex-card-header">
+        <i class="bi bi-calendar-event"></i>{{ t('exec_summary.renewals_header') }}
+        <span class="ms-auto text-muted" style="font-size:.7rem;font-weight:500">
+          {{ product_scopes[product_scope].label }}
+        </span>
+      </div>
+      {% if product_scope == 'os' %}
+        {% if os_renewals %}
+          {% for r in os_renewals %}
+          {% set days = (r.expiry_date - today).days %}
+          <div class="renewal-row">
+            <span class="renewal-date">{{ r.expiry_date.strftime('%d %b %Y') }}</span>
+            <span class="renewal-name">
+              <a href="{{ url_for('os_contract_detail', os_contract_id=r.os_contract_id) }}"
+                 style="color:inherit;text-decoration:none">{{ r.contract_name }}</a>
+              <span class="badge ms-1" style="background:rgba(37,99,235,.12);color:#2563eb;font-size:.62rem">
+                {{ vendor_labels.get(r.vendor, r.vendor) }}
+              </span>
+              {% if r.auto_renew %}<span class="badge ms-1" style="background:rgba(5,150,105,.12);color:#059669;font-size:.62rem">auto</span>{% endif %}
+              {% if r.owning_client %}<span class="ms-1" style="font-size:.72rem;color:var(--txt2)">{{ r.owning_client }}</span>{% endif %}
+            </span>
+            {% if r.renewal_cost %}
+            <span class="renewal-cost">{{ r.currency or 'USD' }} {{ '{:,.0f}'.format(r.renewal_cost) }}</span>
+            {% endif %}
+            <span class="days-badge {% if days < 30 %}crit{% elif days < 90 %}warn{% else %}ok{% endif %}">{{ days }}d</span>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="p-3 text-muted" style="font-size:.875rem">{{ t('exec_summary.no_renewals') }}</div>
+        {% endif %}
+      {% elif upcoming_renewals %}
         {% for r in upcoming_renewals %}
         {% set days = (r.expiry_date - today).days %}
         <div class="renewal-row">
@@ -361,8 +587,94 @@
   </div>
 </div>
 
-<!-- ── Top products ───────────────────────────────────────────────────────────── -->
-{% if top_products %}
+  <!-- Both products per client. Shown whichever scope is active: the point of
+       an executive summary is the whole estate, and an Oracle position read
+       without the OS position beside it is only half the exposure. -->
+  <div class="ex-card">
+    <div class="ex-card-header">
+      <i class="bi bi-layers"></i>Oracle and OS by client
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm mb-0 align-middle" style="font-size:.8rem">
+        <thead>
+          <tr class="text-muted" style="font-size:.7rem;text-transform:uppercase;letter-spacing:.03em">
+            <th rowspan="2" style="vertical-align:bottom">Client</th>
+            <th colspan="3" class="text-center border-start">Oracle</th>
+            <th colspan="3" class="text-center border-start">Operating systems</th>
+          </tr>
+          <tr class="text-muted" style="font-size:.7rem">
+            <th class="text-end border-start">Positions</th>
+            <th class="text-end">Required</th>
+            <th class="text-end">Licensed</th>
+            <th class="text-end border-start">Installs</th>
+            <th class="text-end">Required</th>
+            <th class="text-end">Assigned</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for cl in client_rows %}
+          <tr>
+            <td class="fw-semibold">
+              {{ cl.client_name }}
+              <div class="text-muted" style="font-size:.7rem">{{ cl.client_code }}</div>
+            </td>
+            <td class="text-end border-start" style="font-variant-numeric:tabular-nums">{{ cl.total }}</td>
+            <td class="text-end" style="font-variant-numeric:tabular-nums">{{ '{:,.0f}'.format(cl.req) }}</td>
+            <td class="text-end" style="font-variant-numeric:tabular-nums">
+              {{ '{:,.0f}'.format(cl.lic) }}
+              {% if cl.gaps %}
+              <span class="badge ms-1" style="background:var(--r-lo);color:var(--r);font-size:.6rem">{{ cl.gaps }} gap{% if cl.gaps != 1 %}s{% endif %}</span>
+              {% endif %}
+            </td>
+            {% if cl.os.available %}
+            <td class="text-end border-start" style="font-variant-numeric:tabular-nums">{{ cl.os.installs }}</td>
+            <td class="text-end" style="font-variant-numeric:tabular-nums">{{ '{:,.0f}'.format(cl.os.required) }}</td>
+            <td class="text-end" style="font-variant-numeric:tabular-nums">
+              {{ '{:,.0f}'.format(cl.os.assigned) }}
+              {% if cl.os.unassigned %}
+              <span class="badge ms-1" style="background:var(--r-lo);color:var(--r);font-size:.6rem">{{ cl.os.unassigned }} unassigned</span>
+              {% endif %}
+              {% if cl.os.no_rule %}
+              <span class="badge ms-1" style="background:var(--a-lo);color:var(--a);font-size:.6rem">{{ cl.os.no_rule }} no rule</span>
+              {% endif %}
+            </td>
+            {% else %}
+            <td colspan="3" class="text-center text-muted border-start" style="font-size:.72rem">
+              OS tables not installed
+            </td>
+            {% endif %}
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-muted p-3">{{ t('exec_summary.no_clients') }}</td></tr>
+          {% endfor %}
+        </tbody>
+        {% if client_rows %}
+        <tfoot>
+          <tr class="fw-semibold">
+            <td>Total</td>
+            <td class="text-end border-start" style="font-variant-numeric:tabular-nums">{{ total_servers }}</td>
+            <td class="text-end" style="font-variant-numeric:tabular-nums">{{ '{:,.0f}'.format(total_licences_req) }}</td>
+            <td class="text-end" style="font-variant-numeric:tabular-nums">{{ '{:,.0f}'.format(total_licences_lic) }}</td>
+            <td class="text-end border-start" style="font-variant-numeric:tabular-nums">{{ os_totals.installs }}</td>
+            <td class="text-end" style="font-variant-numeric:tabular-nums">{{ '{:,.0f}'.format(os_totals.required) }}</td>
+            <td class="text-end" style="font-variant-numeric:tabular-nums">{{ '{:,.0f}'.format(os_totals.assigned) }}</td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
+    <div class="px-3 py-2 text-muted" style="font-size:.72rem">
+      Oracle counts licence positions per server; OS counts one installation
+      per host. The two are not comparable totals and are not added together.
+      {% if os_totals.no_rule %}
+      Hosts with no counting rule add nothing to the OS required figure, so it
+      is a floor rather than the full requirement.
+      {% endif %}
+    </div>
+  </div>
+
+<!-- ── Top products (Oracle only; the OS counterpart sits in the right column) ── -->
+{% if top_products and product_scope != 'os' %}
 <div class="ex-card">
   <div class="ex-card-header"><i class="bi bi-bar-chart"></i>{{ t('exec_summary.top_products') }}</div>
   {% set max_qty = top_products[0].total_qty or 1 %}

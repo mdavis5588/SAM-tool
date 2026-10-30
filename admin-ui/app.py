@@ -7892,6 +7892,128 @@ def executive_summary():
     overall_rag   = "green" if overall_score == 100 and unassigned_servers == 0 \
                     else ("amber" if overall_score >= 80 else "red")
 
+    # ── OS posture across all clients ────────────────────────────────────────
+    # Gathered for every client regardless of the active scope, so the
+    # per-client table can show Oracle and OS side by side. A schema that has
+    # not had the OS migrations applied yields zeros and os_available False,
+    # which the template reports rather than passing off as "nothing to licence".
+    os_totals = {"installs": 0, "required": 0, "assigned": 0,
+                 "unassigned": 0, "no_rule": 0, "exempt": 0, "expired": 0}
+    os_by_client = {}
+    os_available = False
+
+    for cl in active_clients:
+        s = cl["schema_name"]
+        try:
+            osp = query(f"""
+                SELECT COUNT(*)                                                  AS installs,
+                       COALESCE(SUM(COALESCE(subscriptions_required, 0)), 0)     AS required,
+                       COALESCE(SUM(COALESCE(subscriptions_assigned, 0)), 0)     AS assigned,
+                       COUNT(*) FILTER (WHERE coverage_status = 'unassigned')       AS unassigned,
+                       COUNT(*) FILTER (WHERE coverage_status = 'no_rule')          AS no_rule,
+                       COUNT(*) FILTER (WHERE coverage_status = 'exempt')           AS exempt,
+                       COUNT(*) FILTER (WHERE coverage_status = 'contract_expired') AS expired
+                FROM   {s}.os_license_position
+            """, fetchall=False)
+            os_available = True
+        except Exception:
+            os_by_client[cl["client_code"]] = {
+                "installs": 0, "required": 0, "assigned": 0, "unassigned": 0,
+                "no_rule": 0, "exempt": 0, "expired": 0,
+                "score": 0, "rag": "amber", "available": False,
+            }
+            continue
+
+        row = {k: (float(osp[k] or 0) if k in ("required", "assigned")
+                   else int(osp[k] or 0))
+               for k in os_totals}
+        for k in os_totals:
+            os_totals[k] += row[k]
+
+        # Covered means a live assignment or a legitimate reason to need none.
+        covered = row["installs"] - row["unassigned"] - row["no_rule"] - row["expired"]
+        row["score"] = round(100 * covered / row["installs"]) if row["installs"] else 100
+        row["rag"] = ("green" if row["score"] == 100 and row["no_rule"] == 0
+                      else ("amber" if row["score"] >= 80 else "red"))
+        row["available"] = True
+        os_by_client[cl["client_code"]] = row
+
+    os_covered = (os_totals["installs"] - os_totals["unassigned"]
+                  - os_totals["no_rule"] - os_totals["expired"])
+    os_score = round(100 * os_covered / os_totals["installs"]) if os_totals["installs"] else 100
+    os_rag = ("green" if os_score == 100 and os_totals["no_rule"] == 0
+              else ("amber" if os_score >= 80 else "red"))
+
+    # Entitlement held per vendor, and the resulting position.
+    try:
+        os_entitled_rows = query("""
+            SELECT c.vendor::TEXT AS vendor,
+                   SUM(l.quantity) AS entitled
+            FROM   shared.os_entitlement_lines l
+            JOIN   shared.os_contracts c ON c.os_contract_id = l.os_contract_id
+            WHERE  l.is_active AND c.status = 'active'
+              AND  (c.support_expiry IS NULL OR c.support_expiry >= CURRENT_DATE)
+            GROUP  BY c.vendor
+            ORDER  BY c.vendor
+        """)
+        os_entitled_total = sum(float(r["entitled"] or 0) for r in os_entitled_rows)
+    except Exception:
+        os_entitled_rows, os_entitled_total = [], 0.0
+
+    # OS contract portfolio, mirroring the Oracle contract tiles.
+    try:
+        os_contract_stats = query("""
+            SELECT COUNT(*)                                            AS total_contracts,
+                   COUNT(*) FILTER (WHERE status = 'active')           AS active_count,
+                   COUNT(*) FILTER (WHERE status = 'expired'
+                     OR (support_expiry IS NOT NULL
+                         AND support_expiry < CURRENT_DATE))           AS expired_count,
+                   COUNT(*) FILTER (WHERE status = 'active'
+                     AND support_expiry >= CURRENT_DATE
+                     AND support_expiry < CURRENT_DATE + INTERVAL '90 days') AS expiring_90d,
+                   COUNT(DISTINCT vendor)                              AS vendor_count,
+                   COALESCE((SELECT SUM(l.total_price)
+                             FROM shared.os_entitlement_lines l WHERE l.is_active), 0)
+                                                                       AS total_licence_value,
+                   COALESCE((SELECT SUM(l.annual_cost)
+                             FROM shared.os_entitlement_lines l WHERE l.is_active), 0)
+                                                                       AS total_support_cost
+            FROM   shared.os_contracts
+        """, fetchall=False)
+    except Exception:
+        os_contract_stats = None
+
+    # OS renewals in the next 12 months.
+    try:
+        os_renewals = query("""
+            SELECT c.os_contract_id, c.vendor::TEXT AS vendor, c.agreement_number,
+                   c.contract_name, c.currency, c.support_expiry AS expiry_date,
+                   c.auto_renew,
+                   COALESCE(SUM(l.annual_cost), 0) AS renewal_cost,
+                   oc.client_name AS owning_client
+            FROM   shared.os_contracts c
+            LEFT   JOIN shared.os_entitlement_lines l
+                   ON l.os_contract_id = c.os_contract_id AND l.is_active
+            LEFT   JOIN sam_admin.clients oc ON oc.client_id = c.owning_client_id
+            WHERE  c.status = 'active'
+              AND  c.support_expiry BETWEEN CURRENT_DATE
+                                        AND CURRENT_DATE + INTERVAL '12 months'
+            GROUP  BY c.os_contract_id, c.vendor, c.agreement_number, c.contract_name,
+                      c.currency, c.support_expiry, c.auto_renew, oc.client_name
+            ORDER  BY c.support_expiry
+            LIMIT  10
+        """)
+    except Exception:
+        os_renewals = []
+
+    # Attach the OS figures to each client row so the table needs one loop.
+    for r in client_rows:
+        r["os"] = os_by_client.get(r["client_code"], {
+            "installs": 0, "required": 0, "assigned": 0, "unassigned": 0,
+            "no_rule": 0, "exempt": 0, "expired": 0,
+            "score": 0, "rag": "amber", "available": False,
+        })
+
     # ── Top 5 products by licence count ─────────────────────────────────────
     top_products = query("""
         SELECT product_name,
@@ -7936,7 +8058,16 @@ def executive_summary():
                            total_licences_req=total_licences_req,
                            total_licences_lic=total_licences_lic,
                            top_products=top_products,
-                           upcoming_renewals=upcoming_renewals)
+                           upcoming_renewals=upcoming_renewals,
+                           os_totals=os_totals,
+                           os_score=os_score,
+                           os_rag=os_rag,
+                           os_available=os_available,
+                           os_entitled_rows=os_entitled_rows,
+                           os_entitled_total=os_entitled_total,
+                           os_contract_stats=os_contract_stats,
+                           os_renewals=os_renewals,
+                           vendor_labels=OS_VENDOR_LABELS)
 
 
 # ---------------------------------------------------------------------------
