@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}OS Licence Summary — Helios{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h4 class="mb-0"><i class="bi bi-bar-chart-line me-2"></i>Licence Summary — Operating Systems</h4>
+    <p class="text-muted small mb-0 mt-1">
+      Subscriptions required by the estate against entitlement held, per vendor.
+    </p>
+  </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="alert alert-{{ cat }} alert-dismissible fade show py-2" role="alert">
+    {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+{% endwith %}
+
+{% if rows %}
+<div class="row g-3 mb-3">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card h-100"><div class="card-body py-3">
+      <div class="text-muted small text-uppercase" style="letter-spacing:.04em">Installations</div>
+      <div class="fs-3 fw-semibold" style="font-variant-numeric:tabular-nums">{{ totals.installs }}</div>
+    </div></div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card h-100"><div class="card-body py-3">
+      <div class="text-muted small text-uppercase" style="letter-spacing:.04em">Required</div>
+      <div class="fs-3 fw-semibold" style="font-variant-numeric:tabular-nums">{{ '%g' % totals.required }}</div>
+    </div></div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card h-100"><div class="card-body py-3">
+      <div class="text-muted small text-uppercase" style="letter-spacing:.04em">Entitled</div>
+      <div class="fs-3 fw-semibold" style="font-variant-numeric:tabular-nums">{{ '%g' % totals.entitled }}</div>
+    </div></div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card h-100 {% if totals.gap < 0 %}border-danger{% elif totals.gap > 0 %}border-success{% endif %}">
+      <div class="card-body py-3">
+      <div class="text-muted small text-uppercase" style="letter-spacing:.04em">Position</div>
+      <div class="fs-3 fw-semibold {% if totals.gap < 0 %}text-danger{% elif totals.gap > 0 %}text-success{% endif %}"
+           style="font-variant-numeric:tabular-nums">
+        {% if totals.gap < 0 %}{{ '%g' % totals.gap }}{% else %}+{{ '%g' % totals.gap }}{% endif %}
+      </div>
+      <div class="small text-muted mt-1">
+        {% if totals.gap < 0 %}Short{% elif totals.gap > 0 %}Surplus{% else %}Exactly covered{% endif %}
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Vendor</th>
+          <th class="text-end">Installations</th>
+          <th class="text-end">Required</th>
+          <th class="text-end">Entitled</th>
+          <th class="text-end">Position</th>
+          <th class="text-end">Unassigned</th>
+          <th class="text-end">Exempt</th>
+          <th>Needs attention</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td class="fw-semibold">{{ r.vendor_label }}</td>
+          <td class="text-end" style="font-variant-numeric:tabular-nums">{{ r.installs }}</td>
+          <td class="text-end" style="font-variant-numeric:tabular-nums">{{ '%g' % r.required }}</td>
+          <td class="text-end" style="font-variant-numeric:tabular-nums">{{ '%g' % r.entitled }}</td>
+          <td class="text-end fw-semibold {% if r.gap < 0 %}text-danger{% elif r.gap > 0 %}text-success{% endif %}"
+              style="font-variant-numeric:tabular-nums">
+            {% if r.gap < 0 %}{{ '%g' % r.gap }}{% else %}+{{ '%g' % r.gap }}{% endif %}
+          </td>
+          <td class="text-end" style="font-variant-numeric:tabular-nums">
+            {% if r.unassigned %}<span class="badge bg-danger">{{ r.unassigned }}</span>
+            {% else %}0{% endif %}
+          </td>
+          <td class="text-end" style="font-variant-numeric:tabular-nums">{{ r.exempt }}</td>
+          <td>
+            {% if r.no_rule %}
+            <span class="badge bg-warning text-dark me-1">{{ r.no_rule }} no rule</span>
+            {% endif %}
+            {% if r.expired %}
+            <span class="badge bg-warning text-dark">{{ r.expired }} expired contract</span>
+            {% endif %}
+            {% if not r.no_rule and not r.expired %}
+            <span class="text-muted small">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="alert alert-light border mt-3 small mb-0">
+  <strong>Reading this table.</strong>
+  <em>Required</em> is the sum of what each host needs under its matching counting
+  rule. <em>Entitled</em> is the quantity on active, in-support contract lines for
+  that vendor — it is not filtered by client, so under
+  <strong>All Clients</strong> it is the whole pool, and for a single client it is
+  still every contract that client could draw on. A negative <em>Position</em> is a
+  shortfall. Hosts counted as <em>no rule</em> contribute nothing to
+  <em>Required</em>, so a non-zero figure there means the real requirement is
+  higher than shown.
+</div>
+{% else %}
+<div class="card"><div class="card-body text-center text-muted py-5">
+  <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>
+  <p class="mb-1">Nothing to summarise yet.</p>
+  <p class="small mb-0">No OS installations have been recorded for this client.</p>
+</div></div>
+{% endif %}
+
+{% endblock %}

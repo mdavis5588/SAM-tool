@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+{% block title %}{{ contract.contract_name }} — OS Contract — Helios{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h4 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>{{ contract.contract_name }}</h4>
+    <p class="text-muted small mb-0 mt-1">
+      {{ vendor_labels.get(contract.vendor, contract.vendor) }}
+      {% if contract.agreement_number %} · {{ contract.agreement_number }}{% endif %}
+    </p>
+  </div>
+  <a href="{{ url_for('os_contracts') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>All contracts
+  </a>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="alert alert-{{ cat }} alert-dismissible fade show py-2" role="alert">
+    {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+{% endwith %}
+
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-semibold">Contract</div>
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-5 text-muted fw-normal">Status</dt>
+          <dd class="col-7">
+            <span class="badge bg-{% if contract.status == 'active' %}success{% elif contract.status == 'expired' %}danger{% else %}secondary{% endif %}">
+              {{ contract.status }}
+            </span>
+          </dd>
+          <dt class="col-5 text-muted fw-normal">Purchased</dt>
+          <dd class="col-7">{{ contract.purchase_date.strftime('%Y-%m-%d') if contract.purchase_date else '—' }}</dd>
+          <dt class="col-5 text-muted fw-normal">Support start</dt>
+          <dd class="col-7">{{ contract.support_start.strftime('%Y-%m-%d') if contract.support_start else '—' }}</dd>
+          <dt class="col-5 text-muted fw-normal">Support expiry</dt>
+          <dd class="col-7">
+            {% if contract.support_expiry %}
+              {{ contract.support_expiry.strftime('%Y-%m-%d') }}
+              {% if contract.support_expiry < today_date %}
+              <span class="badge bg-danger ms-1" style="font-size:.65rem">expired</span>
+              {% endif %}
+            {% else %}—{% endif %}
+          </dd>
+          <dt class="col-5 text-muted fw-normal">Auto-renew</dt>
+          <dd class="col-7">{{ 'Yes' if contract.auto_renew else 'No' }}</dd>
+          <dt class="col-5 text-muted fw-normal">Currency</dt>
+          <dd class="col-7">{{ contract.currency }}</dd>
+          <dt class="col-5 text-muted fw-normal">Sharing</dt>
+          <dd class="col-7">
+            {{ contract.sharing_policy }}
+            {% if contract.owner_name %}<div class="text-muted">{{ contract.owner_name }}</div>{% endif %}
+          </dd>
+          {% if contract.po_number %}
+          <dt class="col-5 text-muted fw-normal">PO</dt>
+          <dd class="col-7">{{ contract.po_number }}</dd>
+          {% endif %}
+        </dl>
+        {% if contract.notes %}
+        <hr class="my-2">
+        <p class="small text-muted mb-0">{{ contract.notes }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Client access -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-semibold">Clients with access</div>
+      {% if client_map %}
+      <ul class="list-group list-group-flush">
+        {% for m in client_map %}
+        <li class="list-group-item py-2 small d-flex justify-content-between">
+          <span>{{ m.client_name }} <span class="text-muted">({{ m.client_code }})</span></span>
+          {% if m.allocated_quantity is not none %}
+          <span class="text-muted" style="font-variant-numeric:tabular-nums">
+            {{ '%g' % m.allocated_quantity }} allocated
+          </span>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="card-body small text-muted">
+        No client assigned yet.
+        {% if contract.sharing_policy == 'unassigned' %}
+        Set a sharing policy first — an unassigned contract cannot be given to a client.
+        {% endif %}
+      </div>
+      {% endif %}
+      <div class="card-body border-top">
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="assign_client">
+          <div class="col-7">
+            <select name="client_id" class="form-select form-select-sm" required>
+              <option value="">— client —</option>
+              {% for c in clients %}
+              <option value="{{ c.client_id }}">{{ c.client_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-5">
+            <input type="number" step="0.01" min="0" name="allocated_quantity"
+                   class="form-control form-control-sm" placeholder="qty">
+          </div>
+          <div class="col-12">
+            <button class="btn btn-sm btn-outline-primary w-100">
+              <i class="bi bi-plus-lg me-1"></i>Grant access
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <!-- Lines -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-semibold d-flex justify-content-between align-items-center">
+        <span>Subscription lines</span>
+        <button class="btn btn-sm btn-outline-primary py-0"
+                data-bs-toggle="collapse" data-bs-target="#addLineForm">
+          <i class="bi bi-plus-lg"></i> Add line
+        </button>
+      </div>
+
+      <div class="collapse" id="addLineForm">
+        <div class="card-body border-bottom bg-light">
+          <form method="post">
+            <input type="hidden" name="action" value="add_line">
+            <div class="row g-2">
+              <div class="col-md-3">
+                <label class="form-label small fw-semibold">SKU</label>
+                <input type="text" name="sku" class="form-control form-control-sm"
+                       placeholder="e.g. RH00284">
+              </div>
+              <div class="col-md-5">
+                <label class="form-label small fw-semibold">Product <span class="text-danger">*</span></label>
+                <input type="text" name="product_name" class="form-control form-control-sm" required
+                       placeholder="e.g. RHEL Virtual Datacenter, Premium">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small fw-semibold">Metric <span class="text-danger">*</span></label>
+                <select name="license_metric" class="form-select form-select-sm" required>
+                  <option value="">— choose —</option>
+                  <option value="socket_pair">socket_pair — per N sockets</option>
+                  <option value="physical_server">physical_server — per server</option>
+                  <option value="virtual_guest">virtual_guest — per guest</option>
+                  <option value="virtual_datacenter">virtual_datacenter — per host, unlimited guests</option>
+                  <option value="vcpu">vcpu — per N vCPUs</option>
+                  <option value="unlimited">unlimited — no per-host count</option>
+                </select>
+              </div>
+
+              <div class="col-md-3">
+                <label class="form-label small fw-semibold">Support level</label>
+                <select name="support_level" class="form-select form-select-sm">
+                  {% for lvl in ['standard','premium','basic','premier','priority','self_support','none'] %}
+                  <option value="{{ lvl }}">{{ lvl }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label small fw-semibold">Quantity <span class="text-danger">*</span></label>
+                <input type="number" step="0.01" min="0" name="quantity"
+                       class="form-control form-control-sm" required>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label small fw-semibold">Unit price</label>
+                <input type="number" step="0.0001" min="0" name="unit_price"
+                       class="form-control form-control-sm">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label small fw-semibold">Annual cost</label>
+                <input type="number" step="0.01" min="0" name="annual_cost"
+                       class="form-control form-control-sm">
+              </div>
+
+              <div class="col-md-3">
+                <label class="form-label small fw-semibold">Term start</label>
+                <input type="date" name="term_start" class="form-control form-control-sm">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label small fw-semibold">Term end</label>
+                <input type="date" name="term_end" class="form-control form-control-sm">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-semibold">Notes</label>
+                <input type="text" name="notes" class="form-control form-control-sm">
+              </div>
+            </div>
+            <button class="btn btn-sm btn-primary mt-3"><i class="bi bi-save me-1"></i>Add line</button>
+          </form>
+        </div>
+      </div>
+
+      {% if lines %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>#</th><th>SKU</th><th>Product</th><th>Metric</th><th>Support</th>
+              <th class="text-end">Qty</th><th class="text-end">Unit</th>
+              <th class="text-end">Total</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for l in lines %}
+            <tr {% if not l.is_active %}class="opacity-50"{% endif %}>
+              <td class="text-muted small">{{ l.line_number }}</td>
+              <td class="small">{% if l.sku %}<code>{{ l.sku }}</code>{% else %}—{% endif %}</td>
+              <td class="small">{{ l.product_name }}</td>
+              <td class="small text-muted">{{ l.license_metric }}</td>
+              <td class="small text-muted">{{ l.support_level }}</td>
+              <td class="text-end" style="font-variant-numeric:tabular-nums">{{ '%g' % l.quantity }}</td>
+              <td class="text-end small" style="font-variant-numeric:tabular-nums">
+                {{ '%.2f' % l.unit_price if l.unit_price is not none else '—' }}
+              </td>
+              <td class="text-end small" style="font-variant-numeric:tabular-nums">
+                {{ '%.2f' % l.total_price if l.total_price is not none else '—' }}
+              </td>
+              <td class="text-end">
+                <form method="post" onsubmit="return confirm('Remove this line? Any server assigned to it keeps the contract but loses the line.')">
+                  <input type="hidden" name="action" value="delete_line">
+                  <input type="hidden" name="os_line_id" value="{{ l.os_line_id }}">
+                  <button class="btn btn-sm btn-outline-danger py-0 px-1"><i class="bi bi-x-lg"></i></button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot class="table-light">
+            <tr class="fw-semibold">
+              <td colspan="5" class="text-end">Total</td>
+              <td class="text-end" style="font-variant-numeric:tabular-nums">
+                {{ '%g' % (lines | selectattr('is_active') | sum(attribute='quantity')) }}
+              </td>
+              <td></td>
+              <td class="text-end" style="font-variant-numeric:tabular-nums">
+                {% set prices = lines | selectattr('is_active') | selectattr('total_price') | list %}
+                {{ '%.2f' % (prices | sum(attribute='total_price')) if prices else '—' }}
+              </td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      {% else %}
+      <div class="card-body text-muted small">
+        No lines yet. A contract with no lines entitles nothing — add the SKUs
+        that were actually purchased.
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Where it is used -->
+    <div class="card">
+      <div class="card-header py-2 fw-semibold d-flex justify-content-between align-items-center">
+        <span>Servers drawing on this contract</span>
+        <span class="badge bg-secondary">{{ usage|length }}</span>
+      </div>
+      {% if usage %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr><th>Client</th><th>Host</th><th>Line</th><th class="text-end">Consumed</th></tr>
+          </thead>
+          <tbody>
+            {% for u in usage %}
+            <tr>
+              <td class="small text-muted">{{ u.client_label }}</td>
+              <td class="small">{{ u.hostname }}</td>
+              <td class="small">{{ u.product_name or 'whole contract' }}</td>
+              <td class="text-end small" style="font-variant-numeric:tabular-nums">
+                {{ '%g' % u.subscriptions_consumed if u.subscriptions_consumed is not none else 'auto' }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="card-body text-muted small">
+        Nothing assigned to this contract yet. Assign it from a server's OS page.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}

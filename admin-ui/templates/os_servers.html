@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block title %}OS Servers — Helios{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h4 class="mb-0"><i class="bi bi-server me-2"></i>Servers — Operating Systems</h4>
+    <p class="text-muted small mb-0 mt-1">
+      Every inventoried host and the OS it runs, with the subscriptions it needs
+      against the subscriptions assigned to it.
+    </p>
+  </div>
+  <div class="text-end">
+    <span class="badge fs-6 bg-secondary">{{ summary.total }} host{% if summary.total != 1 %}s{% endif %}</span>
+  </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="alert alert-{{ cat }} alert-dismissible fade show py-2" role="alert">
+    {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+{% endwith %}
+
+<!-- Summary tiles -->
+<div class="row g-3 mb-3">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card h-100"><div class="card-body py-3">
+      <div class="text-muted small text-uppercase" style="letter-spacing:.04em">Subscriptions required</div>
+      <div class="fs-3 fw-semibold" style="font-variant-numeric:tabular-nums">{{ '%g' % summary.required }}</div>
+    </div></div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card h-100"><div class="card-body py-3">
+      <div class="text-muted small text-uppercase" style="letter-spacing:.04em">Assigned</div>
+      <div class="fs-3 fw-semibold" style="font-variant-numeric:tabular-nums">{{ '%g' % summary.assigned }}</div>
+    </div></div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card h-100 {% if summary.unassigned %}border-danger{% endif %}"><div class="card-body py-3">
+      <div class="text-muted small text-uppercase" style="letter-spacing:.04em">Unassigned hosts</div>
+      <div class="fs-3 fw-semibold {% if summary.unassigned %}text-danger{% endif %}"
+           style="font-variant-numeric:tabular-nums">{{ summary.unassigned }}</div>
+    </div></div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card h-100 {% if summary.no_rule %}border-warning{% endif %}"><div class="card-body py-3">
+      <div class="text-muted small text-uppercase" style="letter-spacing:.04em">No counting rule</div>
+      <div class="fs-3 fw-semibold {% if summary.no_rule %}text-warning{% endif %}"
+           style="font-variant-numeric:tabular-nums">{{ summary.no_rule }}</div>
+      {% if summary.no_rule %}
+      <div class="small text-muted mt-1">Vendor or distribution unmatched — <a href="{{ url_for('os_rules') }}">check the rules</a>.</div>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-3"><div class="card-body py-2">
+  <div class="row g-2 align-items-center">
+    <div class="col-md-4">
+      <input type="search" id="osFilterText" class="form-control form-control-sm"
+             placeholder="Filter by hostname, distribution or version…">
+    </div>
+    <div class="col-md-3">
+      <select id="osFilterVendor" class="form-select form-select-sm">
+        <option value="">All vendors</option>
+        {% for key, label in vendor_labels.items() %}
+        <option value="{{ key }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <select id="osFilterStatus" class="form-select form-select-sm">
+        <option value="">All coverage states</option>
+        {% for key, meta in status_badges.items() %}
+        <option value="{{ key }}">{{ meta[1] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2 text-end">
+      <span class="text-muted small" id="osFilterCount">{{ rows|length }} shown</span>
+    </div>
+  </div>
+</div></div>
+
+{% if rows %}
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0" id="osServersTable">
+      <thead class="table-light">
+        <tr>
+          {% if show_client %}<th>Client</th>{% endif %}
+          <th>Host</th>
+          <th>Vendor</th>
+          <th>Distribution</th>
+          <th>Version</th>
+          <th class="text-center">Sockets</th>
+          <th class="text-center">Cores</th>
+          <th>Type</th>
+          <th>Metric</th>
+          <th class="text-end">Required</th>
+          <th class="text-end">Assigned</th>
+          <th>Coverage</th>
+          <th>Registration</th>
+          <th>Last seen</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr data-vendor="{{ r.vendor }}" data-status="{{ r.coverage_status }}"
+            data-text="{{ (r.hostname ~ ' ' ~ (r.distribution or '') ~ ' ' ~ (r.os_version or '')) | lower }}">
+          {% if show_client %}<td class="small text-muted">{{ r.client_label }}</td>{% endif %}
+          <td>
+            <a href="{{ url_for('os_server_detail', server_id=r.server_id) }}"
+               class="fw-semibold text-decoration-none">{{ r.hostname }}</a>
+            {% if r.environment %}
+            <span class="badge bg-light text-dark ms-1" style="font-size:.65rem">{{ r.environment }}</span>
+            {% endif %}
+          </td>
+          <td>{{ r.vendor_label }}</td>
+          <td class="small">{{ r.distribution or '—' }}</td>
+          <td class="small">{{ r.os_version or '—' }}</td>
+          <td class="text-center" style="font-variant-numeric:tabular-nums">{{ r.cpu_sockets }}</td>
+          <td class="text-center" style="font-variant-numeric:tabular-nums">{{ r.total_physical_cores }}</td>
+          <td>
+            {% if r.is_virtual_guest %}
+              <span class="badge bg-info text-dark" style="font-size:.65rem">Guest</span>
+              {% if r.hypervisor_hostname %}
+              <div class="small text-muted">on {{ r.hypervisor_hostname }}</div>
+              {% endif %}
+            {% else %}
+              <span class="badge bg-light text-dark" style="font-size:.65rem">Physical</span>
+            {% endif %}
+          </td>
+          <td class="small text-muted">{{ r.license_metric or '—' }}</td>
+          <td class="text-end fw-semibold" style="font-variant-numeric:tabular-nums">
+            {% if r.subscriptions_required is none %}
+              <span class="text-warning">?</span>
+            {% else %}{{ '%g' % r.subscriptions_required }}{% endif %}
+          </td>
+          <td class="text-end" style="font-variant-numeric:tabular-nums">
+            {{ '%g' % (r.subscriptions_assigned or 0) }}
+          </td>
+          <td>
+            {% set meta = status_badges.get(r.coverage_status, ('secondary', r.coverage_status)) %}
+            <span class="badge bg-{{ meta[0] }}">{{ meta[1] }}</span>
+          </td>
+          <td>
+            {% if r.subscription_state == 'subscribed' %}
+              <span class="text-success small"><i class="bi bi-check-circle me-1"></i>Subscribed</span>
+            {% elif r.subscription_state == 'unsubscribed' %}
+              <span class="text-danger small"><i class="bi bi-x-circle me-1"></i>Unsubscribed</span>
+            {% elif r.subscription_state == 'self_support' %}
+              <span class="text-muted small">Self-support</span>
+            {% else %}
+              <span class="text-muted small">Unknown</span>
+            {% endif %}
+          </td>
+          <td class="small text-muted">{{ r.last_seen.strftime('%Y-%m-%d') if r.last_seen else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<p class="text-muted small mt-3 mb-0">
+  <strong>Required</strong> is computed from the counting rule that matches each host —
+  a socket pair for RHEL Server, a server for Oracle Linux and SLES, one per guest
+  where the hypervisor is not covered. A guest on a host holding a Virtual Datacenter
+  or unlimited-guest subscription needs nothing, and shows as
+  <span class="badge bg-success">Covered by host</span>.
+  A <span class="text-warning">?</span> means no rule matched; the count is not zero,
+  it is unknown.
+</p>
+{% else %}
+<div class="card"><div class="card-body text-center text-muted py-5">
+  <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>
+  <p class="mb-1">No OS installations recorded for this client yet.</p>
+  <p class="small mb-0">
+    OS discovery populates <code>os_installations</code>. Until it runs, this page
+    stays empty even where servers exist under the Oracle product.
+  </p>
+</div></div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const text   = document.getElementById('osFilterText');
+  const vendor = document.getElementById('osFilterVendor');
+  const status = document.getElementById('osFilterStatus');
+  const count  = document.getElementById('osFilterCount');
+  const table  = document.getElementById('osServersTable');
+  if (!table) return;
+  const rows = Array.from(table.tBodies[0].rows);
+
+  function apply() {
+    const q = (text.value || '').trim().toLowerCase();
+    const v = vendor.value;
+    const s = status.value;
+    let shown = 0;
+    rows.forEach(function (row) {
+      const ok = (!q || row.dataset.text.includes(q))
+              && (!v || row.dataset.vendor === v)
+              && (!s || row.dataset.status === s);
+      row.style.display = ok ? '' : 'none';
+      if (ok) shown++;
+    });
+    count.textContent = shown + ' shown';
+  }
+  [text, vendor, status].forEach(function (el) {
+    el.addEventListener('input', apply);
+    el.addEventListener('change', apply);
+  });
+})();
+</script>
+{% endblock %}

@@ -131,6 +131,27 @@
     }
     .client-switcher-toggle:hover { color: var(--sidebar-fg-active); }
 
+    /* product switcher sits above the client switcher: which product first,
+       then whose estate. Given more weight than the client switcher because it
+       changes the whole navigation below it, not just the data. */
+    .sidebar-product-switcher {
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      background: rgba(255,255,255,.04);
+    }
+    .product-switcher-toggle {
+      display: flex; align-items: center; gap: .55rem;
+      width: 100%; padding: .7rem 1.1rem;
+      background: none; border: 0; text-align: left;
+      color: var(--sidebar-fg-active);
+      font-size: .92rem; font-weight: 600;
+      letter-spacing: .01em;
+    }
+    .product-switcher-toggle i.bi:first-child { color: var(--accent); }
+    .product-switcher-toggle:hover { background: rgba(255,255,255,.07); }
+    .sidebar-product-switcher .dropdown-item.active {
+      background: var(--accent); color: #fff;
+    }
+
     .main-area { flex: 1 1 auto; margin-left: var(--sidebar-w); min-width: 0; }
     .main-area.no-sidebar { margin-left: 0; }
 
@@ -224,6 +245,29 @@
       <i class="bi bi-shield-check"></i> <span>Helios</span>
     </a>
 
+    <!-- Product switcher — decides which product's pages the nav below shows.
+         Oracle and OS are separate in the database and stay separate here. -->
+    <div class="sidebar-product-switcher dropdown">
+      <button class="product-switcher-toggle dropdown-toggle" type="button" data-bs-toggle="dropdown">
+        <i class="bi {{ product_scopes[product_scope].icon }}"></i>
+        <span>{{ product_scopes[product_scope].label }}</span>
+      </button>
+      <ul class="dropdown-menu" style="min-width:220px">
+        <li><h6 class="dropdown-header">Product</h6></li>
+        {% for key, meta in product_scopes.items() %}
+        <li>
+          <form method="post" action="{{ url_for('switch_product') }}">
+            <input type="hidden" name="scope" value="{{ key }}">
+            <button type="submit"
+                    class="dropdown-item {% if key == product_scope %}active{% endif %}">
+              <i class="bi {{ meta.icon }} me-1"></i> {{ meta.label }}
+            </button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+
     <!-- Client switcher -->
     {% if all_clients %}
     <div class="sidebar-client-switcher dropdown client-switcher">
@@ -273,6 +317,7 @@
     </div>
 
     <nav class="sidebar-nav">
+    {% if product_scope == 'oracle' %}
       <a class="sidebar-link {% if request.endpoint == 'executive_summary' %}active{% endif %}"
          href="{{ url_for('executive_summary') }}"><i class="bi bi-bar-chart-line"></i><span>{{ t('nav.executive_summary') }}</span></a>
 
@@ -343,6 +388,30 @@
         </span>
         <i class="bi bi-chevron-right sidebar-flyout-arrow"></i>
       </a>
+
+    {% elif product_scope == 'os' %}
+      <div class="sidebar-section-label">{{ t('nav.inventory') }}</div>
+      <a class="sidebar-link {% if request.endpoint in ['os_servers','os_server_detail'] %}active{% endif %}"
+         href="{{ url_for('os_servers') }}">
+        <i class="bi bi-server"></i><span>{{ t('nav.servers') }}</span>
+      </a>
+
+      <div class="sidebar-section-label">{{ t('nav.licensing') }}</div>
+      <a class="sidebar-link {% if request.endpoint in ['os_contracts','os_contract_detail'] %}active{% endif %}"
+         href="{{ url_for('os_contracts') }}">
+        <i class="bi bi-file-earmark-text"></i><span>{{ t('nav.contracts') }}</span>
+      </a>
+      <a class="sidebar-link {% if request.endpoint == 'os_licence_summary' %}active{% endif %}"
+         href="{{ url_for('os_licence_summary') }}">
+        <i class="bi bi-bar-chart-line"></i><span>{{ t('nav.licence_summary') }}</span>
+      </a>
+
+      <div class="sidebar-section-label">Reference</div>
+      <a class="sidebar-link {% if request.endpoint == 'os_rules' %}active{% endif %}"
+         href="{{ url_for('os_rules') }}">
+        <i class="bi bi-list-check"></i><span>Counting Rules</span>
+      </a>
+    {% endif %}
 
       <div class="sidebar-section-label">{{ t('nav.administration') }}</div>
       <a class="sidebar-link {% if request.endpoint == 'clients' %}active{% endif %}"

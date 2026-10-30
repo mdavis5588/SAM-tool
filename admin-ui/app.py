@@ -463,6 +463,23 @@ def get_schema():
     return session.get("client_schema", DEFAULT_CLIENT_SCHEMA)
 
 
+# Product scopes the UI can be switched between. The scope decides which
+# navigation and which pages the client sees: 'oracle' is everything that
+# existed before, 'os' is the Linux OS licensing layer. The two are separate in
+# the database and stay separate here.
+PRODUCT_SCOPES = {
+    "oracle": {"label": "Oracle", "icon": "bi-database", "home": "servers"},
+    "os":     {"label": "Operating Systems", "icon": "bi-ubuntu", "home": "os_servers"},
+}
+DEFAULT_PRODUCT_SCOPE = "oracle"
+
+
+def get_product_scope():
+    """Active product scope for this session."""
+    scope = session.get("product_scope", DEFAULT_PRODUCT_SCOPE)
+    return scope if scope in PRODUCT_SCOPES else DEFAULT_PRODUCT_SCOPE
+
+
 def get_clients():
     """All active clients — used by the navbar switcher."""
     try:
@@ -2808,6 +2825,25 @@ def switch_client():
     else:
         flash("Unknown client schema.", "danger")
     return redirect(request.referrer or url_for("servers"))
+
+
+@app.route("/switch-product", methods=["POST"])
+@login_required
+def switch_product():
+    """Switch the product scope (Oracle / Operating Systems).
+
+    Redirects to the new scope's own landing page rather than back to the
+    referrer: an Oracle page has no meaning under the OS scope and vice versa,
+    so returning to it would leave the nav and the content disagreeing.
+    """
+    scope = request.form.get("scope", "")
+    if scope not in PRODUCT_SCOPES:
+        flash("Unknown product.", "danger")
+        return redirect(request.referrer or url_for("servers"))
+
+    session["product_scope"] = scope
+    flash(f"Now viewing {PRODUCT_SCOPES[scope]['label']}.", "success")
+    return redirect(url_for(PRODUCT_SCOPES[scope]["home"]))
 
 
 # ---------------------------------------------------------------------------
@@ -8917,6 +8953,448 @@ def debug_db():
 # ---------------------------------------------------------------------------
 # Context processor — inject shared variables into every template
 # ---------------------------------------------------------------------------
+# ===========================================================================
+# OPERATING SYSTEM LICENSING
+# ===========================================================================
+# Standalone from the Oracle pages, mirroring the database split: these read
+# os_installations, os_subscription_map and os_license_position, and never the
+# Oracle tables. A host with no Oracle on it appears here normally.
+
+OS_VENDOR_LABELS = {
+    "redhat":       "Red Hat",
+    "oracle_linux": "Oracle Linux",
+    "suse":         "SUSE",
+    "other":        "Other",
+}
+
+# Badge colour per coverage_status, so one mapping drives every OS page.
+OS_STATUS_BADGES = {
+    "assigned":         ("success",       "Assigned"),
+    "covered_by_host":  ("success",       "Covered by host"),
+    "exempt":           ("secondary",     "Exempt"),
+    "unassigned":       ("danger",        "Unassigned"),
+    "contract_expired": ("warning",       "Contract expired"),
+    "no_rule":          ("warning",       "No rule"),
+}
+
+
+def _os_client_schemas():
+    """Schemas to read, honouring the All Clients selection."""
+    schema = get_schema()
+    if schema != "__all__":
+        return [(schema, schema.replace("client_", ""))]
+    return [
+        (c["schema_name"], c["client_name"])
+        for c in query("SELECT schema_name, client_name FROM sam_admin.clients "
+                       "WHERE is_active ORDER BY client_name")
+    ]
+
+
+@app.route("/os/servers")
+@login_required
+def os_servers():
+    """Server inventory with the OS each one runs and its subscription position."""
+    rows = []
+    for schema, label in _os_client_schemas():
+        try:
+            client_rows = query(f"""
+                SELECT p.*, s.datacenter, s.ip_address::TEXT AS ip_address,
+                       s.criticality
+                FROM   {schema}.os_license_position p
+                JOIN   {schema}.servers s ON s.server_id = p.server_id
+                ORDER  BY p.hostname
+            """)
+        except Exception as exc:
+            # A schema that has not had migration 47 applied must not take the
+            # whole page down; say so instead.
+            flash(f"Could not read OS data for {label}: {exc}", "warning")
+            continue
+        for r in client_rows:
+            r = dict(r)
+            r["client_label"] = label
+            r["schema"]       = schema
+            r["vendor_label"] = OS_VENDOR_LABELS.get(r["vendor"], r["vendor"])
+            rows.append(r)
+
+    summary = {
+        "total":      len(rows),
+        "required":   sum((r["subscriptions_required"] or 0) for r in rows),
+        "assigned":   sum((r["subscriptions_assigned"] or 0) for r in rows),
+        "unassigned": sum(1 for r in rows if r["coverage_status"] == "unassigned"),
+        "no_rule":    sum(1 for r in rows if r["coverage_status"] == "no_rule"),
+    }
+    return render_template("os_servers.html", rows=rows, summary=summary,
+                           status_badges=OS_STATUS_BADGES,
+                           vendor_labels=OS_VENDOR_LABELS,
+                           show_client=(get_schema() == "__all__"))
+
+
+@app.route("/os/servers/<int:server_id>", methods=["GET", "POST"])
+@login_required
+def os_server_detail(server_id):
+    """One host's OS record: edit what discovery cannot see, assign a contract."""
+    schema = get_schema()
+    if schema == "__all__":
+        flash("Choose a single client before editing an OS record.", "warning")
+        return redirect(url_for("os_servers"))
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+
+        if action == "update_install":
+            # Fields discovery cannot determine: the exemption, and the
+            # hypervisor link that decides guest coverage.
+            hv = request.form.get("hypervisor_server_id") or None
+            execute(f"""
+                UPDATE {schema}.os_installations
+                SET    is_exempt            = %s,
+                       exempt_reason        = NULLIF(%s, ''),
+                       hypervisor_server_id = %s,
+                       support_level        = NULLIF(%s, ''),
+                       notes                = NULLIF(%s, '')
+                WHERE  server_id = %s
+            """, (
+                request.form.get("is_exempt") == "on",
+                request.form.get("exempt_reason", "").strip(),
+                int(hv) if hv else None,
+                request.form.get("support_level", "").strip(),
+                request.form.get("notes", "").strip(),
+                server_id,
+            ))
+            flash("OS record updated.", "success")
+
+        elif action == "assign":
+            line_id = request.form.get("os_line_id") or None
+            consumed = request.form.get("subscriptions_consumed", "").strip()
+            try:
+                execute(f"""
+                    INSERT INTO {schema}.os_subscription_map
+                      (server_id, os_contract_id, os_line_id,
+                       subscriptions_consumed, notes, assigned_by)
+                    VALUES (%s, %s, %s, NULLIF(%s,'')::NUMERIC, NULLIF(%s,''), %s)
+                """, (server_id, request.form.get("os_contract_id"),
+                      int(line_id) if line_id else None, consumed,
+                      request.form.get("notes", "").strip(),
+                      session.get("username", "")))
+                flash("Subscription assigned.", "success")
+            except Exception as exc:
+                flash(f"Could not assign: {exc}", "danger")
+
+        elif action == "unassign":
+            execute(f"DELETE FROM {schema}.os_subscription_map WHERE os_assign_id = %s",
+                    (request.form.get("os_assign_id"),))
+            flash("Assignment removed.", "success")
+
+        return redirect(url_for("os_server_detail", server_id=server_id))
+
+    server = query(f"""
+        SELECT s.*, s.environment::TEXT AS environment_text
+        FROM   {schema}.servers s WHERE s.server_id = %s
+    """, (server_id,), fetchall=False)
+    if not server:
+        flash("Server not found.", "danger")
+        return redirect(url_for("os_servers"))
+
+    install = query(f"SELECT * FROM {schema}.os_installations WHERE server_id = %s",
+                    (server_id,), fetchall=False)
+    position = query(f"SELECT * FROM {schema}.os_license_position WHERE server_id = %s",
+                     (server_id,), fetchall=False)
+
+    assignments = query(f"""
+        SELECT m.*, c.contract_name, c.vendor::TEXT AS vendor, c.agreement_number,
+               c.support_expiry, c.status::TEXT AS contract_status,
+               l.product_name, l.sku, l.license_metric::TEXT AS license_metric
+        FROM   {schema}.os_subscription_map m
+        JOIN   shared.os_contracts c ON c.os_contract_id = m.os_contract_id
+        LEFT   JOIN shared.os_entitlement_lines l ON l.os_line_id = m.os_line_id
+        WHERE  m.server_id = %s
+        ORDER  BY m.effective_date DESC
+    """, (server_id,))
+
+    # Only contracts this client may draw on, plus unrestricted shareable ones.
+    contracts = query("""
+        SELECT c.os_contract_id, c.contract_name, c.vendor::TEXT AS vendor,
+               c.agreement_number
+        FROM   shared.os_contracts c
+        WHERE  c.status = 'active'
+          AND  (c.sharing_policy = 'shareable'
+                OR c.owning_client_id = (SELECT client_id FROM sam_admin.clients
+                                         WHERE schema_name = %s))
+        ORDER  BY c.vendor, c.contract_name
+    """, (schema,))
+
+    lines = query("""
+        SELECT os_line_id, os_contract_id, sku, product_name,
+               license_metric::TEXT AS license_metric, quantity
+        FROM   shared.os_entitlement_lines
+        WHERE  is_active ORDER BY os_contract_id, line_number
+    """)
+
+    # Candidate hypervisor hosts: any other inventoried host in this client.
+    hosts = query(f"""
+        SELECT s.server_id, s.hostname
+        FROM   {schema}.servers s
+        WHERE  s.is_active AND s.server_id <> %s
+        ORDER  BY s.hostname
+    """, (server_id,))
+
+    return render_template("os_server_detail.html", server=server, install=install,
+                           position=position, assignments=assignments,
+                           contracts=contracts, lines=lines, hosts=hosts,
+                           status_badges=OS_STATUS_BADGES,
+                           vendor_labels=OS_VENDOR_LABELS)
+
+
+@app.route("/os/licence-summary")
+@login_required
+def os_licence_summary():
+    """Required against assigned, per vendor — the OS equivalent of the
+    Oracle licence summary. Entitled quantity comes from the contract lines
+    the client may draw on, so a shortfall is visible before any assignment."""
+    by_vendor = {}
+    for schema, label in _os_client_schemas():
+        try:
+            rows = query(f"""
+                SELECT vendor,
+                       COUNT(*)                                        AS installs,
+                       SUM(COALESCE(subscriptions_required, 0))        AS required,
+                       SUM(COALESCE(subscriptions_assigned, 0))        AS assigned,
+                       COUNT(*) FILTER (WHERE coverage_status = 'unassigned')       AS unassigned,
+                       COUNT(*) FILTER (WHERE coverage_status = 'no_rule')          AS no_rule,
+                       COUNT(*) FILTER (WHERE coverage_status = 'contract_expired') AS expired,
+                       COUNT(*) FILTER (WHERE coverage_status = 'exempt')           AS exempt
+                FROM   {schema}.os_license_position
+                GROUP  BY vendor
+            """)
+        except Exception as exc:
+            flash(f"Could not read OS data for {label}: {exc}", "warning")
+            continue
+        for r in rows:
+            v = by_vendor.setdefault(r["vendor"], {
+                "vendor": r["vendor"],
+                "vendor_label": OS_VENDOR_LABELS.get(r["vendor"], r["vendor"]),
+                "installs": 0, "required": 0, "assigned": 0,
+                "unassigned": 0, "no_rule": 0, "expired": 0, "exempt": 0,
+                "entitled": 0,
+            })
+            for k in ("installs", "required", "assigned",
+                      "unassigned", "no_rule", "expired", "exempt"):
+                v[k] += r[k] or 0
+
+    # Entitlement held, per vendor, across contracts in play.
+    try:
+        for r in query("""
+            SELECT c.vendor::TEXT AS vendor, SUM(l.quantity) AS entitled
+            FROM   shared.os_entitlement_lines l
+            JOIN   shared.os_contracts c ON c.os_contract_id = l.os_contract_id
+            WHERE  l.is_active AND c.status = 'active'
+              AND  (c.support_expiry IS NULL OR c.support_expiry >= CURRENT_DATE)
+            GROUP  BY c.vendor
+        """):
+            if r["vendor"] in by_vendor:
+                by_vendor[r["vendor"]]["entitled"] = r["entitled"] or 0
+    except Exception as exc:
+        flash(f"Could not read OS entitlements: {exc}", "warning")
+
+    rows = sorted(by_vendor.values(), key=lambda r: r["vendor_label"])
+    for r in rows:
+        r["gap"] = (r["entitled"] or 0) - (r["required"] or 0)
+
+    totals = {
+        "installs": sum(r["installs"] for r in rows),
+        "required": sum(r["required"] for r in rows),
+        "entitled": sum(r["entitled"] for r in rows),
+        "unassigned": sum(r["unassigned"] for r in rows),
+    }
+    totals["gap"] = totals["entitled"] - totals["required"]
+    return render_template("os_licence_summary.html", rows=rows, totals=totals)
+
+
+@app.route("/os/contracts", methods=["GET", "POST"])
+@login_required
+def os_contracts():
+    """OS subscription contracts, and the form to add one."""
+    if request.method == "POST":
+        # Checked here as well as by the database, so a predictable mistake gets
+        # a sentence rather than a constraint name.
+        if (request.form.get("sharing_policy") == "client_locked"
+                and not request.form.get("owning_client_id")):
+            flash("A contract locked to one client needs an owning client.", "danger")
+            return redirect(url_for("os_contracts"))
+        if not request.form.get("contract_name", "").strip():
+            flash("Contract name is required.", "danger")
+            return redirect(url_for("os_contracts"))
+
+        try:
+            execute("""
+                INSERT INTO shared.os_contracts
+                  (vendor, agreement_number, contract_name, purchase_date,
+                   support_start, support_expiry, auto_renew, currency,
+                   sharing_policy, owning_client_id, po_number, notes)
+                VALUES (%s, NULLIF(%s,''), %s, NULLIF(%s,'')::DATE,
+                        NULLIF(%s,'')::DATE, NULLIF(%s,'')::DATE, %s,
+                        COALESCE(NULLIF(%s,''),'USD'), %s,
+                        NULLIF(%s,'')::INTEGER, NULLIF(%s,''), NULLIF(%s,''))
+            """, (
+                request.form.get("vendor"),
+                request.form.get("agreement_number", "").strip(),
+                request.form.get("contract_name", "").strip(),
+                request.form.get("purchase_date", ""),
+                request.form.get("support_start", ""),
+                request.form.get("support_expiry", ""),
+                request.form.get("auto_renew") == "on",
+                request.form.get("currency", "").strip().upper(),
+                request.form.get("sharing_policy", "unassigned"),
+                request.form.get("owning_client_id", ""),
+                request.form.get("po_number", "").strip(),
+                request.form.get("notes", "").strip(),
+            ))
+            flash("OS contract added.", "success")
+        except Exception as exc:
+            flash(f"Could not add contract: {exc}", "danger")
+        return redirect(url_for("os_contracts"))
+
+    rows = query("""
+        SELECT c.*, c.vendor::TEXT AS vendor, c.status::TEXT AS status,
+               c.sharing_policy::TEXT AS sharing_policy,
+               cl.client_name AS owner_name,
+               (SELECT COUNT(*) FROM shared.os_entitlement_lines l
+                WHERE l.os_contract_id = c.os_contract_id AND l.is_active) AS line_count,
+               (SELECT COALESCE(SUM(l.quantity),0) FROM shared.os_entitlement_lines l
+                WHERE l.os_contract_id = c.os_contract_id AND l.is_active) AS total_quantity,
+               (c.support_expiry IS NOT NULL
+                AND c.support_expiry < CURRENT_DATE)            AS is_expired,
+               (c.support_expiry IS NOT NULL
+                AND c.support_expiry >= CURRENT_DATE
+                AND c.support_expiry < CURRENT_DATE + 90)       AS expiring_soon
+        FROM   shared.os_contracts c
+        LEFT   JOIN sam_admin.clients cl ON cl.client_id = c.owning_client_id
+        ORDER  BY c.vendor, c.contract_name
+    """)
+    return render_template("os_contracts.html", rows=rows,
+                           clients=get_clients(),
+                           vendor_labels=OS_VENDOR_LABELS)
+
+
+@app.route("/os/contracts/<int:os_contract_id>", methods=["GET", "POST"])
+@login_required
+def os_contract_detail(os_contract_id):
+    """A contract and its subscription lines."""
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        if action == "add_line":
+            try:
+                execute("""
+                    INSERT INTO shared.os_entitlement_lines
+                      (os_contract_id, line_number, sku, product_name,
+                       license_metric, support_level, quantity, unit_price,
+                       annual_cost, term_start, term_end, notes)
+                    VALUES (%s,
+                            COALESCE((SELECT MAX(line_number)+1
+                                      FROM shared.os_entitlement_lines
+                                      WHERE os_contract_id = %s), 1),
+                            NULLIF(%s,''), %s, %s, %s, %s::NUMERIC,
+                            NULLIF(%s,'')::NUMERIC, NULLIF(%s,'')::NUMERIC,
+                            NULLIF(%s,'')::DATE, NULLIF(%s,'')::DATE, NULLIF(%s,''))
+                """, (
+                    os_contract_id, os_contract_id,
+                    request.form.get("sku", "").strip(),
+                    request.form.get("product_name", "").strip(),
+                    request.form.get("license_metric"),
+                    request.form.get("support_level", "standard"),
+                    request.form.get("quantity"),
+                    request.form.get("unit_price", "").strip(),
+                    request.form.get("annual_cost", "").strip(),
+                    request.form.get("term_start", ""),
+                    request.form.get("term_end", ""),
+                    request.form.get("notes", "").strip(),
+                ))
+                flash("Line added.", "success")
+            except Exception as exc:
+                flash(f"Could not add line: {exc}", "danger")
+
+        elif action == "delete_line":
+            execute("DELETE FROM shared.os_entitlement_lines WHERE os_line_id = %s",
+                    (request.form.get("os_line_id"),))
+            flash("Line removed.", "success")
+
+        elif action == "assign_client":
+            try:
+                execute("""
+                    INSERT INTO shared.os_contract_client_map
+                      (os_contract_id, client_id, allocated_quantity)
+                    VALUES (%s, %s, NULLIF(%s,'')::NUMERIC)
+                    ON CONFLICT (os_contract_id, client_id) DO UPDATE
+                      SET allocated_quantity = EXCLUDED.allocated_quantity
+                """, (os_contract_id, request.form.get("client_id"),
+                      request.form.get("allocated_quantity", "").strip()))
+                flash("Client assigned to contract.", "success")
+            except Exception as exc:
+                flash(f"Could not assign client: {exc}", "danger")
+
+        return redirect(url_for("os_contract_detail", os_contract_id=os_contract_id))
+
+    contract = query("""
+        SELECT c.*, c.vendor::TEXT AS vendor, c.status::TEXT AS status,
+               c.sharing_policy::TEXT AS sharing_policy, cl.client_name AS owner_name
+        FROM   shared.os_contracts c
+        LEFT   JOIN sam_admin.clients cl ON cl.client_id = c.owning_client_id
+        WHERE  c.os_contract_id = %s
+    """, (os_contract_id,), fetchall=False)
+    if not contract:
+        flash("Contract not found.", "danger")
+        return redirect(url_for("os_contracts"))
+
+    lines = query("""
+        SELECT l.*, l.license_metric::TEXT AS license_metric,
+               l.support_level::TEXT AS support_level
+        FROM   shared.os_entitlement_lines l
+        WHERE  l.os_contract_id = %s ORDER BY l.line_number
+    """, (os_contract_id,))
+
+    client_map = query("""
+        SELECT m.*, cl.client_name, cl.client_code
+        FROM   shared.os_contract_client_map m
+        JOIN   sam_admin.clients cl ON cl.client_id = m.client_id
+        WHERE  m.os_contract_id = %s ORDER BY cl.client_name
+    """, (os_contract_id,))
+
+    # Where this contract's lines are actually in use, across every client.
+    usage = []
+    for schema, label in _os_client_schemas():
+        try:
+            for r in query(f"""
+                SELECT s.hostname, m.subscriptions_consumed, l.product_name
+                FROM   {schema}.os_subscription_map m
+                JOIN   {schema}.servers s ON s.server_id = m.server_id
+                LEFT   JOIN shared.os_entitlement_lines l ON l.os_line_id = m.os_line_id
+                WHERE  m.os_contract_id = %s ORDER BY s.hostname
+            """, (os_contract_id,)):
+                r = dict(r)
+                r["client_label"] = label
+                usage.append(r)
+        except Exception:
+            continue
+
+    return render_template("os_contract_detail.html", contract=contract, lines=lines,
+                           client_map=client_map, usage=usage, clients=get_clients(),
+                           vendor_labels=OS_VENDOR_LABELS)
+
+
+@app.route("/os/rules")
+@login_required
+def os_rules():
+    """The counting rules, shown so a number on the summary can be traced to
+    the rule that produced it."""
+    rows = query("""
+        SELECT r.*, r.vendor::TEXT AS vendor, r.license_metric::TEXT AS license_metric
+        FROM   shared.os_license_rules r
+        ORDER  BY r.vendor, r.product_pattern
+    """)
+    return render_template("os_rules.html", rows=rows,
+                           vendor_labels=OS_VENDOR_LABELS)
+
+
 @app.context_processor
 def inject_globals():
     today = date.today()
@@ -8948,6 +9426,8 @@ def inject_globals():
         "all_clients":         get_clients() if session.get("logged_in") else [],
         "has_ulas":            _client_has_ulas(schema) if session.get("logged_in") else False,
         "stale_servers_count": stale_count,
+        "product_scope":       get_product_scope(),
+        "product_scopes":      PRODUCT_SCOPES,
     }
 
 

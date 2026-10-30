@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}OS Counting Rules — Helios{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h4 class="mb-0"><i class="bi bi-list-check me-2"></i>Counting Rules</h4>
+    <p class="text-muted small mb-0 mt-1">
+      How each vendor's packaging turns hardware into a subscription count. Every
+      figure on the OS pages comes from one of these rows.
+    </p>
+  </div>
+  <span class="badge fs-6 bg-secondary">{{ rows|length }} rule{% if rows|length != 1 %}s{% endif %}</span>
+</div>
+
+<div class="card mb-3">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>#</th><th>Vendor</th><th>Matches distribution</th><th>Metric</th>
+          <th class="text-center">Sockets/unit</th><th class="text-center">Max sockets</th>
+          <th class="text-center">vCPUs/unit</th><th>Guests</th><th>Effective</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr {% if not r.is_active %}class="opacity-50"{% endif %}>
+          <td class="text-muted small">{{ r.rule_id }}</td>
+          <td class="small">{{ vendor_labels.get(r.vendor, r.vendor) }}</td>
+          <td class="small">
+            {% if r.product_pattern == '*' %}
+            <span class="text-muted fst-italic">any</span>
+            {% else %}{{ r.product_pattern }}{% endif %}
+          </td>
+          <td class="small"><code>{{ r.license_metric }}</code></td>
+          <td class="text-center small" style="font-variant-numeric:tabular-nums">{{ r.sockets_per_unit or '—' }}</td>
+          <td class="text-center small" style="font-variant-numeric:tabular-nums">{{ r.max_sockets or '—' }}</td>
+          <td class="text-center small" style="font-variant-numeric:tabular-nums">{{ r.vcpus_per_unit or '—' }}</td>
+          <td class="small">
+            {% if r.covers_guests %}
+            <span class="badge bg-success" style="font-size:.65rem">covers guests</span>
+            {% elif r.counts_guests %}
+            <span class="badge bg-info text-dark" style="font-size:.65rem">per guest</span>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td class="small text-muted">
+            {{ r.effective_from.strftime('%Y-%m-%d') if r.effective_from else '—' }}
+            {% if r.effective_to %} → {{ r.effective_to.strftime('%Y-%m-%d') }}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header py-2 fw-semibold">How a rule is chosen</div>
+      <div class="card-body small">
+        <ol class="mb-0 ps-3">
+          <li class="mb-2">
+            An <strong>exempt</strong> installation requires nothing, whatever the rules say.
+          </li>
+          <li class="mb-2">
+            A <strong>guest whose hypervisor</strong> holds a Virtual Datacenter or
+            unlimited-guest subscription requires nothing — that is what such a
+            subscription buys. This depends on the guest's hypervisor host being
+            set on its OS page.
+          </li>
+          <li class="mb-2">
+            Any other <strong>guest</strong> takes the vendor's per-guest rule.
+            A guest is identified by its virtual flag, never by its distribution
+            name: a RHEL guest reports the same string as a RHEL physical host.
+          </li>
+          <li class="mb-2">
+            A <strong>physical host</strong> takes the rule whose pattern matches its
+            reported distribution — the most specific match wins.
+          </li>
+          <li class="mb-0">
+            Overriding all of the above: if a line is already <strong>assigned</strong>
+            to the host, that line's metric is used. Virtual Datacenter is a
+            purchasing decision discovery cannot see, so without this a VDC host
+            would be counted per socket pair.
+          </li>
+        </ol>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card h-100 border-warning">
+      <div class="card-header py-2 fw-semibold">Before you rely on a number</div>
+      <div class="card-body small">
+        <p>
+          These rules reflect each vendor's published packaging as recorded, and
+          vendors change packaging. Confirm against the current price list before
+          using a count in a true-up or an audit response.
+        </p>
+        <p class="mb-0">
+          A host reported as <span class="badge bg-warning text-dark">No rule</span>
+          contributes <strong>nothing</strong> to the required total. That is not the
+          same as needing nothing — the requirement is unknown, and the summary
+          understates the estate until the rule exists.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

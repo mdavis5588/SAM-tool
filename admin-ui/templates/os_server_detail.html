@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block title %}{{ server.hostname }} — OS — Helios{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h4 class="mb-0"><i class="bi bi-hdd-network me-2"></i>{{ server.hostname }}</h4>
+    <p class="text-muted small mb-0 mt-1">
+      Operating system record and subscription assignment.
+    </p>
+  </div>
+  <a href="{{ url_for('os_servers') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>All servers
+  </a>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="alert alert-{{ cat }} alert-dismissible fade show py-2" role="alert">
+    {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+{% endwith %}
+
+{% if not install %}
+<div class="alert alert-warning">
+  <i class="bi bi-exclamation-triangle me-1"></i>
+  No OS installation recorded for this host. OS discovery has not reported it yet,
+  so there is nothing to license here.
+</div>
+{% else %}
+
+<div class="row g-3">
+  <!-- Position -->
+  <div class="col-lg-5">
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-semibold">Position</div>
+      <div class="card-body">
+        {% if position %}
+        {% set meta = status_badges.get(position.coverage_status, ('secondary', position.coverage_status)) %}
+        <div class="d-flex align-items-baseline justify-content-between mb-3">
+          <div>
+            <div class="text-muted small text-uppercase" style="letter-spacing:.04em">Required</div>
+            <div class="fs-2 fw-semibold" style="font-variant-numeric:tabular-nums">
+              {% if position.subscriptions_required is none %}
+                <span class="text-warning">?</span>
+              {% else %}{{ '%g' % position.subscriptions_required }}{% endif %}
+            </div>
+          </div>
+          <div>
+            <div class="text-muted small text-uppercase" style="letter-spacing:.04em">Assigned</div>
+            <div class="fs-2 fw-semibold" style="font-variant-numeric:tabular-nums">
+              {{ '%g' % (position.subscriptions_assigned or 0) }}
+            </div>
+          </div>
+          <span class="badge bg-{{ meta[0] }} fs-6">{{ meta[1] }}</span>
+        </div>
+        <dl class="row small mb-0">
+          <dt class="col-5 text-muted fw-normal">Counting metric</dt>
+          <dd class="col-7">{{ position.license_metric or 'none matched' }}</dd>
+          {% if position.rule_id %}
+          <dt class="col-5 text-muted fw-normal">Rule</dt>
+          <dd class="col-7"><a href="{{ url_for('os_rules') }}">#{{ position.rule_id }}</a></dd>
+          {% endif %}
+        </dl>
+        {% if position.coverage_status == 'no_rule' %}
+        <div class="alert alert-warning py-2 small mt-3 mb-0">
+          No counting rule matched vendor <strong>{{ position.vendor }}</strong> with
+          distribution <strong>{{ position.distribution or 'unset' }}</strong>.
+          The requirement is unknown, not zero.
+        </div>
+        {% endif %}
+        {% else %}
+        <p class="text-muted small mb-0">Not in the position view — the installation is inactive.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Discovered facts -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-semibold">As discovered</div>
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-5 text-muted fw-normal">Vendor</dt>
+          <dd class="col-7">{{ vendor_labels.get(install.vendor, install.vendor) }}</dd>
+          <dt class="col-5 text-muted fw-normal">Distribution</dt>
+          <dd class="col-7">{{ install.distribution or '—' }}</dd>
+          <dt class="col-5 text-muted fw-normal">Version</dt>
+          <dd class="col-7">{{ install.os_version or '—' }}</dd>
+          <dt class="col-5 text-muted fw-normal">Kernel</dt>
+          <dd class="col-7"><code class="small">{{ install.kernel_version or '—' }}</code></dd>
+          <dt class="col-5 text-muted fw-normal">Architecture</dt>
+          <dd class="col-7">{{ install.architecture or '—' }}</dd>
+          <dt class="col-5 text-muted fw-normal">Sockets × cores</dt>
+          <dd class="col-7" style="font-variant-numeric:tabular-nums">
+            {{ install.cpu_sockets }} × {{ install.cores_per_socket }}
+            = {{ install.total_physical_cores }} cores
+          </dd>
+          <dt class="col-5 text-muted fw-normal">vCPUs</dt>
+          <dd class="col-7" style="font-variant-numeric:tabular-nums">{{ install.vcpu_count or '—' }}</dd>
+          <dt class="col-5 text-muted fw-normal">Virtual guest</dt>
+          <dd class="col-7">{{ 'Yes' if install.is_virtual_guest else 'No' }}</dd>
+          {% if install.hypervisor_type or install.hypervisor_hostname %}
+          <dt class="col-5 text-muted fw-normal">Hypervisor</dt>
+          <dd class="col-7">{{ install.hypervisor_hostname or install.hypervisor_type }}</dd>
+          {% endif %}
+          <dt class="col-5 text-muted fw-normal">Registration</dt>
+          <dd class="col-7">{{ install.subscription_state }}</dd>
+          {% if install.vendor_system_id %}
+          <dt class="col-5 text-muted fw-normal">Vendor system ID</dt>
+          <dd class="col-7"><code class="small">{{ install.vendor_system_id }}</code></dd>
+          {% endif %}
+          <dt class="col-5 text-muted fw-normal">Last seen</dt>
+          <dd class="col-7">{{ install.last_seen.strftime('%Y-%m-%d %H:%M') if install.last_seen else '—' }}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <!-- Editable: what discovery cannot determine -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-semibold">Licensing decisions</div>
+      <div class="card-body">
+        <p class="text-muted small">
+          Discovery reports what the host is; these are the judgements it cannot make.
+        </p>
+        <form method="post">
+          <input type="hidden" name="action" value="update_install">
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Hypervisor host</label>
+            <select name="hypervisor_server_id" class="form-select form-select-sm">
+              <option value="">— none / physical —</option>
+              {% for h in hosts %}
+              <option value="{{ h.server_id }}"
+                {% if install.hypervisor_server_id == h.server_id %}selected{% endif %}>
+                {{ h.hostname }}
+              </option>
+              {% endfor %}
+            </select>
+            <div class="form-text small">
+              Setting this is what lets a Virtual Datacenter or unlimited-guest
+              subscription on the host cover this guest. Without it the guest is
+              counted on its own.
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Support level</label>
+            <select name="support_level" class="form-select form-select-sm">
+              <option value="">—</option>
+              {% for lvl in ['self_support','standard','premium','basic','premier','priority','none'] %}
+              <option value="{{ lvl }}" {% if install.support_level == lvl %}selected{% endif %}>{{ lvl }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="is_exempt" id="isExempt"
+                   {% if install.is_exempt %}checked{% endif %}>
+            <label class="form-check-label small fw-semibold" for="isExempt">
+              Exempt from subscription counting
+            </label>
+          </div>
+          <div class="mb-3">
+            <input type="text" name="exempt_reason" class="form-control form-control-sm"
+                   placeholder="Reason — e.g. no-cost developer subscription"
+                   value="{{ install.exempt_reason or '' }}">
+            <div class="form-text small">
+              An exempt host reports a requirement of zero. Record why, so the
+              exemption can be defended in an audit.
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Notes</label>
+            <textarea name="notes" class="form-control form-control-sm" rows="2">{{ install.notes or '' }}</textarea>
+          </div>
+          <button class="btn btn-sm btn-primary"><i class="bi bi-save me-1"></i>Save</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Assignments -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-semibold d-flex justify-content-between align-items-center">
+        <span>Assigned subscriptions</span>
+        <span class="badge bg-secondary">{{ assignments|length }}</span>
+      </div>
+      {% if assignments %}
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Contract</th><th>Line</th><th>Metric</th>
+              <th class="text-end">Consumed</th><th>From</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in assignments %}
+            <tr>
+              <td>
+                <a href="{{ url_for('os_contract_detail', os_contract_id=a.os_contract_id) }}"
+                   class="text-decoration-none">{{ a.contract_name }}</a>
+                {% if a.contract_status != 'active' %}
+                <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem">{{ a.contract_status }}</span>
+                {% elif a.support_expiry and a.support_expiry < today_date %}
+                <span class="badge bg-danger ms-1" style="font-size:.65rem">expired</span>
+                {% endif %}
+                <div class="small text-muted">{{ vendor_labels.get(a.vendor, a.vendor) }}{% if a.agreement_number %} · {{ a.agreement_number }}{% endif %}</div>
+              </td>
+              <td class="small">
+                {{ a.product_name or '—' }}
+                {% if a.sku %}<div class="text-muted"><code>{{ a.sku }}</code></div>{% endif %}
+              </td>
+              <td class="small text-muted">{{ a.license_metric or '—' }}</td>
+              <td class="text-end" style="font-variant-numeric:tabular-nums">
+                {{ '%g' % a.subscriptions_consumed if a.subscriptions_consumed is not none else 'auto' }}
+              </td>
+              <td class="small text-muted">{{ a.effective_date.strftime('%Y-%m-%d') if a.effective_date else '—' }}</td>
+              <td class="text-end">
+                <form method="post" onsubmit="return confirm('Remove this assignment?')">
+                  <input type="hidden" name="action" value="unassign">
+                  <input type="hidden" name="os_assign_id" value="{{ a.os_assign_id }}">
+                  <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Remove">
+                    <i class="bi bi-x-lg"></i>
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="card-body text-muted small">
+        Nothing assigned. The requirement above is uncovered.
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Assign -->
+    <div class="card">
+      <div class="card-header py-2 fw-semibold">Assign a subscription</div>
+      <div class="card-body">
+        {% if contracts %}
+        <form method="post">
+          <input type="hidden" name="action" value="assign">
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">Contract</label>
+              <select name="os_contract_id" id="assignContract" class="form-select form-select-sm" required>
+                <option value="">— choose —</option>
+                {% for c in contracts %}
+                <option value="{{ c.os_contract_id }}">
+                  {{ vendor_labels.get(c.vendor, c.vendor) }} — {{ c.contract_name }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">Line</label>
+              <select name="os_line_id" id="assignLine" class="form-select form-select-sm">
+                <option value="">— whole contract —</option>
+                {% for l in lines %}
+                <option value="{{ l.os_line_id }}" data-contract="{{ l.os_contract_id }}">
+                  {% if l.sku %}{{ l.sku }} — {% endif %}{{ l.product_name }} ({{ l.license_metric }})
+                </option>
+                {% endfor %}
+              </select>
+              <div class="form-text small">
+                Pick the line: its metric is what decides the count for this host.
+              </div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold">Subscriptions consumed</label>
+              <input type="number" step="0.01" min="0" name="subscriptions_consumed"
+                     class="form-control form-control-sm" placeholder="auto">
+              <div class="form-text small">Blank computes it from the rule.</div>
+            </div>
+            <div class="col-md-8">
+              <label class="form-label small fw-semibold">Notes</label>
+              <input type="text" name="notes" class="form-control form-control-sm">
+            </div>
+          </div>
+          <button class="btn btn-sm btn-primary mt-3"><i class="bi bi-link-45deg me-1"></i>Assign</button>
+        </form>
+        {% else %}
+        <p class="text-muted small mb-0">
+          No active OS contract is available to this client.
+          <a href="{{ url_for('os_contracts') }}">Add one</a> first, and make it
+          shareable or owned by this client.
+        </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Narrow the line list to the chosen contract: a line from another contract
+// would be rejected by the database anyway, so don't offer it.
+(function () {
+  const contract = document.getElementById('assignContract');
+  const line     = document.getElementById('assignLine');
+  if (!contract || !line) return;
+  const options = Array.from(line.options);
+
+  contract.addEventListener('change', function () {
+    const id = contract.value;
+    line.value = '';
+    options.forEach(function (opt) {
+      if (!opt.dataset.contract) return;
+      opt.hidden = (opt.dataset.contract !== id);
+    });
+  });
+  contract.dispatchEvent(new Event('change'));
+})();
+</script>
+{% endblock %}
