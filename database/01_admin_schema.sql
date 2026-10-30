@@ -499,6 +499,28 @@ BEGIN
     )
   $sql$, p_schema, p_schema);
 
+  -- discovery_errors
+  -- Records instances that failed to report during a discovery run, so the
+  -- admin UI can show them without digging through Ansible logs.
+  -- Index names match migration 40 deliberately: IF NOT EXISTS then matches a
+  -- schema that migration already touched, instead of building a second index
+  -- on the same columns.
+  EXECUTE format($sql$
+    CREATE TABLE IF NOT EXISTS %I.discovery_errors (
+      error_id        SERIAL PRIMARY KEY,
+      run_id          TEXT        NOT NULL,
+      hostname        TEXT        NOT NULL,
+      oracle_sid      TEXT,
+      error_type      TEXT        NOT NULL,  -- connection_failed, no_output, unparsable_output
+      error_detail    TEXT,
+      recorded_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_discovery_errors_hostname
+      ON %I.discovery_errors (hostname, recorded_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_discovery_errors_run_id
+      ON %I.discovery_errors (run_id);
+  $sql$, p_schema, p_schema, p_schema);
+
   -- Create indexes
   EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_proc_server   ON %I.oracle_processors (server_id)', p_schema, p_schema);
   EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_inst_server   ON %I.oracle_instances  (server_id)', p_schema, p_schema);

@@ -188,7 +188,7 @@
           </div>
           <div>
             <label class="rs-label" for="edition">{{ t('register_server.label_edition') }}</label>
-            <select id="edition" name="edition" class="form-select form-select-sm">
+            <select id="edition" name="edition" class="form-select form-select-sm" required>
               <option value="">—</option>
               <option value="Enterprise Edition" {% if form.get('edition') == 'Enterprise Edition' %}selected{% endif %}>Enterprise Edition</option>
               <option value="Standard Edition 2" {% if form.get('edition') == 'Standard Edition 2' %}selected{% endif %}>Standard Edition 2</option>
@@ -254,7 +254,7 @@
           <div>
             <label class="rs-label" for="cpu_model_select">CPU Model</label>
             <select id="cpu_model_select" name="cpu_model" class="form-select form-select-sm mb-1"
-                    onchange="applyCpuPreset(this.value)">
+                    onchange="applyCpuPreset(this.value)" required>
               <option value="">— Select a CPU model —</option>
               <optgroup label="Intel (factor 0.50)">
                 <option value="Intel Xeon|0.5">Intel Xeon (all generations)</option>
@@ -336,24 +336,25 @@
           <div>
             <label class="rs-label" for="total_ram_mb">{{ t('register_server.label_ram') }}</label>
             <input type="number" id="total_ram_mb" name="total_ram_mb" class="form-control form-control-sm"
-                   value="{{ form.get('total_ram_mb','') }}" min="0" placeholder="65536">
+                   value="{{ form.get('total_ram_mb','') }}" min="1" placeholder="65536" required>
             <div class="rs-hint">{{ t('register_server.hint_cores') }}</div>
           </div>
           <div>
             <label class="rs-label" for="physical_cores">{{ t('register_server.label_cores') }}</label>
             <input type="number" id="physical_cores" name="physical_cores" class="form-control form-control-sm"
-                   value="{{ form.get('physical_cores','') }}" min="1" placeholder="16">
+                   value="{{ form.get('physical_cores','') }}" min="1" placeholder="16" required>
+            <div id="coreMismatch" class="form-text text-danger d-none"></div>
             <div class="rs-hint">{{ t('register_server.hint_cores') }}</div>
           </div>
           <div>
             <label class="rs-label" for="cpu_sockets">{{ t('register_server.label_sockets') }}</label>
             <input type="number" id="cpu_sockets" name="cpu_sockets" class="form-control form-control-sm"
-                   value="{{ form.get('cpu_sockets','') }}" min="1" placeholder="2">
+                   value="{{ form.get('cpu_sockets','') }}" min="1" placeholder="2" required>
           </div>
           <div>
             <label class="rs-label" for="cores_per_socket">{{ t('register_server.label_cps') }}</label>
             <input type="number" id="cores_per_socket" name="cores_per_socket" class="form-control form-control-sm"
-                   value="{{ form.get('cores_per_socket','') }}" min="1" placeholder="8">
+                   value="{{ form.get('cores_per_socket','') }}" min="1" placeholder="8" required>
           </div>
         </div>
       </div>
@@ -394,6 +395,40 @@ function selectType(type) {
   document.getElementById('dbSection').style.display        = isDB ? '' : 'none';
   document.getElementById('dbOptionsSection').style.display = isDB ? '' : 'none';
   document.getElementById('wlsSection').style.display       = isDB ? 'none' : '';
+  // A required control in a hidden container makes the form unsubmittable
+  // ("not focusable"), so edition is only required while the DB section shows.
+  document.getElementById('edition').required = isDB;
 }
+
+// Apply the same rule on load, since the page can render with WebLogic selected.
+selectType(document.getElementById('serverTypeInput').value || 'oracle_database');
+
+// oracle_processors.total_physical_cores is a generated column, always
+// cpu_sockets * cores_per_socket, so a core total that disagrees with those two
+// is discarded and the product is what gets licensed. Flag it while typing.
+(function () {
+  const cores = document.getElementById('physical_cores');
+  const sock  = document.getElementById('cpu_sockets');
+  const cps   = document.getElementById('cores_per_socket');
+  const note  = document.getElementById('coreMismatch');
+  if (!cores || !sock || !cps || !note) return;
+
+  function check() {
+    const c = parseInt(cores.value, 10);
+    const s = parseInt(sock.value, 10);
+    const p = parseInt(cps.value, 10);
+    if (!c || !s || !p || c === s * p) {
+      note.classList.add('d-none');
+      note.textContent = '';
+      return;
+    }
+    note.textContent = s + ' x ' + p + ' = ' + (s * p) +
+      ' cores will be stored and licensed, not ' + c + '.';
+    note.classList.remove('d-none');
+  }
+
+  [cores, sock, cps].forEach(el => el.addEventListener('input', check));
+  check();
+})();
 </script>
 {% endblock %}

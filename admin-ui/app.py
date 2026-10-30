@@ -52,15 +52,19 @@ _OCI_DB_KEYWORDS = [
 _OCI_OCPU_METRICS = {"ocpu per hour", "ocpu-hour", "ocpu hour"}
 
 
-# Oracle published OCI Database hourly OCPU list prices (USD, as of 2024).
-# Used as fallback when the live API is unreachable.
+# Oracle published OCI Database hourly OCPU list prices (USD).
+# Used as fallback when the live API is unreachable. The Enterprise Edition
+# rates are the ones build_oci_comparison actually selects for the OCI columns,
+# since it requires "enterprise" in a non-ExaCC SKU name; the Standard Edition 2
+# entries below are therefore never chosen by that comparison. Remaining rates
+# date from 2024.
 # Source: https://www.oracle.com/cloud/price-list/
 _OCI_STATIC_SKUS = [
     {
         "name":                 "Oracle Database Enterprise Edition — BYOL",
         "part_number":          "B90453",
         "metric":               "ocpu per hour",
-        "unit_price":           0.4480,
+        "unit_price":           0.10576542,
         "is_byol":              True,
         "is_licence_included":  False,
         "is_exacc":             False,
@@ -69,7 +73,7 @@ _OCI_STATIC_SKUS = [
         "name":                 "Oracle Database Enterprise Edition — Licence Included",
         "part_number":          "B90454",
         "metric":               "ocpu per hour",
-        "unit_price":           2.9008,
+        "unit_price":           0.4403616,
         "is_byol":              False,
         "is_licence_included":  True,
         "is_exacc":             False,
@@ -1758,8 +1762,21 @@ def register_server():
         # DB options (checkboxes — only present in POST when checked)
         selected_options = request.form.getlist("db_options")
 
-        if not hostname:
-            flash("Hostname is required.", "danger")
+        # Validated server-side as well as in the form: without CPU data a server
+        # has no core factor, and without an Enterprise edition its options are
+        # excluded from license_position, so it registers but cannot be licensed.
+        missing = [label for label, value in (
+            ("Hostname",         hostname),
+            ("CPU model",        cpu_model_raw),
+            ("Total RAM (MB)",   ram_mb),
+            ("Physical cores",   cores),
+            ("CPU sockets",      sockets),
+            ("Cores per socket", cps),
+        ) if not value]
+        if server_type == "oracle_database" and not edition:
+            missing.append("Database edition")
+        if missing:
+            flash("Required: " + ", ".join(missing) + ".", "danger")
             return render_template("register_server.html",
                                    environments=environments, schema=schema,
                                    all_clients=all_clients, licensed_options=licensed_options,
@@ -1922,6 +1939,21 @@ def register_server():
                 flash(f"Server '{hostname}' registered successfully.", "success")
             else:
                 flash(f"Server '{hostname}' already existed — record updated.", "info")
+
+            # oracle_processors.total_physical_cores is GENERATED ALWAYS AS
+            # (cpu_sockets * cores_per_socket), so the entered core total is not
+            # stored and licence counts follow the product. Say so plainly when
+            # the two disagree, rather than leaving the figure silently ignored.
+            if cores and sockets and cps:
+                stored = int(sockets) * int(cps)
+                if int(cores) != stored:
+                    flash(
+                        f"CPU figures disagree: {sockets} sockets x {cps} cores per socket "
+                        f"is {stored} cores, but {cores} was entered. Licence counts use "
+                        f"{stored}, since the stored total is always sockets x cores per "
+                        f"socket. Correct the sockets or cores per socket if {cores} is right.",
+                        "warning"
+                    )
             return redirect(url_for("edit_server", server_id=server_id))
 
         except Exception as e:
@@ -2377,7 +2409,7 @@ def _process_csv_upload(schema: str, files) -> dict:
             total_feat_pdb += sum(len(v) for v in pdb_feats.values())
 
         # -- Licensed options detection --
-        # Primary source: _product_usage.csv (usage_status = current_usage).
+        # Primary source: _product_usage.csv (current, past or conditional usage).
         # Fallback for mgmt packs: _mgmt_packs.csv diagnostics/tuning_licensed columns.
         # Multitenant: PDB count governs, not feature/product usage signal.
         pack_options = []
@@ -2399,10 +2431,15 @@ def _process_csv_upload(schema: str, files) -> dict:
             "advanced analytics":            "Advanced Analytics",
         }
 
+        # Past usage still creates a licence obligation, so it counts alongside
+        # current usage. SUPPRESSED_DUE_TO_BUG stays out: it marks a known Oracle
+        # false positive rather than real usage.
+        _licensable_usage = ("current_usage", "past_usage", "past_or_current_usage")
+
         for row in g.get("product_usage", []):
             product_raw = row.get("product", "").strip().strip('"').lower()
             status = row.get("usage_status", "").strip().strip('"').lower()
-            if status != "current_usage":
+            if status not in _licensable_usage:
                 continue
             for prod_key, opt_name in _product_to_option.items():
                 if prod_key in product_raw and opt_name not in pack_options:
@@ -6551,11 +6588,11 @@ def licence_analysis():
             # ----------------------------------------------------------
             # OCI comparison
             # ----------------------------------------------------------
-            # Oracle core factor for processor licensing: most x86 = 0.5
-            # 1 physical core licensed = 0.5 processor licences on x86
-            # OCI: 1 processor licence (perpetual) → 2 OCPUs (BYOL)
-            # So total_physical_cores × 0.5 × 2 = total_physical_cores OCPUs
-            ocpus = physical_cores  # net result: 1 physical core = 1 OCPU
+            # OCI sizing is quoted in OCPUs, at 4 OCPUs per physical core,
+            # so 16 physical cores requires 64 OCPUs. This governs the OCI
+            # columns only; the on-premises licence count above still uses
+            # physical cores and the Oracle core factor.
+            ocpus = physical_cores * 4
 
             oci_skus          = get_oci_prices()
             oci_prices_static = (oci_skus is _OCI_STATIC_SKUS)
@@ -6629,6 +6666,27 @@ def licence_analysis():
         except Exception as e:
             result = {"error": str(e)}
 
+    # Collect discovery errors from the latest run per client schema
+    discovery_errors = []
+    for cl in clients:
+        try:
+            sc = cl["schema_name"]
+            errs = query(
+                f"""
+                SELECT e.hostname, e.oracle_sid, e.error_type, e.error_detail,
+                       e.recorded_at, e.run_id
+                FROM   {sc}.discovery_errors e
+                WHERE  e.recorded_at >= NOW() - INTERVAL '48 hours'
+                ORDER  BY e.recorded_at DESC
+                LIMIT  100
+                """,
+                fetchall=True
+            )
+            for e in (errs or []):
+                discovery_errors.append({**dict(e), "client_name": cl["client_name"]})
+        except Exception:
+            pass  # table may not exist on older schemas
+
     return render_template(
         "licence_analysis.html",
         clients=clients,
@@ -6636,6 +6694,7 @@ def licence_analysis():
         server_list=server_list,
         result=result,
         manual_db_options=MANUAL_DB_OPTIONS,
+        discovery_errors=discovery_errors,
     )
 
 

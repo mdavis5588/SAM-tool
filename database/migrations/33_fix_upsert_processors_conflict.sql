@@ -30,7 +30,7 @@ BEGIN
         p_payload->>'os_family',
         p_payload->>'os_distribution',
         p_payload->>'os_version',
-        (p_payload->>'environment')::environment_type,
+        (p_payload->>'environment')::%I.environment_type,
         p_payload->>'criticality',
         (p_payload->>'total_ram_mb')::INTEGER,
         p_payload->>'datacenter',
@@ -62,7 +62,7 @@ BEGIN
           cpu_sockets      = (p_payload->>'cpu_sockets')::INTEGER,
           cores_per_socket = (p_payload->>'cpu_cores_per_socket')::INTEGER,
           threads_per_core = (p_payload->>'cpu_threads_per_core')::INTEGER,
-          virt_type        = (COALESCE(p_payload->>'virt_type','unknown'))::virt_type,
+          virt_type        = (COALESCE(p_payload->>'virt_type','unknown'))::%I.virt_type,
           is_vmware        = COALESCE((p_payload->>'is_vmware')::BOOLEAN, FALSE),
           is_exadata       = COALESCE((p_payload->>'is_exadata')::BOOLEAN, FALSE),
           vcpu_count       = (p_payload->>'vcpu_count')::INTEGER,
@@ -80,7 +80,7 @@ BEGIN
           (p_payload->>'cpu_sockets')::INTEGER,
           (p_payload->>'cpu_cores_per_socket')::INTEGER,
           (p_payload->>'cpu_threads_per_core')::INTEGER,
-          (COALESCE(p_payload->>'virt_type','unknown'))::virt_type,
+          (COALESCE(p_payload->>'virt_type','unknown'))::%I.virt_type,
           COALESCE((p_payload->>'is_vmware')::BOOLEAN, FALSE),
           COALESCE((p_payload->>'is_exadata')::BOOLEAN, FALSE),
           (p_payload->>'vcpu_count')::INTEGER,
@@ -116,11 +116,14 @@ BEGIN
   $fn$,
   p_schema,   -- 1: function schema
   p_schema,   -- 2: oracle_servers
-  p_schema,   -- 3: oracle_processors (EXISTS check)
-  p_schema,   -- 4: oracle_processors (UPDATE)
-  p_schema,   -- 5: oracle_processors (INSERT)
-  p_schema,   -- 6: oracle_instances
-  p_schema);  -- 7: (matches 7-arg format call)
+  p_schema,   -- 3: environment_type enum
+  p_schema,   -- 4: oracle_processors (EXISTS check)
+  p_schema,   -- 5: oracle_processors (UPDATE)
+  p_schema,   -- 6: virt_type enum (UPDATE)
+  p_schema,   -- 7: oracle_processors (INSERT)
+  p_schema,   -- 8: virt_type enum (INSERT)
+  p_schema,   -- 9: oracle_instances
+  p_schema);  -- 10: (matches 10-arg format call)
 END;
 $$;
 

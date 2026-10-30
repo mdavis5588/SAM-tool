@@ -249,6 +249,48 @@
 </div>
 
 <!-- ================================================================
+     DISCOVERY ERRORS BANNER
+     ================================================================ -->
+{% if discovery_errors %}
+<div class="alert alert-warning mb-3" role="alert">
+  <div class="d-flex align-items-center gap-2 mb-2">
+    <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+    <strong>Instances that failed to report in the last 48 hours</strong>
+    <button class="btn btn-sm btn-outline-warning ms-auto" type="button"
+            data-bs-toggle="collapse" data-bs-target="#discoveryErrorsDetail">
+      Show details
+    </button>
+  </div>
+  <div class="collapse" id="discoveryErrorsDetail">
+    <table class="table table-sm table-bordered mb-0 bg-white small">
+      <thead class="table-warning">
+        <tr>
+          <th>Client</th>
+          <th>Hostname</th>
+          <th>SID</th>
+          <th>Error</th>
+          <th>Detail</th>
+          <th>Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in discovery_errors %}
+        <tr>
+          <td>{{ e.client_name }}</td>
+          <td>{{ e.hostname }}</td>
+          <td>{{ e.oracle_sid or '—' }}</td>
+          <td><span class="badge bg-warning text-dark">{{ e.error_type }}</span></td>
+          <td class="text-muted" style="max-width:300px;word-break:break-all;">{{ e.error_detail or '—' }}</td>
+          <td class="text-nowrap">{{ e.recorded_at.strftime('%Y-%m-%d %H:%M') if e.recorded_at else '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- ================================================================
      RESULTS
      ================================================================ -->
 {% if result %}
@@ -390,7 +432,7 @@
                 {% endif %}
                 {% endif %}
                 <td class="py-2 text-end pe-3 text-primary fw-bold">
-                  {% if l.metric in ('processor','processor_perpetual') %}{{ "{:,.0f}".format(l.units_required * 2) }} OCPUs
+                  {% if l.metric in ('processor','processor_perpetual') %}{{ "{:,.0f}".format(l.units_required * 8) }} OCPUs
                   {% else %}<span class="text-muted">N/A</span>{% endif %}
                 </td>
               </tr>
@@ -443,10 +485,9 @@
       {% endif %}
       <div class="card-footer text-muted small py-2">
         <i class="bi bi-info-circle me-1"></i>
-        OCI OCPU mapping: 1 processor licence = 2 OCPUs (x86 core factor 0.5, so
+        OCI OCPU mapping: 4 OCPUs per physical core, so
         {{ "{:,.0f}".format(result.physical_cores) }} cores →
-        {{ "{:,.0f}".format(result.physical_cores // 2) }} proc. licences →
-        {{ "{:,.0f}".format(result.ocpus) }} OCPUs).
+        {{ "{:,.0f}".format(result.ocpus) }} OCPUs.
         NUP licences have no direct OCPU equivalent — shown as N/A.
       </div>
     </div>

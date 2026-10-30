@@ -1668,7 +1668,7 @@ BEGIN
         IF v_instance_id IS NULL THEN CONTINUE; END IF;
 
         -- Upsert RAC nodes
-        FOR v_node IN SELECT * FROM jsonb_array_elements(COALESCE(v_inst->'rac_nodes', '[]'::jsonb))
+        FOR v_node IN SELECT * FROM jsonb_array_elements(COALESCE(NULLIF(v_inst->'rac_nodes', 'null'::jsonb), '[]'::jsonb))
         LOOP
           INSERT INTO %I.oracle_rac_nodes
             (instance_id, server_id, node_name, node_number,
@@ -1690,7 +1690,7 @@ BEGIN
 
         -- Upsert PDB records
         v_pdb_count := 0;
-        FOR v_pdb IN SELECT * FROM jsonb_array_elements(COALESCE(v_inst->'pdbs', '[]'::jsonb))
+        FOR v_pdb IN SELECT * FROM jsonb_array_elements(COALESCE(NULLIF(v_inst->'pdbs', 'null'::jsonb), '[]'::jsonb))
         LOOP
           v_pdb_count := v_pdb_count + 1;
           INSERT INTO %I.oracle_pdbs
@@ -1729,13 +1729,13 @@ BEGIN
             (v_inst->>'nup_active_users')::INTEGER,
             (v_inst->>'nup_total_users')::INTEGER,
             COALESCE((v_inst->>'nup_locked_users')::INTEGER, 0),
-            ARRAY(SELECT jsonb_array_elements_text(COALESCE(v_inst->'nup_sample_users', '[]'::jsonb))),
+            ARRAY(SELECT jsonb_array_elements_text(COALESCE(NULLIF(v_inst->'nup_sample_users', 'null'::jsonb), '[]'::jsonb))),
             p_payload->>'run_id'
           );
         END IF;
 
         -- Upsert feature usage rows from DBA_FEATURE_USAGE_STATISTICS
-        FOR v_feat IN SELECT * FROM jsonb_array_elements(COALESCE(v_inst->'feature_usage', '[]'::jsonb))
+        FOR v_feat IN SELECT * FROM jsonb_array_elements(COALESCE(NULLIF(v_inst->'feature_usage', 'null'::jsonb), '[]'::jsonb))
         LOOP
           INSERT INTO %I.oracle_feature_usage
             (instance_id, feature_name, db_version,
@@ -1756,7 +1756,7 @@ BEGIN
             CURRENT_DATE,
             p_payload->>'run_id'
           )
-          ON CONFLICT (instance_id, feature_name) DO UPDATE SET
+          ON CONFLICT (instance_id, COALESCE(pdb_name, ''), feature_name) DO UPDATE SET
             db_version       = EXCLUDED.db_version,
             detected_usages  = EXCLUDED.detected_usages,
             total_samples    = EXCLUDED.total_samples,
